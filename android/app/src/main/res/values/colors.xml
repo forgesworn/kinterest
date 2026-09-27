@@ -1,0 +1,10 @@
+<resources>
+    <!-- Jar brand tokens — kept in step with app/src/theme.css's custom
+         properties (paper, paper-2, ink, amber, amber-bg), since the
+         launcher icon and status bar are drawn from the same mark. -->
+    <color name="paper">#FAF5EA</color>
+    <color name="paper_2">#F3ECDC</color>
+    <color name="ink">#221C16</color>
+    <color name="amber">#E8A13D</color>
+    <color name="amber_bg">#FAEAD0</color>
+</resources>

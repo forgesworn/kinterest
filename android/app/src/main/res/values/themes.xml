@@ -1,0 +1,12 @@
+<resources>
+    <!-- Paper/ink brand theme: a paper window + status bar with dark
+         (ink-coloured) status bar icons — minSdk 29 already clears the API
+         23 floor for android:windowLightStatusBar, so no -v23 variant is
+         needed. Parent stays the plain framework Material theme (no
+         AppCompat/MaterialComponents dependency in this shell). -->
+    <style name="Theme.Kinjar" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+        <item name="android:statusBarColor">@color/paper</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

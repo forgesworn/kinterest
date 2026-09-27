@@ -1,0 +1,1141 @@
+/* =========================================================================
+   Kindred design system (Jar parent app)
+   One stylesheet, imported once (src/main.tsx). Tokens as CSS custom
+   properties + a small set of base component classes for the hand-rolled
+   kit in components/ui.tsx and components/Money.tsx.
+
+   Brand: calm & literate, warm modern craft — a banking app, never a
+   spreadsheet. Cream/ink/flame-amber by day, a candlelit room at night
+   (prefers-color-scheme, no manual toggle in Task 1). Serif display type
+   for money and headings; humanist system fonts for body copy. System
+   fonts only — no webfont fetches, this app must work offline. No shields,
+   eyes, locks, or magnifying-glass iconography anywhere in this file or
+   anything that uses it.
+   ========================================================================= */
+
+:root {
+  /* Palette — light ("paper") */
+  --paper: #faf5ea;
+  --paper-2: #f3ecdc;
+  --ink: #221c16;
+  --ink-2: #6b5f4f;
+  --amber: #e8a13d;
+  --amber-deep: #b97817;
+  --good: #4e7a4e;
+  --bad: #a64b3c;
+  --line: #e3d9c4;
+
+  /* Text-on-tint variants, kept close to the ink family so tinted pills and
+     banners still read as "this app", not a generic status-colour system. */
+  --good-ink: #33562f;
+  --bad-ink: #7c352a;
+  --amber-ink: #7c4d16;
+
+  /* Tinted surfaces for pills/banners */
+  --good-bg: #e5efe1;
+  --bad-bg: #f3e2dc;
+  --amber-bg: #faead0;
+
+  /* Shape */
+  --radius-card: 18px;
+  --radius-control: 12px;
+  --radius-pill: 999px;
+  --tap: 44px;
+
+  /* Shadows — soft, paper-like, never a hard drop shadow */
+  --shadow-1: 0 1px 2px rgba(34, 28, 22, 0.06);
+  --shadow-2: 0 12px 32px -18px rgba(34, 28, 22, 0.35);
+
+  /* Type: serif display for balances/headings, system humanist for body.
+     No webfont fetches — every family here ships with the OS. */
+  --font-display: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  --font-body: system-ui, -apple-system, sans-serif;
+  --fs-body: 16px;
+  --fs-small: 14px;
+  --fs-title: 26px;
+  --fs-section: 19px;
+
+  /* Layout */
+  --col-max: 480px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Dark mode — "a candlelit room". Amber is deliberately unchanged (it gains
+   presence against the dark ground rather than needing its own dark tint). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #191410;
+    --paper-2: #211a14;
+    --ink: #f1e8d8;
+    --ink-2: #b3a68e;
+    --line: #33291f;
+    --good-ink: #a9d1a3;
+    --bad-ink: #e2b0a4;
+    --amber-ink: #f6cd8c;
+    --good-bg: #24301f;
+    --bad-bg: #3a241d;
+    --amber-bg: #3a2c14;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-2: 0 12px 32px -16px rgba(0, 0, 0, 0.6);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--amber-deep);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---- App frame: a centred phone-width column, but never wider than the
+   smallest hand-me-down phone needs (360x640 portrait is the floor). ---- */
+
+.screen {
+  max-width: var(--col-max);
+  margin: 0 auto;
+  min-height: 100dvh;
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(var(--safe-top) + 12px) 16px 12px;
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+  backdrop-filter: saturate(1.2) blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+
+.back-btn {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1;
+  padding: 0;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.topbar-title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-action {
+  flex: 0 0 auto;
+}
+
+.screen-body {
+  flex: 1;
+  padding: 16px 16px calc(var(--safe-bottom) + 24px);
+}
+
+/* ---- Cards -------------------------------------------------------------- */
+
+.card {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-1);
+  padding: 16px;
+}
+
+.card + .card {
+  margin-top: 12px;
+}
+
+/* ---- Buttons -------------------------------------------------------------
+   Three tones only: primary (the one warm action on a screen), quiet (an
+   everyday secondary action, outlined), danger (rare, a debit/removal). */
+
+.btn {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  min-height: var(--tap);
+  padding: 0 18px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background-color 0.15s ease, transform 0.05s ease;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: var(--amber);
+  color: #241705;
+}
+
+.btn-primary:active {
+  background: var(--amber-deep);
+}
+
+.btn-quiet {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.btn-danger {
+  background: var(--bad-bg);
+  color: var(--bad-ink);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- Pills / chips -------------------------------------------------------- */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.pill-neutral {
+  background: var(--line);
+  color: var(--ink-2);
+}
+
+.pill-good {
+  background: var(--good-bg);
+  color: var(--good-ink);
+}
+
+.pill-bad {
+  background: var(--bad-bg);
+  color: var(--bad-ink);
+}
+
+.pill-amber {
+  background: var(--amber-bg);
+  color: var(--amber-ink);
+}
+
+/* Groups a handful of pills above a card's primary action — e.g. onboarding's
+   "Recommended" + "Soon" pair on the My Signet option. */
+.pill-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+/* Spacing for an inline explanatory banner revealed under a card's own
+   copy (e.g. onboarding's "My Signet is coming soon" note) — the card-sub
+   paragraph above it carries no bottom margin of its own. */
+.signet-note {
+  margin-top: 10px;
+}
+
+/* ---- Banners -------------------------------------------------------------- */
+
+.banner {
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+  font-size: var(--fs-small);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.banner-info {
+  background: var(--amber-bg);
+  color: var(--amber-ink);
+}
+
+.banner-good {
+  background: var(--good-bg);
+  color: var(--good-ink);
+}
+
+.banner-bad {
+  background: var(--bad-bg);
+  color: var(--bad-ink);
+}
+
+/* ---- Empty states ----------------------------------------------------------- */
+
+.empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--ink-2);
+}
+
+.empty-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-section);
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 6px;
+}
+
+.empty-sub {
+  margin: 0;
+  font-size: var(--fs-small);
+}
+
+/* ---- List rows -------------------------------------------------------------- */
+
+.list {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  min-height: var(--tap);
+  background: var(--paper-2);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+div.row {
+  cursor: default;
+}
+
+button.row {
+  font: inherit;
+}
+
+.row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row-title {
+  font-weight: 600;
+}
+
+.row-sub {
+  color: var(--ink-2);
+  font-size: var(--fs-small);
+}
+
+.row-chevron {
+  color: var(--ink-2);
+  flex: 0 0 auto;
+}
+
+/* ---- Sheet (bottom action sheet) --------------------------------------------- */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(34, 28, 22, 0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet {
+  width: 100%;
+  max-width: var(--col-max);
+  background: var(--paper);
+  border-radius: 22px 22px 0 0;
+  padding: 20px 20px calc(20px + var(--safe-bottom));
+  box-shadow: var(--shadow-2);
+  animation: sheet-up 0.22s ease;
+}
+
+.sheet-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-section);
+  font-weight: 700;
+  margin: 0 0 14px;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(16px);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ---- Stepper (numeric +/-) ---------------------------------------------------- */
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: 4px;
+  background: var(--paper-2);
+}
+
+.stepper-btn {
+  appearance: none;
+  border: 0;
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 8px;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stepper-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.stepper-value {
+  min-width: 3ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  padding: 0 10px;
+}
+
+/* ---- Money — always serif, tabular, big; the one place the display face
+   appears outside headings. Credits (money coming in) are picked out in
+   --good; debits stay plain --ink, deliberately un-alarming. -------------- */
+
+.money {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.money-credit {
+  color: var(--good);
+}
+
+.money-debit {
+  color: var(--ink);
+}
+
+.money-sm {
+  font-size: 16px;
+}
+
+.money-md {
+  font-size: 22px;
+}
+
+.money-lg {
+  font-size: 36px;
+}
+
+.money-frac {
+  font-size: 0.72em;
+  opacity: 0.85;
+}
+
+.money-unit {
+  font-size: 0.5em;
+  font-weight: 600;
+  font-family: var(--font-body);
+  opacity: 0.8;
+  letter-spacing: 0;
+}
+
+/* ---- Onboarding: hero + mnemonic ceremony grid ---------------------------- */
+
+.onboarding-hero {
+  text-align: center;
+  padding: 12px 8px 20px;
+}
+
+.onboarding-hero h2 {
+  font-family: var(--font-display);
+  font-size: 30px;
+  margin: 0 0 8px;
+}
+
+.onboarding-hero p {
+  color: var(--ink-2);
+  margin: 0;
+}
+
+/* Numbered grid, per Global Constraints/Task 3: serif display face for the
+   words themselves, small tabular index alongside each — a ceremony, not a
+   form field. */
+.mnemonic-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mnemonic-grid li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.mnemonic-index {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+  font-size: var(--fs-small);
+  min-width: 1.5em;
+}
+
+.mnemonic-word {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* ---- Plain text inputs (name fields, recovery-word entry) — the hand-rolled
+   kit (components/ui.tsx) has no text-input component yet (Task 4's
+   MoneyInput is the first amount-specific one); these two classes cover
+   onboarding's plain-text needs directly. ---------------------------------- */
+
+.text-input,
+.textarea-input {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper-2);
+  color: var(--ink);
+  padding: 12px 14px;
+  min-height: var(--tap);
+  margin: 10px 0 16px;
+}
+
+.textarea-input {
+  min-height: 96px;
+  resize: vertical;
+  font-family: var(--font-body);
+}
+
+/* ---- Pairing: QR + SAS code ------------------------------------------------ */
+
+.qr-code {
+  display: block;
+  margin: 0 auto;
+  padding: 12px;
+  background: #fff;
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-1);
+}
+
+.sas-code {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  margin: 16px 0 4px;
+}
+
+.pairing-expiry {
+  text-align: center;
+  color: var(--ink-2);
+  font-size: var(--fs-small);
+  margin: 0;
+}
+
+.pairing-code-text {
+  font-family: monospace;
+  font-size: 11px;
+  margin-top: 16px;
+}
+
+/* ---- Home: child cards ------------------------------------------------------ */
+
+.child-card {
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.child-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.child-card-name {
+  font-weight: 600;
+}
+
+.child-card-total {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.child-card-approx {
+  color: var(--ink-2);
+  font-family: var(--font-display);
+  font-size: 22px;
+}
+
+.child-card-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 10px;
+  color: var(--ink-2);
+  font-size: var(--fs-small);
+}
+
+/* ---- Child detail: unified feed ---------------------------------------------- */
+
+.feed-group {
+  margin-top: 20px;
+}
+
+.feed-group:first-of-type {
+  margin-top: 16px;
+}
+
+.feed-day {
+  font-family: var(--font-body);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px 4px;
+}
+
+.feed-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.feed-ack {
+  display: inline-block;
+}
+
+/* ---- Quick actions: the row of sheet-opening buttons, account pickers ------- */
+
+.quick-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.quick-actions-row .btn {
+  flex: 1 1 auto;
+}
+
+/* ---- MoneyInput --------------------------------------------------------------- */
+
+.money-input {
+  display: block;
+}
+
+.money-input-label {
+  display: block;
+  font-size: var(--fs-small);
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+
+.money-input-field {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.money-input-error {
+  display: block;
+  color: var(--bad-ink);
+  font-size: var(--fs-small);
+  margin: -8px 0 12px;
+}
+
+/* ---- Approvals inbox ----------------------------------------------------------- */
+
+.approvals-child-heading {
+  font-family: var(--font-body);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 20px 0 8px 4px;
+}
+
+.approvals-child-heading:first-of-type {
+  margin-top: 4px;
+}
+
+.card-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  padding-right: 30px; /* clears the absolutely-positioned .dismiss-btn */
+}
+
+.card-sub {
+  color: var(--ink-2);
+  font-size: var(--fs-small);
+  margin: 4px 0 0;
+}
+
+.muted {
+  color: var(--ink-2);
+}
+
+.dismiss-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-pill);
+  color: var(--ink-2);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.dismiss-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* ---- Child settings: sections, inline field labels, checkboxes, the
+   interest projection preview ---------------------------------------------- */
+
+.settings-section-heading {
+  font-family: var(--font-body);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 24px 0 8px 4px;
+}
+
+.settings-section-heading:first-of-type {
+  margin-top: 4px;
+}
+
+.settings-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-row-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.field-label {
+  display: block;
+  font-size: var(--fs-small);
+  color: var(--ink-2);
+  margin: 10px 0 4px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.checkbox-row input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  accent-color: var(--amber-deep);
+}
+
+.projection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.projection-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: var(--fs-small);
+  color: var(--ink-2);
+}
+
+/* ---- QR scanner (child pairing: camera scan) -------------------------------- */
+
+.qr-scanner {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: #05070b;
+  height: min(52vh, 380px);
+  min-height: 260px;
+}
+
+.qr-scanner-video {
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  object-fit: cover;
+  transform-origin: center;
+}
+
+.qr-scanner-error {
+  padding: 16px;
+  text-align: center;
+  color: #fff;
+  font-size: var(--fs-small);
+}
+
+.qr-scanner-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(70vw, 260px, calc(100% - 48px));
+  aspect-ratio: 1 / 1;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+.qr-scanner-zoom {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.62);
+  border-radius: 8px;
+}
+
+.qr-scanner-zoom-btn {
+  appearance: none;
+  border: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.qr-scanner-zoom-btn:disabled {
+  opacity: 0.45;
+}
+
+.qr-scanner-zoom-range {
+  flex: 1;
+  accent-color: var(--amber);
+  min-width: 0;
+}
+
+.qr-scan-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0;
+  color: var(--ink-2);
+  font-size: var(--fs-small);
+}
+
+.qr-scan-divider::before,
+.qr-scan-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* ---- PIN pad (child PIN set / unlock) ---------------------------------------- */
+
+.pin-pad {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.pin-pad-dots {
+  display: flex;
+  gap: 12px;
+}
+
+.pin-pad-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--ink-2);
+  background: transparent;
+}
+
+.pin-pad-dot-filled {
+  background: var(--amber);
+  border-color: var(--amber-deep);
+}
+
+.pin-pad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 280px;
+}
+
+.pin-pad-key {
+  appearance: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper-2);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  min-height: 64px;
+  cursor: pointer;
+}
+
+.pin-pad-key:active {
+  background: var(--paper);
+}
+
+.pin-pad-key:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pin-pad-key-back {
+  font-size: 20px;
+  color: var(--ink-2);
+}
+
+.pin-pad-spacer {
+  min-height: 64px;
+}
+
+/* ---- Jar (child home hero): the brand mark as UI, per
+   internal plan 2026-08-11-child-mode, Task 3 — a geometric,
+   woodcut-adjacent mason jar drawn purely from --ink/--amber tokens, so it
+   stays dark-mode aware for free (no colours of its own). ------------------ */
+
+.jar-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 8px 24px;
+}
+
+.jar {
+  width: 152px;
+  height: auto;
+}
+
+.jar-outline {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+.jar-lid {
+  fill: var(--paper-2);
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+.jar-water {
+  fill: var(--amber);
+  /* SVG geometry properties (y/height) are CSS-animatable in modern
+     browsers — a balance change eases the waterline rather than jumping. */
+  transition: y 0.6s ease, height 0.6s ease;
+}
+
+.jar-flame {
+  fill: var(--amber-deep);
+}
+
+.jar-hero-balance {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+/* ---- Audit ceremony: the count screen's own big running total (see
+   internal plan 2026-08-11-child-mode, Task 5) — centred, same
+   "serif, big" Money face as the jar hero balance above, just without a jar
+   next to it. --------------------------------------------------------------- */
+
+.audit-total {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+/* ---- Chores gate progress ------------------------------------------------------ */
+
+.gate-progress-bar {
+  margin-top: 8px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.gate-progress-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--amber);
+  transition: width 0.2s ease;
+}
+
+/* ---- Motion preference -------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

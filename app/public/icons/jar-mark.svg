@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Jar brand mark, derived from app/src/components/Jar.tsx's JAR_PATH,
+       LID_PATH and flame shape (same coordinate space, 160x200 viewBox),
+       recentred and scaled into a square canvas so the artwork sits inside
+       the central ~66% of the frame — the safe zone Android's adaptive-icon
+       mask guarantees stays visible. Flat colours only (no SVG filters,
+       gradients or blur) so this renders identically via resvg for PNGs and
+       hand-translates cleanly to an Android VectorDrawable. Palette from
+       app/src/theme.css tokens: paper #faf5ea, paper-2 #f3ecdc, ink #221c16,
+       amber #e8a13d, amber-bg #faead0. -->
+  <rect width="200" height="200" fill="#faf5ea" />
+  <g transform="translate(44,29.3) scale(0.7)" stroke-linejoin="round">
+    <!-- Jar body: shouldered rectangle, rounded base (JAR_PATH). -->
+    <path
+      d="M56 20 H104 V34 C104 34 128 44 128 70 V158 C128 176 112 188 80 188 C48 188 32 176 32 158 V70 C32 44 56 34 56 34 Z"
+      fill="#f3ecdc"
+      stroke="#221c16"
+      stroke-width="6"
+    />
+    <!-- Lid band (LID_PATH). -->
+    <path
+      d="M52 14 H108 C112 14 114 17 114 20 V26 H46 V20 C46 17 48 14 52 14 Z"
+      fill="#f3ecdc"
+      stroke="#221c16"
+      stroke-width="6"
+    />
+    <!-- Soft amber glow behind the flame — a plain filled disc, no filter. -->
+    <circle cx="80" cy="139" r="26" fill="#faead0" />
+    <!-- Ember flame, low in the jar (same path as Jar.tsx's jar-flame). -->
+    <path
+      d="M80 150 C74 142 72 134 80 124 C88 134 86 142 80 150 Z"
+      fill="#e8a13d"
+    />
+  </g>
+</svg>

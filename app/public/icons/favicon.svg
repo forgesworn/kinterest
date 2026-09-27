@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Favicon: the same jar mark as jar-mark.svg (kept as a separate file so
+       browsers can request /icons/favicon.svg directly without depending on
+       the icon-set naming). See jar-mark.svg for the source-of-truth notes. -->
+  <rect width="200" height="200" fill="#faf5ea" />
+  <g transform="translate(44,29.3) scale(0.7)" stroke-linejoin="round">
+    <path
+      d="M56 20 H104 V34 C104 34 128 44 128 70 V158 C128 176 112 188 80 188 C48 188 32 176 32 158 V70 C32 44 56 34 56 34 Z"
+      fill="#f3ecdc"
+      stroke="#221c16"
+      stroke-width="6"
+    />
+    <path
+      d="M52 14 H108 C112 14 114 17 114 20 V26 H46 V20 C46 17 48 14 52 14 Z"
+      fill="#f3ecdc"
+      stroke="#221c16"
+      stroke-width="6"
+    />
+    <circle cx="80" cy="139" r="26" fill="#faead0" />
+    <path
+      d="M80 150 C74 142 72 134 80 124 C88 134 86 142 80 150 Z"
+      fill="#e8a13d"
+    />
+  </g>
+</svg>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive-icon foreground layer: the jar mark, hand-translated from
+     app/public/icons/jar-mark.svg (which is itself derived from
+     app/src/components/Jar.tsx's JAR_PATH / LID_PATH / flame path — see
+     that SVG's header). Same 0.7-scale, ~66%-safe-zone placement as the
+     master SVG, just re-based onto the adaptive icon's 108x108dp canvas
+     (108/200 = 0.54, so translate/scale here are the master SVG's own
+     values times 0.54). No filters or gradients — VectorDrawable can't do
+     either — so the "glow" behind the flame is a plain flat circle, same as
+     the SVG. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="23.76"
+        android:translateY="15.822"
+        android:scaleX="0.378"
+        android:scaleY="0.378">
+
+        <!-- Jar body (JAR_PATH). -->
+        <path
+            android:pathData="M56,20 H104 V34 C104,34 128,44 128,70 V158 C128,176 112,188 80,188 C48,188 32,176 32,158 V70 C32,44 56,34 56,34 Z"
+            android:fillColor="@color/paper_2"
+            android:strokeColor="@color/ink"
+            android:strokeWidth="6"
+            android:strokeLineJoin="round" />
+
+        <!-- Lid band (LID_PATH). -->
+        <path
+            android:pathData="M52,14 H108 C112,14 114,17 114,20 V26 H46 V20 C46,17 48,14 52,14 Z"
+            android:fillColor="@color/paper_2"
+            android:strokeColor="@color/ink"
+            android:strokeWidth="6"
+            android:strokeLineJoin="round" />
+
+        <!-- Soft amber glow disc behind the flame — a plain circle (drawn
+             as two arcs; VectorDrawable has no <circle> element), no
+             filter/blur. Centre (80,139) radius 26, same as jar-mark.svg. -->
+        <path
+            android:pathData="M54,139 a26,26 0 1,0 52,0 a26,26 0 1,0 -52,0 Z"
+            android:fillColor="@color/amber_bg" />
+
+        <!-- Ember flame, low in the jar (same path as Jar.tsx's jar-flame). -->
+        <path
+            android:pathData="M80,150 C74,142 72,134 80,124 C88,134 86,142 80,150 Z"
+            android:fillColor="@color/amber" />
+    </group>
+</vector>

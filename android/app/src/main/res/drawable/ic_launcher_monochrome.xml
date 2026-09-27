@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon (Android 13+ "monochrome") layer: the system applies its
+     own single tint over whatever is opaque here, so this is the jar+lid+
+     flame silhouette in one ink colour only — no paper fill, no amber glow
+     disc (those would just read as an odd solid blob once tinted). Same
+     placement/scale as ic_launcher_foreground.xml. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="23.76"
+        android:translateY="15.822"
+        android:scaleX="0.378"
+        android:scaleY="0.378">
+
+        <!-- Jar body with the flame as a genuine punched hole: a themed-icon
+             layer is masked purely by alpha, and simply layering a
+             transparent path on top of an opaque one does not erase
+             anything, so the flame subpath is combined into this SAME path
+             (evenOdd fill rule) rather than drawn separately. -->
+        <path
+            android:pathData="M56,20 H104 V34 C104,34 128,44 128,70 V158 C128,176 112,188 80,188 C48,188 32,176 32,158 V70 C32,44 56,34 56,34 Z M80,150 C74,142 72,134 80,124 C88,134 86,142 80,150 Z"
+            android:fillColor="@color/ink"
+            android:fillType="evenOdd"
+            android:strokeColor="@color/ink"
+            android:strokeWidth="6"
+            android:strokeLineJoin="round" />
+
+        <path
+            android:pathData="M52,14 H108 C112,14 114,17 114,20 V26 H46 V20 C46,17 48,14 52,14 Z"
+            android:fillColor="@color/ink"
+            android:strokeColor="@color/ink"
+            android:strokeWidth="6"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

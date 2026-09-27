@@ -1,0 +1,1174 @@
+{
+  "note": "Frozen golden vectors for the wire-v1 payload set (Plan 2 Task 3): one valid instance per payload variant plus a malformed twin, asserted from app/src/wire/payloads.test.ts. Once committed, vectors are frozen — do not edit or delete an existing entry; only add new ones, and only for backward-compatible wire changes. `valid.input` is what a producer might actually send (occasionally with an extra unknown field, to exercise forward-compat ignore-unknown-fields behaviour); `valid.expected` is the exact parsed result the parser must return; `malformed` must parse to null, EXCEPT where the vector is marked `selectionOnly`: that twin is well-formed on the wire on purpose and is refused a layer up, by `identity/signetVault.ts#pickNewestVault`, which is where the root attestation is actually verified. ONE-OFF BREAK (v0.2 fix round 2, item C1): the two `vault` vectors gained a REQUIRED `authEvent` \u2014 the kind-21236 Signet root attestation \u2014 which is not backward compatible. It was taken deliberately: no vault has ever shipped, and a vault without an attestation is a recovery hijack (see internal design spec 2026-09-02-signet-rooted-family-design \u00a71.6).",
+  "vectors": [
+    {
+      "name": "entry",
+      "payload": "entry",
+      "valid": {
+        "input": {
+          "v": 1,
+          "entry": {
+            "v": 1,
+            "id": "01J8ENTRY000000000000000001",
+            "child": "sam",
+            "kind": "credit",
+            "createdAt": 1700000000,
+            "author": "guardian",
+            "legs": [{ "account": "a-ledger", "currency": "GBP", "amountMinor": 500 }],
+            "category": "allowance"
+          }
+        },
+        "expected": {
+          "v": 1,
+          "entry": {
+            "v": 1,
+            "id": "01J8ENTRY000000000000000001",
+            "child": "sam",
+            "kind": "credit",
+            "createdAt": 1700000000,
+            "author": "guardian",
+            "legs": [{ "account": "a-ledger", "currency": "GBP", "amountMinor": 500 }],
+            "category": "allowance"
+          }
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "entry": {
+          "v": 1,
+          "id": "01J8ENTRY000000000000000001",
+          "child": "sam",
+          "kind": "bogus",
+          "createdAt": 1700000000,
+          "author": "guardian",
+          "legs": [{ "account": "a-ledger", "currency": "GBP", "amountMinor": 500 }]
+        }
+      }
+    },
+    {
+      "name": "config-accounts",
+      "payload": "config",
+      "valid": {
+        "input": {
+          "v": 1,
+          "docKind": "accounts",
+          "doc": {
+            "v": 1,
+            "issuedAt": 1700000000,
+            "accounts": [
+              { "id": "a-ledger", "child": "sam", "name": "With Mum & Dad", "currency": "GBP", "custody": "ledger" }
+            ]
+          }
+        },
+        "expected": {
+          "v": 1,
+          "docKind": "accounts",
+          "doc": {
+            "v": 1,
+            "issuedAt": 1700000000,
+            "accounts": [
+              { "id": "a-ledger", "child": "sam", "name": "With Mum & Dad", "currency": "GBP", "custody": "ledger" }
+            ]
+          }
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "docKind": "accounts",
+        "doc": { "v": 1, "issuedAt": "soon", "accounts": [] }
+      }
+    },
+    {
+      "name": "config-unknown-dockind",
+      "payload": "config",
+      "malformedOnly": true,
+      "malformed": {
+        "v": 1,
+        "docKind": "family",
+        "doc": { "v": 1, "issuedAt": 1700000000 }
+      }
+    },
+    {
+      "name": "request-spend",
+      "payload": "request",
+      "valid": {
+        "input": {
+          "v": 1,
+          "op": "spend.request",
+          "reqId": "r1",
+          "nonce": "n1",
+          "child": "sam",
+          "ts": 1700000000,
+          "params": { "amountMinor": 250, "currency": "GBP", "account": "a-box", "note": "Lego set" },
+          "extra": "ignored-field"
+        },
+        "expected": {
+          "v": 1,
+          "op": "spend.request",
+          "reqId": "r1",
+          "nonce": "n1",
+          "child": "sam",
+          "ts": 1700000000,
+          "params": { "amountMinor": 250, "currency": "GBP", "account": "a-box", "note": "Lego set" }
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "op": "spend.request",
+        "reqId": "r1",
+        "nonce": "n1",
+        "child": "sam",
+        "ts": 1700000000,
+        "params": { "currency": "GBP", "account": "a-box" }
+      }
+    },
+    {
+      "name": "request-allowance-claim",
+      "payload": "request",
+      "valid": {
+        "input": {
+          "v": 1,
+          "op": "allowance.claim",
+          "reqId": "r2",
+          "nonce": "n2",
+          "child": "sam",
+          "ts": 1700000100,
+          "params": { "periodKey": "2026-W33" }
+        },
+        "expected": {
+          "v": 1,
+          "op": "allowance.claim",
+          "reqId": "r2",
+          "nonce": "n2",
+          "child": "sam",
+          "ts": 1700000100,
+          "params": { "periodKey": "2026-W33" }
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "op": "allowance.claim",
+        "reqId": "r2",
+        "nonce": "n2",
+        "child": "sam",
+        "ts": 1700000100,
+        "params": {}
+      }
+    },
+    {
+      "name": "request-pair-claim",
+      "payload": "request",
+      "valid": {
+        "input": {
+          "v": 1,
+          "op": "pair.claim",
+          "reqId": "r3",
+          "nonce": "n3",
+          "child": "sam",
+          "ts": 1700000200,
+          "params": {
+            "token": "0123456789abcdef0123456789abcdef",
+            "devicePk": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "name": "Sam's phone"
+          }
+        },
+        "expected": {
+          "v": 1,
+          "op": "pair.claim",
+          "reqId": "r3",
+          "nonce": "n3",
+          "child": "sam",
+          "ts": 1700000200,
+          "params": {
+            "token": "0123456789abcdef0123456789abcdef",
+            "devicePk": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "name": "Sam's phone"
+          }
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "op": "pair.claim",
+        "reqId": "r3",
+        "nonce": "n3",
+        "child": "sam",
+        "ts": 1700000200,
+        "params": { "devicePk": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+      }
+    },
+    {
+      "name": "request-unknown-op",
+      "payload": "request",
+      "malformedOnly": true,
+      "malformed": {
+        "v": 1,
+        "op": "self.destruct",
+        "reqId": "r4",
+        "nonce": "n4",
+        "child": "sam",
+        "ts": 1700000300,
+        "params": {}
+      }
+    },
+    {
+      "name": "grant",
+      "payload": "grant",
+      "valid": {
+        "input": {
+          "v": 1,
+          "reqId": "r1",
+          "nonce": "n1",
+          "decision": "allow",
+          "ts": 1700000300,
+          "params": { "note": "approved" }
+        },
+        "expected": {
+          "v": 1,
+          "reqId": "r1",
+          "nonce": "n1",
+          "decision": "allow",
+          "ts": 1700000300,
+          "params": { "note": "approved" }
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "reqId": "r1",
+        "nonce": "n1",
+        "decision": "maybe",
+        "ts": 1700000300,
+        "params": {}
+      }
+    },
+    {
+      "name": "ack",
+      "payload": "ack",
+      "valid": {
+        "input": { "v": 1, "entryId": "e1", "ts": 1700000400 },
+        "expected": { "v": 1, "entryId": "e1", "ts": 1700000400 }
+      },
+      "malformed": { "v": 1, "entryId": "", "ts": 1700000400 }
+    },
+    {
+      "name": "snapshot",
+      "payload": "snapshot",
+      "valid": {
+        "input": {
+          "v": 1,
+          "kind": "snapshot",
+          "state": {
+            "children": [{ "pubkey": "1111111111111111111111111111111111111111111111111111111111111111", "name": "Sam", "index": 0 }],
+            "entries": [
+              {
+                "v": 1,
+                "id": "01J8ENTRY000000000000000001",
+                "child": "sam",
+                "kind": "credit",
+                "createdAt": 1700000000,
+                "author": "guardian",
+                "legs": [{ "account": "a-ledger", "currency": "GBP", "amountMinor": 500 }]
+              }
+            ],
+            "docs": {
+              "accounts": { "v": 1, "issuedAt": 1700000000, "accounts": [] },
+              "allowance": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+              "interest": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+              "chores": { "v": 1, "issuedAt": 1700000000, "chores": [] }
+            }
+          }
+        },
+        "expected": {
+          "v": 1,
+          "kind": "snapshot",
+          "state": {
+            "children": [{ "pubkey": "1111111111111111111111111111111111111111111111111111111111111111", "name": "Sam", "index": 0 }],
+            "entries": [
+              {
+                "v": 1,
+                "id": "01J8ENTRY000000000000000001",
+                "child": "sam",
+                "kind": "credit",
+                "createdAt": 1700000000,
+                "author": "guardian",
+                "legs": [{ "account": "a-ledger", "currency": "GBP", "amountMinor": 500 }]
+              }
+            ],
+            "docs": {
+              "accounts": { "v": 1, "issuedAt": 1700000000, "accounts": [] },
+              "allowance": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+              "interest": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+              "chores": { "v": 1, "issuedAt": 1700000000, "chores": [] }
+            }
+          }
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "kind": "snapshot",
+        "state": {
+          "children": [],
+          "entries": [
+            {
+              "v": 1,
+              "id": "01J8ENTRY000000000000000001",
+              "child": "sam",
+              "kind": "bogus",
+              "createdAt": 1700000000,
+              "author": "guardian",
+              "legs": [{ "account": "a-ledger", "currency": "GBP", "amountMinor": 500 }]
+            }
+          ],
+          "docs": {
+            "accounts": { "v": 1, "issuedAt": 1700000000, "accounts": [] },
+            "allowance": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+            "interest": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+            "chores": { "v": 1, "issuedAt": 1700000000, "chores": [] }
+          }
+        }
+      }
+    },
+    {
+      "name": "checkpoint",
+      "payload": "checkpoint",
+      "valid": {
+        "input": {
+          "v": 1,
+          "kind": "checkpoint",
+          "balances": { "a-ledger": 500, "a-box": -200 },
+          "lastEntryId": "e1",
+          "ts": 1700000500
+        },
+        "expected": {
+          "v": 1,
+          "kind": "checkpoint",
+          "balances": { "a-ledger": 500, "a-box": -200 },
+          "lastEntryId": "e1",
+          "ts": 1700000500
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "kind": "checkpoint",
+        "balances": { "a-ledger": 500.5 },
+        "lastEntryId": "e1",
+        "ts": 1700000500
+      }
+    },
+    {
+      "name": "childsig-tick",
+      "payload": "childSig",
+      "valid": {
+        "input": { "v": 1, "kind": "tick", "tick": { "id": "t1", "chore": "c1", "day": "2026-08-10", "at": 1700000600 } },
+        "expected": { "v": 1, "kind": "tick", "tick": { "id": "t1", "chore": "c1", "day": "2026-08-10", "at": 1700000600 } }
+      },
+      "malformed": { "v": 1, "kind": "tick", "tick": { "id": "t1", "chore": "c1", "day": "2026-08-10" } }
+    },
+    {
+      "name": "childsig-audit",
+      "payload": "childSig",
+      "valid": {
+        "input": {
+          "v": 1,
+          "kind": "audit",
+          "audit": {
+            "id": "a1",
+            "account": "a-box",
+            "child": "sam",
+            "countedMinor": 1000,
+            "expectedMinor": 950,
+            "deltaMinor": 50,
+            "at": 1700000700,
+            "author": "child"
+          }
+        },
+        "expected": {
+          "v": 1,
+          "kind": "audit",
+          "audit": {
+            "id": "a1",
+            "account": "a-box",
+            "child": "sam",
+            "countedMinor": 1000,
+            "expectedMinor": 950,
+            "deltaMinor": 50,
+            "at": 1700000700,
+            "author": "child"
+          }
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "kind": "audit",
+        "audit": {
+          "id": "a1",
+          "account": "a-box",
+          "child": "sam",
+          "countedMinor": 1000,
+          "expectedMinor": 950,
+          "deltaMinor": 50,
+          "at": 1700000700,
+          "author": "robot"
+        }
+      }
+    },
+    {
+      "name": "childsig-unknown-kind",
+      "payload": "childSig",
+      "malformedOnly": true,
+      "malformed": { "v": 1, "kind": "shrug", "tick": { "id": "t1", "chore": "c1", "day": "2026-08-10", "at": 1700000600 } }
+    },
+    {
+      "name": "pair-offer",
+      "payload": "pairOffer",
+      "valid": {
+        "input": {
+          "v": 1,
+          "childSkHex": "2222222222222222222222222222222222222222222222222222222222222222",
+          "childIndex": 0,
+          "name": "Sam's phone",
+          "relays": ["wss://relay.example.com"],
+          "snapshot": {
+            "v": 1,
+            "kind": "snapshot",
+            "state": {
+              "children": [],
+              "entries": [],
+              "docs": {
+                "accounts": { "v": 1, "issuedAt": 1700000000, "accounts": [] },
+                "allowance": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+                "interest": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+                "chores": { "v": 1, "issuedAt": 1700000000, "chores": [] }
+              }
+            }
+          }
+        },
+        "expected": {
+          "v": 1,
+          "childSkHex": "2222222222222222222222222222222222222222222222222222222222222222",
+          "childIndex": 0,
+          "name": "Sam's phone",
+          "relays": ["wss://relay.example.com"],
+          "snapshot": {
+            "v": 1,
+            "kind": "snapshot",
+            "state": {
+              "children": [],
+              "entries": [],
+              "docs": {
+                "accounts": { "v": 1, "issuedAt": 1700000000, "accounts": [] },
+                "allowance": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+                "interest": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+                "chores": { "v": 1, "issuedAt": 1700000000, "chores": [] }
+              }
+            }
+          }
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "childSkHex": "not-hex",
+        "childIndex": 0,
+        "name": "Sam's phone",
+        "relays": ["wss://relay.example.com"],
+        "snapshot": {
+          "v": 1,
+          "kind": "snapshot",
+          "state": {
+            "children": [],
+            "entries": [],
+            "docs": {
+              "accounts": { "v": 1, "issuedAt": 1700000000, "accounts": [] },
+              "allowance": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+              "interest": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+              "chores": { "v": 1, "issuedAt": 1700000000, "chores": [] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "pair-offer-bad-relay",
+      "payload": "pairOffer",
+      "malformedOnly": true,
+      "malformed": {
+        "v": 1,
+        "childSkHex": "2222222222222222222222222222222222222222222222222222222222222222",
+        "childIndex": 0,
+        "name": "Sam's phone",
+        "relays": ["https://relay.example.com"],
+        "snapshot": {
+          "v": 1,
+          "kind": "snapshot",
+          "state": {
+            "children": [],
+            "entries": [],
+            "docs": {
+              "accounts": { "v": 1, "issuedAt": 1700000000, "accounts": [] },
+              "allowance": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+              "interest": { "v": 1, "issuedAt": 1700000000, "configs": [] },
+              "chores": { "v": 1, "issuedAt": 1700000000, "chores": [] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "vault",
+      "payload": "vault",
+      "valid": {
+        "input": {
+          "v": 1,
+          "type": "vault",
+          "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+          "guardianPk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "authEvent": {
+            "id": "cf16e25893daef3b9a25ee018a50a54bc9643f3166a719a8f167c9dc523bea3e",
+            "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+            "created_at": 1756800000,
+            "kind": 21236,
+            "tags": [["challenge", "eb1fdca3a327210f03604a7f1b5c9ef38a8fb257fb14fcc7edcd63a845d259dd"], ["origin", "https://signet.example"]],
+            "content": "",
+            "sig": "f43b148d0edcca84559c1dbff3eaa3cf53db8b33a00120d45b3e8a1e3a1e76525bd06bdfad8484cda62d4dc09f4290046db5c18dbb4fbb4c21ca05e40432c1d7"
+          },
+          "createdAt": 1756800000,
+          "extra": "ignored"
+        },
+        "expected": {
+          "v": 1,
+          "type": "vault",
+          "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+          "guardianPk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "authEvent": {
+            "id": "cf16e25893daef3b9a25ee018a50a54bc9643f3166a719a8f167c9dc523bea3e",
+            "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+            "created_at": 1756800000,
+            "kind": 21236,
+            "tags": [["challenge", "eb1fdca3a327210f03604a7f1b5c9ef38a8fb257fb14fcc7edcd63a845d259dd"], ["origin", "https://signet.example"]],
+            "content": "",
+            "sig": "f43b148d0edcca84559c1dbff3eaa3cf53db8b33a00120d45b3e8a1e3a1e76525bd06bdfad8484cda62d4dc09f4290046db5c18dbb4fbb4c21ca05e40432c1d7"
+          },
+          "children": [],
+          "relays": [],
+          "createdAt": 1756800000
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "type": "vault",
+        "mnemonic": "",
+        "guardianPk": "zz",
+        "createdAt": -1
+      }
+    },
+    {
+      "name": "vault-with-roster",
+      "payload": "vault",
+      "valid": {
+        "input": {
+          "v": 1,
+          "type": "vault",
+          "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+          "guardianPk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "authEvent": {
+            "id": "cf16e25893daef3b9a25ee018a50a54bc9643f3166a719a8f167c9dc523bea3e",
+            "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+            "created_at": 1756800000,
+            "kind": 21236,
+            "tags": [["challenge", "eb1fdca3a327210f03604a7f1b5c9ef38a8fb257fb14fcc7edcd63a845d259dd"], ["origin", "https://signet.example"]],
+            "content": "",
+            "sig": "f43b148d0edcca84559c1dbff3eaa3cf53db8b33a00120d45b3e8a1e3a1e76525bd06bdfad8484cda62d4dc09f4290046db5c18dbb4fbb4c21ca05e40432c1d7"
+          },
+          "children": [{ "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "name": "Alex", "index": 0 }],
+          "relays": ["wss://relay.example.com"],
+          "createdAt": 1756800000
+        },
+        "expected": {
+          "v": 1,
+          "type": "vault",
+          "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+          "guardianPk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "authEvent": {
+            "id": "cf16e25893daef3b9a25ee018a50a54bc9643f3166a719a8f167c9dc523bea3e",
+            "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+            "created_at": 1756800000,
+            "kind": 21236,
+            "tags": [["challenge", "eb1fdca3a327210f03604a7f1b5c9ef38a8fb257fb14fcc7edcd63a845d259dd"], ["origin", "https://signet.example"]],
+            "content": "",
+            "sig": "f43b148d0edcca84559c1dbff3eaa3cf53db8b33a00120d45b3e8a1e3a1e76525bd06bdfad8484cda62d4dc09f4290046db5c18dbb4fbb4c21ca05e40432c1d7"
+          },
+          "children": [{ "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "name": "Alex", "index": 0 }],
+          "relays": ["wss://relay.example.com"],
+          "createdAt": 1756800000
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "type": "vault",
+        "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        "guardianPk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authEvent": {
+          "id": "cf16e25893daef3b9a25ee018a50a54bc9643f3166a719a8f167c9dc523bea3e",
+          "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+          "created_at": 1756800000,
+          "kind": 21236,
+          "tags": [["challenge", "eb1fdca3a327210f03604a7f1b5c9ef38a8fb257fb14fcc7edcd63a845d259dd"], ["origin", "https://signet.example"]],
+          "content": "",
+          "sig": "f43b148d0edcca84559c1dbff3eaa3cf53db8b33a00120d45b3e8a1e3a1e76525bd06bdfad8484cda62d4dc09f4290046db5c18dbb4fbb4c21ca05e40432c1d7"
+        },
+        "children": [{ "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "name": "Alex" }],
+        "relays": ["wss://relay.example.com"],
+        "createdAt": 1756800000
+      }
+    },
+    {
+      "name": "vault-no-attestation",
+      "payload": "vault",
+      "malformedOnly": true,
+      "malformed": {
+        "v": 1,
+        "type": "vault",
+        "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        "guardianPk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "children": [],
+        "relays": [],
+        "createdAt": 1756800000
+      }
+    },
+    {
+      "name": "vault-attestation-wrong-kind",
+      "payload": "vault",
+      "malformedOnly": true,
+      "malformed": {
+        "v": 1,
+        "type": "vault",
+        "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        "guardianPk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authEvent": {
+          "id": "cf16e25893daef3b9a25ee018a50a54bc9643f3166a719a8f167c9dc523bea3e",
+          "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+          "created_at": 1756800000,
+          "kind": 1,
+          "tags": [["challenge", "eb1fdca3a327210f03604a7f1b5c9ef38a8fb257fb14fcc7edcd63a845d259dd"], ["origin", "https://signet.example"]],
+          "content": "",
+          "sig": "f43b148d0edcca84559c1dbff3eaa3cf53db8b33a00120d45b3e8a1e3a1e76525bd06bdfad8484cda62d4dc09f4290046db5c18dbb4fbb4c21ca05e40432c1d7"
+        },
+        "children": [],
+        "relays": [],
+        "createdAt": 1756800000
+      }
+    },
+    {
+      "name": "vault-attestation-half-an-event",
+      "payload": "vault",
+      "malformedOnly": true,
+      "malformed": {
+        "v": 1,
+        "type": "vault",
+        "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        "guardianPk": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authEvent": {
+          "id": "cf16e25893daef3b9a25ee018a50a54bc9643f3166a719a8f167c9dc523bea3e",
+          "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+          "created_at": 1756800000,
+          "kind": 21236,
+          "tags": [["challenge", "eb1fdca3a327210f03604a7f1b5c9ef38a8fb257fb14fcc7edcd63a845d259dd"]],
+          "content": ""
+        },
+        "children": [],
+        "relays": [],
+        "createdAt": 1756800000
+      }
+    },
+    {
+      "name": "vault-foreign-attestation",
+      "payload": "vault",
+      "malformedOnly": true,
+      "selectionOnly": true,
+      "malformed": {
+        "v": 1,
+        "type": "vault",
+        "mnemonic": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
+        "guardianPk": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "authEvent": {
+          "id": "f53811bf74929202767c0e2d01e55311dd0909b89d0d7562be23071c72c50a93",
+          "pubkey": "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+          "created_at": 1756900000,
+          "kind": 21236,
+          "tags": [["challenge", "64d272b2e3eb8879ab059493bd5313a8d1b6ffce23e37aedc427b93f076aad66"], ["origin", "https://signet.example"]],
+          "content": "",
+          "sig": "94b7ee6218b46a8409d8c3cfb0852bd9a6ce0b34fbc202d480b3043ff4e1effbe076fce7721ebab851781b55110b29b0a8773dc27577c75758fdb28fe31d244c"
+        },
+        "children": [],
+        "relays": [],
+        "createdAt": 1756900000
+      }
+    },
+    {
+      "name": "status",
+      "payload": "statusKind",
+      "valid": {
+        "input": {
+          "v": 1,
+          "type": "status",
+          "at": 1756800000,
+          "lastEntryId": "01J8ENTRY000000000000000001",
+          "entryCount": 3,
+          "docHighWater": { "accounts": 1756800000, "chores": 1756700000 },
+          "appVersion": "0.2.0",
+          "extra": "ignored"
+        },
+        "expected": {
+          "v": 1,
+          "type": "status",
+          "at": 1756800000,
+          "lastEntryId": "01J8ENTRY000000000000000001",
+          "entryCount": 3,
+          "docHighWater": { "accounts": 1756800000, "chores": 1756700000 },
+          "appVersion": "0.2.0"
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "type": "status",
+        "at": 1756800000,
+        "lastEntryId": "01J8ENTRY000000000000000001",
+        "entryCount": "3",
+        "docHighWater": {},
+        "appVersion": "0.2.0"
+      }
+    },
+    {
+      "name": "resync-request",
+      "payload": "statusKind",
+      "valid": {
+        "input": { "v": 1, "type": "resync.request", "since": "01J8ENTRY000000000000000001", "extra": "ignored" },
+        "expected": { "v": 1, "type": "resync.request", "since": "01J8ENTRY000000000000000001" }
+      },
+      "malformed": { "v": 1, "type": "resync.request", "since": 0 }
+    },
+    {
+      "name": "resync-reply",
+      "payload": "statusKind",
+      "valid": {
+        "input": {
+          "v": 1,
+          "type": "resync.reply",
+          "events": [
+            {
+              "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "created_at": 1756800000,
+              "kind": 31120,
+              "tags": [["t", "kin-jar"]],
+              "content": "{}",
+              "sig": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          ],
+          "page": 0,
+          "more": true,
+          "extra": "ignored"
+        },
+        "expected": {
+          "v": 1,
+          "type": "resync.reply",
+          "events": [
+            {
+              "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "created_at": 1756800000,
+              "kind": 31120,
+              "tags": [["t", "kin-jar"]],
+              "content": "{}",
+              "sig": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          ],
+          "page": 0,
+          "more": true
+        }
+      },
+      "malformed": { "v": 1, "type": "resync.reply", "events": [{}], "page": 0, "more": false }
+    },
+    {
+      "name": "pair-offer-with-root",
+      "payload": "pairOffer",
+      "valid": {
+        "input": {
+          "v": 1,
+          "childSkHex": "2222222222222222222222222222222222222222222222222222222222222222",
+          "childIndex": 0,
+          "name": "Sam's phone",
+          "relays": [
+            "wss://relay.example.com"
+          ],
+          "snapshot": {
+            "v": 1,
+            "kind": "snapshot",
+            "state": {
+              "children": [],
+              "entries": [],
+              "docs": {
+                "accounts": {
+                  "v": 1,
+                  "issuedAt": 1700000000,
+                  "accounts": []
+                },
+                "allowance": {
+                  "v": 1,
+                  "issuedAt": 1700000000,
+                  "configs": []
+                },
+                "interest": {
+                  "v": 1,
+                  "issuedAt": 1700000000,
+                  "configs": []
+                },
+                "chores": {
+                  "v": 1,
+                  "issuedAt": 1700000000,
+                  "chores": []
+                }
+              }
+            }
+          },
+          "root": {
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "authEvent": {
+              "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "kind": 21236,
+              "created_at": 1756800000,
+              "tags": [],
+              "content": "",
+              "sig": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          }
+        },
+        "expected": {
+          "v": 1,
+          "childSkHex": "2222222222222222222222222222222222222222222222222222222222222222",
+          "childIndex": 0,
+          "name": "Sam's phone",
+          "relays": [
+            "wss://relay.example.com"
+          ],
+          "snapshot": {
+            "v": 1,
+            "kind": "snapshot",
+            "state": {
+              "children": [],
+              "entries": [],
+              "docs": {
+                "accounts": {
+                  "v": 1,
+                  "issuedAt": 1700000000,
+                  "accounts": []
+                },
+                "allowance": {
+                  "v": 1,
+                  "issuedAt": 1700000000,
+                  "configs": []
+                },
+                "interest": {
+                  "v": 1,
+                  "issuedAt": 1700000000,
+                  "configs": []
+                },
+                "chores": {
+                  "v": 1,
+                  "issuedAt": 1700000000,
+                  "chores": []
+                }
+              }
+            }
+          },
+          "root": {
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "authEvent": {
+              "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "kind": 21236,
+              "created_at": 1756800000,
+              "tags": [],
+              "content": "",
+              "sig": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          }
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "childSkHex": "not-hex",
+        "childIndex": 0,
+        "name": "Sam's phone",
+        "relays": [
+          "wss://relay.example.com"
+        ],
+        "snapshot": {
+          "v": 1,
+          "kind": "snapshot",
+          "state": {
+            "children": [],
+            "entries": [],
+            "docs": {
+              "accounts": {
+                "v": 1,
+                "issuedAt": 1700000000,
+                "accounts": []
+              },
+              "allowance": {
+                "v": 1,
+                "issuedAt": 1700000000,
+                "configs": []
+              },
+              "interest": {
+                "v": 1,
+                "issuedAt": 1700000000,
+                "configs": []
+              },
+              "chores": {
+                "v": 1,
+                "issuedAt": 1700000000,
+                "chores": []
+              }
+            }
+          }
+        },
+        "root": {
+          "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "authEvent": {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": 21236,
+            "created_at": 1756800000,
+            "tags": [],
+            "content": "",
+            "sig": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      }
+    },
+    {
+      "name": "snapshot-with-root",
+      "payload": "snapshot",
+      "valid": {
+        "input": {
+          "v": 1,
+          "kind": "snapshot",
+          "state": {
+            "children": [
+              {
+                "pubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+                "name": "Sam",
+                "index": 0
+              }
+            ],
+            "entries": [
+              {
+                "v": 1,
+                "id": "01J8ENTRY000000000000000001",
+                "child": "sam",
+                "kind": "credit",
+                "createdAt": 1700000000,
+                "author": "guardian",
+                "legs": [
+                  {
+                    "account": "a-ledger",
+                    "currency": "GBP",
+                    "amountMinor": 500
+                  }
+                ]
+              }
+            ],
+            "docs": {
+              "accounts": {
+                "v": 1,
+                "issuedAt": 1700000000,
+                "accounts": []
+              },
+              "allowance": {
+                "v": 1,
+                "issuedAt": 1700000000,
+                "configs": []
+              },
+              "interest": {
+                "v": 1,
+                "issuedAt": 1700000000,
+                "configs": []
+              },
+              "chores": {
+                "v": 1,
+                "issuedAt": 1700000000,
+                "chores": []
+              }
+            }
+          },
+          "root": {
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "authEvent": {
+              "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "kind": 21236,
+              "created_at": 1756800000,
+              "tags": [],
+              "content": "",
+              "sig": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          }
+        },
+        "expected": {
+          "v": 1,
+          "kind": "snapshot",
+          "state": {
+            "children": [
+              {
+                "pubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+                "name": "Sam",
+                "index": 0
+              }
+            ],
+            "entries": [
+              {
+                "v": 1,
+                "id": "01J8ENTRY000000000000000001",
+                "child": "sam",
+                "kind": "credit",
+                "createdAt": 1700000000,
+                "author": "guardian",
+                "legs": [
+                  {
+                    "account": "a-ledger",
+                    "currency": "GBP",
+                    "amountMinor": 500
+                  }
+                ]
+              }
+            ],
+            "docs": {
+              "accounts": {
+                "v": 1,
+                "issuedAt": 1700000000,
+                "accounts": []
+              },
+              "allowance": {
+                "v": 1,
+                "issuedAt": 1700000000,
+                "configs": []
+              },
+              "interest": {
+                "v": 1,
+                "issuedAt": 1700000000,
+                "configs": []
+              },
+              "chores": {
+                "v": 1,
+                "issuedAt": 1700000000,
+                "chores": []
+              }
+            }
+          },
+          "root": {
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "authEvent": {
+              "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "kind": 21236,
+              "created_at": 1756800000,
+              "tags": [],
+              "content": "",
+              "sig": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          }
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "kind": "snapshot",
+        "state": {
+          "children": [],
+          "entries": [
+            {
+              "v": 1,
+              "id": "01J8ENTRY000000000000000001",
+              "child": "sam",
+              "kind": "bogus",
+              "createdAt": 1700000000,
+              "author": "guardian",
+              "legs": [
+                {
+                  "account": "a-ledger",
+                  "currency": "GBP",
+                  "amountMinor": 500
+                }
+              ]
+            }
+          ],
+          "docs": {
+            "accounts": {
+              "v": 1,
+              "issuedAt": 1700000000,
+              "accounts": []
+            },
+            "allowance": {
+              "v": 1,
+              "issuedAt": 1700000000,
+              "configs": []
+            },
+            "interest": {
+              "v": 1,
+              "issuedAt": 1700000000,
+              "configs": []
+            },
+            "chores": {
+              "v": 1,
+              "issuedAt": 1700000000,
+              "chores": []
+            }
+          }
+        },
+        "root": {
+          "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "authEvent": {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": 21236,
+            "created_at": 1756800000,
+            "tags": [],
+            "content": "",
+            "sig": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      }
+    },
+    {
+      "name": "grant-dismissed",
+      "payload": "grant",
+      "valid": {
+        "input": {
+          "v": 1,
+          "reqId": "01J8REQ0000000000000000001",
+          "nonce": "n-dismiss-1",
+          "decision": "dismissed",
+          "ts": 1756800000,
+          "params": {},
+          "extra": "ignored"
+        },
+        "expected": {
+          "v": 1,
+          "reqId": "01J8REQ0000000000000000001",
+          "nonce": "n-dismiss-1",
+          "decision": "dismissed",
+          "ts": 1756800000,
+          "params": {}
+        }
+      },
+      "malformed": {
+        "v": 1,
+        "reqId": "01J8REQ0000000000000000001",
+        "nonce": "n-dismiss-1",
+        "decision": "dismiss",
+        "ts": 1756800000,
+        "params": {}
+      }
+    }
+  ]
+}

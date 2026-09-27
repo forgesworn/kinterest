@@ -1,0 +1,12 @@
+.gradle/
+build/
+local.properties
+.cxx/
+captures/
+*.keystore
+.kotlin/
+
+# Release signing material — owned by whoever runs the deploy pipeline, never committed.
+*.jks
+signing.properties
+keystore.properties

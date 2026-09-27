@@ -1,0 +1,28 @@
+{
+  "name": "Jar",
+  "short_name": "Jar",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#faf5ea",
+  "background_color": "#faf5ea",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

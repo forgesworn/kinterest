@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive-icon background layer: a flat paper square. All the artwork
+     lives in ic_launcher_foreground.xml on top of this. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M0,0H108V108H0Z"
+        android:fillColor="@color/paper" />
+</vector>
