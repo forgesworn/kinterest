@@ -19,6 +19,16 @@
 //     already arrived (so the old config paid it, or deliberately did not),
 //     the new schedule starts only after that whole period ends.
 //
+// Known edge cases (review R10). Both under-pay or overlap; neither pays
+// the same period twice. Kept deliberately, pinned by tests:
+//   - A re-anchoring edit made ON a due day, before that day's scheduler
+//     tick has run: the floor is the end of that period (its due day has
+//     "arrived"), so the period is paid by neither the old config nor the
+//     new one. The guardian can pay it by hand.
+//   - Weekly -> monthly after the current week has been paid: the new
+//     monthly due day can fall later in the same month, so that month pays
+//     in full although one of its weeks was already paid weekly.
+//
 // Pure: `today` is a day key in the config's own timezone, supplied by the
 // caller.
 

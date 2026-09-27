@@ -133,3 +133,16 @@ describe('R1: an interest amount-term edit re-anchors', () => {
     expect(needsReanchor(base, { ...base, amountMinor: 700 })).toBe(false)
   })
 })
+
+describe('documented edge cases (review R10)', () => {
+  const weekly: AllowanceConfig = { child: 'sam', account: 'A', amountMinor: 500, cadence: 'weekly', day: 5, tz: 'Europe/London', startDay: '2026-08-01' }
+  it('an account switch ON the due day, before the tick, forfeits that period (no double pay)', () => {
+    const next = reanchorConfig(weekly, { ...weekly, account: 'B' }, '2026-08-21')
+    expect(next.startDay).toBe('2026-08-23') // end of ISO week W34: its Friday is paid by neither config
+  })
+  it('weekly -> monthly after the week is paid still pays the month\'s later due day', () => {
+    const next = reanchorConfig(weekly, { ...weekly, cadence: 'monthly', day: 28 }, '2026-08-22')
+    expect(next.startDay).toBe('2026-08-23')
+    expect(dueDays({ cadence: 'monthly', day: 28, fromExclusive: next.startDay, toInclusive: '2026-08-31' })).toEqual(['2026-08-28'])
+  })
+})
