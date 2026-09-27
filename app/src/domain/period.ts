@@ -9,10 +9,24 @@ const formatters = new Map<string, Intl.DateTimeFormat>()
 export function dayKey(unixSec: number, tz: string): string {
   let f = formatters.get(tz)
   if (f === undefined) {
-    f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+    f = new Intl.DateTimeFormat('en-US', { timeZone: tz, calendar: 'gregory', numberingSystem: 'latn', year: 'numeric', month: '2-digit', day: '2-digit' })
     formatters.set(tz, f)
   }
-  return f.format(new Date(unixSec * 1000)) // en-CA formats as YYYY-MM-DD
+  // Assembled from formatToParts rather than trusting a locale's pattern
+  // (audit O2): `en-CA` happening to format as YYYY-MM-DD is an ICU detail
+  // that has changed before, and every day-key consumer would throw if it
+  // did. The Gregorian calendar and Latin digits are pinned explicitly.
+  let y = ''
+  let m = ''
+  let d = ''
+  for (const part of f.formatToParts(new Date(unixSec * 1000))) {
+    if (part.type === 'year') y = part.value
+    else if (part.type === 'month') m = part.value
+    else if (part.type === 'day') d = part.value
+  }
+  const key = `${y.padStart(4, '0')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) throw new RangeError(`cannot form a day key for ${unixSec} in ${tz}`)
+  return key
 }
 
 function parse(day: string): { y: number; m: number; d: number } {
