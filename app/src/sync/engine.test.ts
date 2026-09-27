@@ -161,6 +161,25 @@ describe('publish.ts', () => {
     expect(pTagOf(relay.events[0]!)).toBe(child.pk)
   })
 
+  it('publishes directly when storage is full, rather than losing the send (audit P11)', async () => {
+    const guardian = newKeypair()
+    const child = newKeypair()
+    const relay = makeFakeRelay()
+    const full: StorageLike = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('QuotaExceededError')
+      },
+      removeItem: () => {},
+    }
+    const result = await sendAck('some-entry-id', { selfSk: child.sk, peerPk: guardian.pk, relay, storage: full, nowSec: AT })
+    expect(result.sent).toBe(true)
+    expect(relay.events).toHaveLength(1)
+    relay.goOffline()
+    const offline = await sendAck('another', { selfSk: child.sk, peerPk: guardian.pk, relay, storage: full, nowSec: AT })
+    expect(offline.sent).toBe(false)
+  })
+
   it('leaves the event durably queued when the relay is offline, never reads as sent', async () => {
     const guardian = newKeypair()
     const child = newKeypair()
@@ -340,9 +359,21 @@ describe('ingress.ts: handleWrap', () => {
       nowSec: AT,
     })
 
-    const { state } = handleWrap(emptyState(), wrap, guardian.sk, child.pk, AT)
+    // Audit P9: the guardian takes an ack only for an entry it sent THIS child.
+    const sent = creditEntry({ id: 'entry-1', child: child.pk, createdAt: AT, author: 'guardian' }, { ...account, child: child.pk }, 100)
+    const guardianState: AppState = { ...emptyState(), role: 'guardian', guardianPubkey: guardian.pk, entries: [sent] }
+    const { state } = handleWrap(guardianState, wrap, guardian.sk, child.pk, AT)
 
     expect(state.acks['entry-1']).toBe(AT)
+  })
+
+  it('ACK for an entry that is not the acking child s own is refused (audit P9)', () => {
+    const wrap = wrapFor({ innerKind: KIND_ACK, payload: buildAckPayload('entry-sib', AT), authorSk: child.sk, recipientPk: guardian.pk, nowSec: AT })
+    const sibling = creditEntry({ id: 'entry-sib', child: 'b'.repeat(64), createdAt: AT, author: 'guardian' }, { ...account, child: 'b'.repeat(64) }, 100)
+    const guardianState: AppState = { ...emptyState(), role: 'guardian', guardianPubkey: guardian.pk, entries: [sibling] }
+    expect(handleWrap(guardianState, wrap, guardian.sk, child.pk, AT).state.acks).toEqual({})
+    const unknown: AppState = { ...guardianState, entries: [] }
+    expect(handleWrap(unknown, wrap, guardian.sk, child.pk, AT).state.acks).toEqual({})
   })
 
   it('CHILD_SIG (tick) -> appended, deduped by id', () => {
@@ -668,6 +699,37 @@ describe('ingress.ts: handlePairClaimWrap — carried security obligation from T
 
     expect(answered).toBeNull()
     expect(tokenStore.get()).toEqual(minted) // untouched — the gate never ran for a non-claim
+  })
+
+  it('a claim whose devicePk is not its seal author does not burn the token (audit P13)', () => {
+    const mnemonic = generateMnemonic()
+    const guardian = guardianFromMnemonic(mnemonic)
+    const device = newKeypair()
+    const other = newKeypair()
+    const minted = mintToken(AT)
+    const tokenStore = makeTokenStore(minted)
+    const payload = buildRequestPayload({
+      op: 'pair.claim',
+      reqId: 'r1',
+      nonce: 'n1',
+      child: other.pk,
+      ts: AT,
+      params: { token: minted.token, devicePk: other.pk },
+    })
+    const wrap = wrapFor({ innerKind: KIND_REQUEST, payload, authorSk: device.sk, recipientPk: guardian.pk, nowSec: AT })
+    const answered = handlePairClaimWrap({
+      wrap,
+      guardianSk: guardian.sk,
+      tokenStore,
+      mnemonic,
+      childIndex: 0,
+      childName: 'Kid',
+      snapshot: emptySnapshot(),
+      relays: RELAYS,
+      nowSec: AT,
+    })
+    expect(answered).toBeNull()
+    expect(tokenStore.get()).toEqual(minted)
   })
 })
 

@@ -629,8 +629,20 @@ function InterestSection({
           </select>
         </>
       )}
-      <label className="field-label" htmlFor="interest-rate">Interest rate (%)</label>
-      <input id="interest-rate" className="text-input" inputMode="decimal" value={rateRaw} onChange={(e) => setRateRaw(e.target.value)} placeholder="3.5" />
+      {/* Per payment, not per year (audit U21): the rate is applied once per period. */}
+      <label className="field-label" htmlFor="interest-rate">Interest per payment (%)</label>
+      <input
+        id="interest-rate"
+        className="text-input"
+        inputMode="decimal"
+        value={rateRaw}
+        onChange={(e) => setRateRaw(e.target.value)}
+        placeholder="0.5"
+        aria-describedby="interest-rate-hint"
+      />
+      <p id="interest-rate-hint" className="muted">
+        Paid {cadence === 'weekly' ? 'every week' : 'every month'} on what is saved — not a yearly rate.
+      </p>
       <label className="field-label" htmlFor="interest-cadence">Cadence</label>
       <select
         id="interest-cadence"
@@ -829,7 +841,9 @@ function RecoveryWordsCard(): ReactElement {
   const [error, setError] = useState<string | null>(null)
 
   async function reveal(): Promise<void> {
-    const m = await loadFamilyMnemonic()
+    // A vault that cannot be read must say so, not leave the card hanging
+    // (audit U15).
+    const m = await loadFamilyMnemonic().catch(() => null)
     if (m === null) {
       setError("Couldn't find your recovery words on this device.")
       setStep('hidden')
@@ -938,13 +952,16 @@ function FamilyRootCard(): ReactElement {
       }
       if (!connected.full) {
         setRoot(connected.root)
-        setNote('Backup to My Signet needs a connected My Signet — reconnect from Settings.')
+        setNote('Backup to My Signet needs encryption turned on — tap Connect My Signet again and approve encryption.')
         return
       }
       const nowSec = Math.floor(Date.now() / 1000)
       const sent = await backUp(connected.root, mnemonic, nowSec)
       setRoot(sent ? { ...connected.root, backedUpAt: nowSec } : connected.root)
       if (!sent) setNote('Your backup is queued and will finish when you are back online.')
+    } catch {
+      // A vault read or a module load that failed (audit U15).
+      setError('Something went wrong connecting My Signet — please try again.')
     } finally {
       setBusy(false)
     }
@@ -984,6 +1001,8 @@ function FamilyRootCard(): ReactElement {
       const sent = await backUp(root, mnemonic, nowSec)
       if (sent) setRoot({ ...root, backedUpAt: nowSec })
       else setNote('Your backup is queued and will finish when you are back online.')
+    } catch {
+      setError("Couldn't back up just now — please try again.")
     } finally {
       setBusy(false)
     }
@@ -998,6 +1017,10 @@ function FamilyRootCard(): ReactElement {
       setRoot({ kind: 'phrase' })
       const { signetLogout } = await import('../identity/signetLogin')
       await signetLogout()
+    } catch {
+      // The root is already dropped locally; only the sign-out of the stored
+      // session failed to load (audit U15).
+      setNote('Disconnected here. If My Signet still lists this app, remove it there.')
     } finally {
       setBusy(false)
     }

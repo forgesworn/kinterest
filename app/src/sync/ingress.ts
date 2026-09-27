@@ -434,6 +434,15 @@ export interface DispatchResult {
   deferred?: true
 }
 
+/** Whether `authorPk` may ack `entryId` (audit P9). Pure. */
+function ackAuthorised(state: AppState, entryId: string, authorPk: string): boolean {
+  if (state.role === 'guardian') {
+    const entry = state.entries.find((e) => e.id === entryId)
+    return entry !== undefined && entry.child === authorPk
+  }
+  return state.guardianPubkey !== null && authorPk === state.guardianPubkey
+}
+
 /** Whether a CHILD_SIG is the signer's own to make (audit P8). Pure. */
 function childSigBinding(
   state: AppState,
@@ -510,10 +519,19 @@ export function dispatchInner(
       // created it), so the refusal is DEFERRED: the carrying wrap is not
       // marked seen, and a later redelivery or replay folds it once the doc
       // has arrived.
-      try {
-        assertEntryAgainst(state.docs.accounts.accounts, parsed.entry)
-      } catch {
+      //
+      // Only an UNKNOWN account defers (review R5). A leg on a known account
+      // that belongs to another child, or in the wrong currency, is wrong
+      // whenever it arrives, and deferring it meant decrypting and refusing
+      // the same wrap on every reconnect for ever: it is refused outright.
+      const accounts = state.docs.accounts.accounts
+      if (parsed.entry.legs.some((leg) => !accounts.some((a) => a.id === leg.account))) {
         return { state, effects: [], deferred: true }
+      }
+      try {
+        assertEntryAgainst(accounts, parsed.entry)
+      } catch {
+        break
       }
       if (parsed !== null) {
         const before = next
@@ -592,7 +610,10 @@ export function dispatchInner(
     }
     case KIND_ACK: {
       const parsed = parseAckPayload(payload)
-      if (parsed !== null) {
+      // Bound to the entry's own peer (audit P9): on the guardian, only the
+      // child an entry was sent to may ack it, so one child cannot mark a
+      // sibling's entries delivered; on a child, only its guardian.
+      if (parsed !== null && ackAuthorised(state, parsed.entryId, authorPk)) {
         next = { ...next, acks: { ...next.acks, [parsed.entryId]: parsed.ts } }
       }
       break
@@ -744,8 +765,14 @@ export function handlePairClaimWrap(opts: HandlePairClaimWrapOpts): AnsweredPair
   const claim = parseRequestPayload(unwrapped.payload)
   if (claim === null || claim.op !== 'pair.claim') return null
 
-  const params = claim.params as { token?: unknown }
+  const params = claim.params as { token?: unknown; devicePk?: unknown }
   const presented = typeof params.token === 'string' ? params.token : ''
+
+  // The identity check `answerPairClaim` makes, made FIRST (audit P13): a
+  // claim whose `devicePk` is not its own seal author is refused without
+  // burning the ceremony's token. Pure and synchronous, so the atomicity
+  // argument below is unchanged.
+  if (params.devicePk !== unwrapped.authorPk) return null
 
   // THE hard gate — see header comment. `answerPairClaim` must not be
   // reachable below this point unless `ok` is true.

@@ -346,6 +346,18 @@ describe('stampConfigDoc', () => {
     expect(app.docs.accounts.revoked).toEqual({ kid1: AT })
   })
 
+  it('R9: a save carrying a STALE revoked map cannot drop a revocation that landed since', () => {
+    const acct: Account = { id: 'acc1', child: 'kid1', name: 'Spending', currency: 'GBP', custody: 'ledger' }
+    let app: AppState = { ...emptyState(), children: [{ pubkey: 'kid1', name: 'Sam', index: 0 }, { pubkey: 'kid2', name: 'Ella', index: 1 }] }
+    app = applyConfigDoc(app, 'accounts', stampConfigDoc(app, 'accounts', { accounts: [acct], revoked: { kid1: AT } }, AT))
+    // A screen rendered before kid2 was revoked...
+    const renderedRevoked = app.docs.accounts.revoked
+    app = applyConfigDoc(app, 'accounts', stampConfigDoc(app, 'accounts', { accounts: [acct], revoked: { kid1: AT, kid2: AT + 1 } }, AT + 1))
+    // ...saves an edit with the map it rendered with.
+    app = applyConfigDoc(app, 'accounts', stampConfigDoc(app, 'accounts', { accounts: [acct], revoked: renderedRevoked }, AT + 2))
+    expect(app.docs.accounts.revoked).toEqual({ kid1: AT, kid2: AT + 1 })
+  })
+
   it('D1: an allowance save that switches account re-anchors startDay (history is not reopened)', () => {
     const cfg: AllowanceConfig = { child: 'kid1', account: 'acc1', amountMinor: 500, cadence: 'weekly', day: 2, tz: 'UTC', startDay: '2026-06-30' }
     let app: AppState = { ...emptyState() }

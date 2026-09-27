@@ -63,6 +63,32 @@ function idbPut(db: IDBDatabase, store: string, key: string, value: unknown): Pr
   })
 }
 
+/** Writes `value` under `key` only if nothing is there yet (audit P15).
+ *  Resolves 'exists', without writing, when another writer got there first —
+ *  a second tab on the same cold vault, which the in-module mutex below
+ *  cannot see. */
+function idbAddIfAbsent(db: IDBDatabase, store: string, key: string, value: unknown): Promise<'added' | 'exists'> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite')
+    const req = tx.objectStore(store).add(value, key)
+    let exists = false
+    req.onerror = (ev) => {
+      if (req.error?.name === 'ConstraintError') {
+        exists = true
+        // Not a failure: keep the transaction alive, and keep the event from
+        // bubbling up to `tx.onerror` as one.
+        ev.preventDefault()
+        ev.stopPropagation()
+      }
+    }
+    tx.oncomplete = () => resolve(exists ? 'exists' : 'added')
+    tx.onerror = () => {
+      if (!exists) reject(tx.error ?? new Error('indexedDB write failed'))
+    }
+    tx.onabort = () => reject(tx.error ?? new Error('indexedDB write aborted'))
+  })
+}
+
 function idbDelete(db: IDBDatabase, store: string, key: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(store, 'readwrite')
@@ -109,11 +135,16 @@ async function ensureWrapKey(): Promise<CryptoKey> {
           'encrypt',
           'decrypt',
         ])
-        await idbPut(db, WRAP_STORE, WRAP_ID, fresh)
+        // `add`, never `put` (audit P15): if another tab created the key
+        // since the read above, ITS key stands and this fresh one is thrown
+        // away, instead of silently replacing a key that tab has already
+        // sealed secrets under.
+        await idbAddIfAbsent(db, WRAP_STORE, WRAP_ID, fresh)
         // Read back rather than trusting the write: a vault whose key did
         // not actually persist would seal a secret today and lose it at
         // the next reload, which is the one failure this module must not
-        // cause.
+        // cause. It is also how the loser of a two-tab race picks up the
+        // winner's key.
         const confirmed = await idbGet(db, WRAP_STORE, WRAP_ID)
         if (!(confirmed instanceof CryptoKey)) throw new Error('wrap key did not persist')
         return confirmed

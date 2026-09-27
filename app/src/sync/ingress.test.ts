@@ -100,10 +100,10 @@ describe('handleWrap records the raw inner event (spec §2.3)', () => {
   })
 
   it('does not record kinds outside ENTRY/CONFIG/GRANT/CHILD_SIG', () => {
-    const wrap = wrapFor({ innerKind: KIND_ACK, payload: buildAckPayload('e1', AT), authorSk: child.sk, recipientPk: guardian.pk, nowSec: AT })
-    const { state } = handleWrap(guardianBase, wrap, guardian.sk, child.pk, AT)
+    const wrap = wrapFor({ innerKind: KIND_ACK, payload: buildAckPayload(entryFixture.id, AT), authorSk: child.sk, recipientPk: guardian.pk, nowSec: AT })
+    const { state } = handleWrap({ ...guardianBase, entries: [entryFixture] }, wrap, guardian.sk, child.pk, AT)
     expect(state.innerEvents).toEqual({})
-    expect(state.acks).toEqual({ e1: AT })
+    expect(state.acks).toEqual({ [entryFixture.id]: AT })
   })
 
   // Phase A review follow-up: the corpus must not become a way for a child to
@@ -652,5 +652,23 @@ describe('snapshot GRANTs and the child gap signal (v0.3)', () => {
     const r = handleWrap(childBase, wrap, child.sk, guardian.pk, AT)
     expect(r.state).toBe(childBase)
     expect(r.effects).toEqual([{ type: 'gap', reason: 'entry-deferred' }])
+  })
+})
+
+// ============================================================================
+// Review R5: only an UNKNOWN account defers; a mismatch is refused for good.
+// ============================================================================
+
+describe('ENTRY deferral is only for an unknown account (review R5)', () => {
+  it('refuses, not defers, a leg on a sibling s account or in the wrong currency', () => {
+    const crossChild = { ...entryFixture, id: 'x-r5', legs: [{ account: siblingAccount.id, currency: 'GBP', amountMinor: 500 }] }
+    const wrap = wrapFor({ innerKind: KIND_ENTRY, payload: buildEntryPayload(crossChild), authorSk: guardian.sk, recipientPk: child.pk, nowSec: AT })
+    const r = handleWrap(childBase, wrap, child.sk, guardian.pk, AT)
+    expect(r.state.entries).toEqual([])
+    // Seen, so the same wrap is not decrypted and refused again on every reconnect.
+    expect(r.state.seenEventIds).toContain(wrap.id)
+    expect(r.effects).toEqual([])
+    const wrongCcy = { ...entryFixture, id: 'x-r5-ccy', legs: [{ account: account.id, currency: 'EUR', amountMinor: 500 }] }
+    expect(dispatchInner(childBase, KIND_ENTRY, buildEntryPayload(wrongCcy), guardian.pk, AT).deferred).toBeUndefined()
   })
 })

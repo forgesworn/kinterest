@@ -170,8 +170,12 @@ export function answerPairClaim(opts: AnswerPairClaimOpts): AnsweredPairClaim | 
   if (devicePk !== sealAuthorPk) return null
 
   const { sk: childSk } = deriveDependantKey(mnemonic, childIndex)
+  const childSkHex = bytesToHex(childSk)
+  // The raw bytes are not needed past this point (audit P17). The hex string
+  // cannot be wiped — JS strings are immutable — but the offer must carry it.
+  childSk.fill(0)
   const offer = buildPairOfferPayload({
-    childSkHex: bytesToHex(childSk),
+    childSkHex,
     childIndex,
     name: childName,
     relays,

@@ -252,3 +252,28 @@ describe('storeFamilyMnemonic / loadFamilyMnemonic', () => {
     expect(await loadFamilyMnemonic()).toBeNull()
   })
 })
+
+// Audit P15: a second tab on the same cold vault must not replace the wrap key
+// the first tab has already sealed secrets under.
+describe('wrap key creation across two tabs', () => {
+  it('keeps the key another tab wrote first, so its sealed secret still opens', async () => {
+    const realGenerate = crypto.subtle.generateKey.bind(crypto.subtle)
+    let raced = false
+    vi.spyOn(crypto.subtle, 'generateKey').mockImplementation(async (...args: Parameters<typeof crypto.subtle.generateKey>) => {
+      if (!raced) {
+        raced = true
+        // "Tab A" finishes creating the key and sealing a secret while this
+        // tab is between its empty read and its write.
+        resetVaultCacheForTests()
+        await vaultStore('tab-a-secret', new Uint8Array([1, 2, 3]))
+        resetVaultCacheForTests()
+      }
+      return realGenerate(...(args as [AlgorithmIdentifier, boolean, KeyUsage[]]))
+    })
+
+    await vaultStore('tab-b-secret', new Uint8Array([4, 5]))
+    resetVaultCacheForTests()
+    expect(await vaultLoad('tab-a-secret')).toEqual(new Uint8Array([1, 2, 3]))
+    expect(await vaultLoad('tab-b-secret')).toEqual(new Uint8Array([4, 5]))
+  })
+})

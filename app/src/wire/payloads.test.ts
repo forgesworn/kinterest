@@ -617,3 +617,13 @@ describe('snapshot grants and catch-up status (v0.3)', () => {
     expect('catchUp' in (parseStatusKindPayload({ ...buildStatusPayload(base), catchUp: 'yes' }) ?? {})).toBe(false)
   })
 })
+
+describe('spend.request amount (audit P16)', () => {
+  const ask = (amountMinor: number) =>
+    buildRequestPayload({ op: 'spend.request', reqId: 'r', nonce: 'n', child: 'c', ts: 1, params: { amountMinor, currency: 'GBP', account: 'a' } })
+  it('refuses a zero or negative ask, and keeps a positive one', () => {
+    expect(parseRequestPayload(ask(0))).toBeNull()
+    expect(parseRequestPayload(ask(-5))).toBeNull()
+    expect(parseRequestPayload(ask(1))).not.toBeNull()
+  })
+})

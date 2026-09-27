@@ -200,7 +200,10 @@ export function buildRequestPayload(fields: Omit<RequestPayload, 'v'>): RequestP
 function isSpendRequestParams(p: unknown): boolean {
   return (
     isPlainObject(p) &&
+    // Strictly positive (audit P16): an ask for nothing, or for less than
+    // nothing, is not an ask, and `debitEntry` would throw on it downstream.
     isSafeInt(p.amountMinor) &&
+    (p.amountMinor as number) > 0 &&
     isNonEmptyString(p.currency) &&
     isNonEmptyString(p.account) &&
     (p.note === undefined || typeof p.note === 'string') &&

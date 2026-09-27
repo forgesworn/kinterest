@@ -460,7 +460,12 @@ function guardConfigBody<K extends ConfigDocKind>(
   if (docKind === 'accounts') {
     const body = docBody as Omit<ConfigDocs['accounts'], 'v' | 'issuedAt'>
     const current = app.docs.accounts.revoked
-    if (!('revoked' in body) && current !== undefined) return { ...body, revoked: current } as unknown as typeof docBody
+    // A UNION with the fresh map (review R9), never the caller's alone: a
+    // screen passes the `revoked` it rendered with, and a revocation landing
+    // between that render and this save would otherwise be dropped,
+    // re-admitting the device. Revocations are never removed, so a union is
+    // always right; the fresh value wins a conflict.
+    if (current !== undefined) return { ...body, revoked: { ...(body.revoked ?? {}), ...current } } as unknown as typeof docBody
   }
   return docBody
 }

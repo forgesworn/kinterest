@@ -316,3 +316,32 @@ describe('clearOutbox', () => {
     expect(outboxEvents(storage)).toHaveLength(1)
   })
 })
+
+describe('outbox: overlapping flushes publish each item once (audit P10)', () => {
+  it('serialises concurrent flushes of one queue, and still sends what was queued meanwhile', async () => {
+    const storage = makeFakeStorage()
+    const a = makeEvent('a')
+    enqueue(a, AT, storage)
+    const published: string[] = []
+    const relay: RelayLike = {
+      async publish(ev) {
+        published.push(ev.id)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        return 'accepted'
+      },
+      subscribe: () => () => {},
+    }
+
+    const first = flush(relay, AT, storage)
+    const b = makeEvent('b')
+    enqueue(b, AT, storage)
+    const second = flush(relay, AT, storage)
+    const third = flush(relay, AT, storage)
+    expect(third).toBe(second) // joins the flush already waiting
+    await Promise.all([first, second, third])
+
+    expect(published.filter((id) => id === a.id)).toHaveLength(1)
+    expect(published.filter((id) => id === b.id)).toHaveLength(1)
+    expect(outboxEvents(storage)).toEqual([])
+  })
+})

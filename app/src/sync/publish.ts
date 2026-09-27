@@ -82,7 +82,15 @@ async function send(innerKind: number, payload: unknown, opts: PublishOpts): Pro
     recipientPk: opts.peerPk,
     nowSec: opts.nowSec,
   })
-  enqueue(event, opts.nowSec, opts.storage)
+  try {
+    enqueue(event, opts.nowSec, opts.storage)
+  } catch {
+    // Storage full or blocked (audit P11): the event could not be queued, so
+    // a failure used to lose it without a trace. Publish it directly instead;
+    // `sent` then says whether it got out, and a caller that cares can retry.
+    const result = await opts.relay.publish(event).catch(() => 'rejected' as const)
+    return { event, sent: result === 'accepted' }
+  }
   await flush(opts.relay, opts.nowSec, opts.storage)
   const stillQueued = outboxEvents(opts.storage).some((e) => e.id === event.id)
   return { event, sent: !stillQueued }

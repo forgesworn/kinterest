@@ -432,7 +432,14 @@ describe('resyncPage — scoped to one child', () => {
   const evTickA = mkInner(child.sk, KIND_CHILD_SIG, buildChildTickPayload(tickFixture), 1002)
   const evTickB = mkInner(childB.sk, KIND_CHILD_SIG, buildChildTickPayload({ ...tickFixture, id: 't-b' }), 1003)
   const evConfig = mkInner(guardian.sk, KIND_CONFIG, buildConfigPayload('chores', choresDoc), 1004)
-  const evGrant = mkInner(guardian.sk, KIND_GRANT, { v: 1, reqId: 'r1', nonce: 'n1', decision: 'approved', ts: 1005, params: {} }, 1005)
+  const evGrant = mkInner(guardian.sk, KIND_GRANT, { v: 1, reqId: 'r1', nonce: 'n1', decision: 'allow', ts: 1005, params: {} }, 1005)
+  const evGrantB = mkInner(guardian.sk, KIND_GRANT, { v: 1, reqId: 'r-b', nonce: 'n2', decision: 'deny', ts: 1005, params: {} }, 1005)
+  const ask = (reqId: string, pk: string) => ({
+    request: { v: 1 as const, op: 'spend.request' as const, reqId, nonce: 'n', child: pk, ts: 1, params: { amountMinor: 1, currency: 'GBP', account: 'a' } },
+    authorPk: pk,
+    status: 'approved' as const,
+    createdAt: 1,
+  })
   const evUnreadable = mkInner(guardian.sk, KIND_ENTRY, { v: 99, from: 'a newer build' }, 1006)
 
   const corpusOf = (evs: typeof evEntryA[]) => Object.fromEntries(evs.map((e) => [e.id, e]))
@@ -442,7 +449,8 @@ describe('resyncPage — scoped to one child', () => {
       { pubkey: child.pk, name: 'Alex', index: 0 },
       { pubkey: childB.pk, name: 'Sam', index: 1 },
     ],
-    innerEvents: corpusOf([evEntryA, evEntryB, evTickA, evTickB, evConfig, evGrant, evUnreadable]),
+    requests: [ask('r1', child.pk), ask('r-b', childB.pk)],
+    innerEvents: corpusOf([evEntryA, evEntryB, evTickA, evTickB, evConfig, evGrant, evGrantB, evUnreadable]),
   }
 
   it('serves that child s entries and ticks, plus policy, and nothing of a sibling s', () => {
@@ -453,6 +461,8 @@ describe('resyncPage — scoped to one child', () => {
     expect(ids).toContain(evGrant.id)
     expect(ids).not.toContain(evEntryB.id)
     expect(ids).not.toContain(evTickB.id)
+    // Audit P14: a sibling's GRANT is withheld too.
+    expect(ids).not.toContain(evGrantB.id)
   })
 
   it('withholds an ENTRY it cannot read, rather than guessing whose it is', () => {
@@ -460,7 +470,7 @@ describe('resyncPage — scoped to one child', () => {
   })
 
   it('serves the whole corpus when no child is named (a child replying to its guardian)', () => {
-    expect(resyncPage(app, null, 0, null).events).toHaveLength(7)
+    expect(resyncPage(app, null, 0, null).events).toHaveLength(8)
   })
 
   it('pages the SCOPED set, so more never reflects a sibling s events', () => {
@@ -679,5 +689,12 @@ describe('catchUpDue (v0.3 child catch-up)', () => {
     expect(catchUpDue(undefined, AT)).toBe(true)
     expect(catchUpDue(AT, AT + STATUS_INTERVAL_SECS / 2 - 1)).toBe(false)
     expect(catchUpDue(AT, AT + STATUS_INTERVAL_SECS / 2)).toBe(true)
+  })
+})
+
+describe('compareStatus settles entries before docs (review R6)', () => {
+  it('asks for a resync when the peer has more entries, even though it is behind on a doc', () => {
+    const local = { entryCount: 1, lastEntryId: 'e1', docHighWater: { chores: 900 } }
+    expect(compareStatus(local, st(3, 'e3', { chores: 100 }))).toEqual({ kind: 'request-resync' })
   })
 })

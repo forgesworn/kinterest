@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent } from 'nostr-tools/pure'
 import { nip44, type EventTemplate, type NostrEvent } from 'nostr-tools'
 import { KIND_ENTRY, MARKER_TAG, SEAL, WRAP } from './kinds'
-import { unwrapFrom, unwrapWithSigner, wrapFor } from './giftwrap'
+import { MAX_WRAP_JITTER_SECS, unwrapFrom, unwrapWithSigner, wrapFor } from './giftwrap'
 
 const AT = 1_700_000_000
 
@@ -324,5 +324,16 @@ describe('unwrapWithSigner', () => {
       eph,
     )
     expect(await unwrapWithSigner({ wrap, signer: fakeSigner(bobSk) })).toBeNull()
+  })
+})
+
+describe('wrap jitter (audit P17)', () => {
+  it('draws the backdating from the CSPRNG and stays within the NIP-59 bound', () => {
+    const spy = vi.spyOn(crypto, 'getRandomValues')
+    const wrap = wrapFor({ innerKind: KIND_ENTRY, payload: { v: 1 }, authorSk: generateSecretKey(), recipientPk: getPublicKey(generateSecretKey()), nowSec: 10_000_000 })
+    expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
+    expect(wrap.created_at).toBeLessThanOrEqual(10_000_000)
+    expect(wrap.created_at).toBeGreaterThan(10_000_000 - MAX_WRAP_JITTER_SECS)
   })
 })

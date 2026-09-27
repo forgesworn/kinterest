@@ -27,6 +27,7 @@ import {
   buildStatusPayload,
   isNostrEventShape,
   parseEntryPayload,
+  parseGrantPayload,
   RESYNC_PAGE_SIZE,
   type ResyncReplyPayload,
   type StatusPayload,
@@ -53,31 +54,34 @@ export interface LocalStatusView {
 /**
  * Pure. Spec §2.2's three rules, in order:
  *
- *  1. The peer is BEHIND — fewer entries than us, or the same-or-fewer
- *     entries with a different last entry id (the "same count, different
- *     history" case: a relay withheld one of ours and delivered one of
- *     theirs), or an older high-water on any config doc kind we hold (audit
- *     P2). We heal that by sending a snapshot.
- *  2. We are BEHIND — the peer has more entries, or is ahead on any config
- *     doc kind (including one we have never seen at all). We ask for a
- *     resync.
- *  3. Otherwise the two views agree.
+ *  1. The peer has FEWER entries than us: we send a snapshot.
+ *  2. The peer has MORE entries than us: we ask for a resync.
+ *  3. Same count, different last entry id (a relay withheld one of ours and
+ *     delivered one of theirs): we send a snapshot.
+ *  4. The peer is behind on any config doc kind we hold (audit P2): we send
+ *     a snapshot.
+ *  5. We are behind on any config doc kind (including one we have never
+ *     seen at all): we ask for a resync.
+ *  6. Otherwise the two views agree.
  *
- * Rule 1 is checked before rule 2 deliberately: a divergence that satisfies
- * both is one where we hold entries the peer does not, and sending what we
- * have is strictly more useful than asking for what they have (they will
- * compare our snapshot and ask us in turn if they are still ahead).
+ * Entries are settled before docs (review R6): a doc lag the peer cannot
+ * close must not hide an entry gap on either side. A divergence that is
+ * behind on both counts is settled one heartbeat at a time.
  */
 export function compareStatus(local: LocalStatusView, remote: StatusPayload): LagVerdict {
   if (remote.entryCount < local.entryCount) return { kind: 'send-snapshot' }
-  if (remote.lastEntryId !== local.lastEntryId && remote.entryCount <= local.entryCount) return { kind: 'send-snapshot' }
+  // Entries before docs (review R6): a peer we can never bring up to our
+  // doc high-water (a clock more than a day slow, a doc its build cannot
+  // parse) must not starve our own entry catch-up behind a snapshot that
+  // changes nothing, heartbeat after heartbeat.
+  if (remote.entryCount > local.entryCount) return { kind: 'request-resync' }
+  if (remote.lastEntryId !== local.lastEntryId) return { kind: 'send-snapshot' }
   // Behind on a config doc (audit P2): a relay that dropped one CONFIG left
   // the peer on stale policy, and without this every heartbeat said 'ok'.
   // A snapshot carries every doc; LWW makes the ones it already has no-ops.
   for (const [docKind, highWater] of Object.entries(local.docHighWater)) {
     if (highWater > (remote.docHighWater[docKind] ?? 0)) return { kind: 'send-snapshot' }
   }
-  if (remote.entryCount > local.entryCount) return { kind: 'request-resync' }
   for (const [docKind, highWater] of Object.entries(remote.docHighWater)) {
     if (highWater > (local.docHighWater[docKind] ?? 0)) return { kind: 'request-resync' }
   }
@@ -371,10 +375,10 @@ export function statusFor(app: AppState, forChildPk: string | null, appVersion: 
  * `forChildPk` SCOPES the reply (review fix). A guardian's corpus holds every
  * child's events, and serving all of it to whichever child asked would put a
  * sibling's ledger on that child's phone. Named a child, this serves only:
- * ENTRY events for that child, CHILD_SIG events that child itself signed, and
- * the family's CONFIG and GRANT events (policy is family-wide, and a GRANT
- * payload does not name a child at all — see `wire/payloads.ts#GrantPayload`
- * — so there is nothing to scope it by). An ENTRY this build cannot read is
+ * ENTRY events for that child, CHILD_SIG events that child itself signed,
+ * GRANT events answering that child's own asks (by the guardian's record of
+ * the ask — a GRANT payload does not name a child; audit P14), and the
+ * family's CONFIG events. An ENTRY or GRANT this build cannot place is
  * WITHHELD rather than guessed at: failing closed costs a replay, guessing
  * would cost a leak. `null` means "everything", which is what a child
  * replying to its own guardian sends — the guardian already holds it all, and
@@ -395,7 +399,7 @@ export function statusFor(app: AppState, forChildPk: string | null, appVersion: 
  */
 export function resyncPage(app: AppState, since: string | null, page: number, forChildPk: string | null = null): ResyncReplyPayload {
   const ordered = Object.values(app.innerEvents)
-    .filter((ev) => servesTo(ev, forChildPk))
+    .filter((ev) => servesTo(app, ev, forChildPk))
     .sort(corpusOrder)
 
   let start = 0
@@ -430,11 +434,27 @@ function corpusOrder(a: NostrEvent, b: NostrEvent): number {
 
 /** Whether one corpus event belongs in a reply scoped to `forChildPk` — see
  *  `resyncPage`. Pure. */
-function servesTo(ev: NostrEvent, forChildPk: string | null): boolean {
+function servesTo(app: AppState, ev: NostrEvent, forChildPk: string | null): boolean {
   if (forChildPk === null) return true
   if (ev.kind === KIND_ENTRY) return entryChildOf(ev) === forChildPk
   if (ev.kind === KIND_CHILD_SIG) return ev.pubkey === forChildPk
+  if (ev.kind === KIND_GRANT) return grantChildOf(app, ev) === forChildPk
   return true
+}
+
+/** The child a GRANT answered, by the guardian's own record of the ask it
+ *  decides (audit P14) — a GRANT payload does not name a child. `null` for an
+ *  unreadable GRANT or an ask the guardian has no record of: withheld, since
+ *  guessing would be a leak. Pure and total. */
+function grantChildOf(app: AppState, ev: NostrEvent): string | null {
+  try {
+    const grant = parseGrantPayload(JSON.parse(ev.content))
+    if (grant === null) return null
+    const record = app.requests.find((r) => r.request.reqId === grant.reqId)
+    return record !== undefined && record.authorPk === record.request.child ? record.authorPk : null
+  } catch {
+    return null
+  }
 }
 
 
