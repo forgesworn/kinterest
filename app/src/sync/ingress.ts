@@ -59,7 +59,7 @@ import {
   type RootAttestation,
   type StatusPayload,
 } from '../wire/payloads'
-import { addEntry, applyConfigDoc, retainInnerEvents } from '../state/state'
+import { addEntry, applyConfigDoc, recordGrantResult, retainInnerEvents } from '../state/state'
 import { verifyRootAttestation } from '../identity/signetRoot'
 import type { AppState, ChildProfile, ConfigDocs } from '../state/types'
 import type { Entry } from '../domain/types'
@@ -260,6 +260,32 @@ function adoptRoot(state: AppState, root: RootAttestation | undefined, authorPk:
   return { ...state, root: { kind: 'signet', pubkey: root.pubkey, authEvent: root.authEvent, backedUpAt: null } }
 }
 
+/**
+ * Folds the GRANTs a snapshot carries (v0.3) into a CHILD's request list, so
+ * a GRANT a relay dropped is healed by the next snapshot. Pure.
+ *
+ * Only on a paired child, and only for asks this device has not already seen
+ * decided: `recordGrantResult` is idempotent on a decided row anyway, but
+ * skipping them keeps the common case (nothing lost) a reference-equal
+ * no-op. No `grant` effect is raised — like a resync replay, a healed GRANT
+ * is old news and must not notify.
+ *
+ * Trusting the list is the same trust the rest of the snapshot gets: the
+ * SNAPSHOT direction guard has already established it came from the pinned
+ * guardian, which scoped it to this child (`sync/snapshot.ts#grantsFor`).
+ */
+function applySnapshotGrants(state: AppState, grants: readonly GrantPayload[] | undefined, nowSec: number): AppState {
+  if (grants === undefined || state.role !== 'child' || state.self.pubkey === null) return state
+  const selfPk = state.self.pubkey
+  let next = state
+  for (const grant of grants) {
+    const known = next.requests.find((r) => r.request.reqId === grant.reqId)
+    if (known !== undefined && known.status !== 'pending') continue
+    next = recordGrantResult(next, grant, selfPk, nowSec)
+  }
+  return next
+}
+
 export type Effect =
   | { type: 'ack'; entryId: string; authorPk: string }
   /** A ledger entry that was NEWLY folded in (a re-delivered duplicate acks
@@ -293,6 +319,11 @@ export type Effect =
    *  in it is trusted until `sync/resync.ts#ingestResyncEvents` has verified
    *  each signature and checked each author. */
   | { type: 'resyncReply'; payload: ResyncReplyPayload; authorPk: string }
+  /** A CHILD has seen evidence it is behind its guardian (v0.3): here, a live
+   *  ENTRY on an account this device does not know, which means the accounts
+   *  CONFIG that created it never arrived. The store answers it with a
+   *  rate-limited catch-up `status` (see `sync/resync.ts#catchUpDue`). */
+  | { type: 'gap'; reason: 'entry-deferred' | 'grant-without-entry' }
 
 /**
  * Unwraps `wrap` (pinned to `pinnedPeerPk`) and dispatches by inner kind:
@@ -363,7 +394,12 @@ export function handleWrap(
   const dispatched = dispatchInner(state, unwrapped.innerKind, unwrapped.payload, unwrapped.authorPk, nowSec)
   // A deferred refusal (see `DispatchResult`) leaves the wrap un-seen and
   // un-retained, so the same wrap delivered again later is tried again.
-  if (dispatched.deferred === true) return { state, effects: [] }
+  if (dispatched.deferred === true) {
+    // On a child, a deferred ENTRY is the tell-tale of a lost accounts CONFIG:
+    // say so, so the store can ask for a snapshot rather than wait an hour.
+    const gap = state.role === 'child' && unwrapped.innerKind === KIND_ENTRY
+    return { state, effects: gap ? [{ type: 'gap', reason: 'entry-deferred' }] : [] }
+  }
   const seen = markSeen(dispatched.state, wrap.id)
 
   // The lossless corpus (v0.2 spec §2.3) — stored REGARDLESS of whether the
@@ -612,6 +648,7 @@ export function dispatchInner(
           // doc comment and handleWrap's header comment.
           next = applyLiveSnapshot(next, parsed, nowSec)
           next = adoptRoot(next, parsed.root, authorPk)
+          next = applySnapshotGrants(next, parsed.grants, nowSec)
         } else {
           effects.push({ type: 'notify', text: `checkpoint received: lastEntryId=${parsed.lastEntryId}, ts=${parsed.ts}` })
         }

@@ -14,6 +14,7 @@ import {
   buildChildTickPayload,
   buildConfigPayload,
   buildEntryPayload,
+  buildGrantPayload,
   buildResyncReplyPayload,
   buildResyncRequestPayload,
   buildSnapshotPayload,
@@ -619,5 +620,37 @@ describe('applySnapshot on a child keeps its own ledger only (audit P6)', () => 
     const r = dispatchInner(stale, KIND_SNAPSHOT, scoped, guardian.pk, AT)
     expect(r.state.entries).toEqual([entryFixture])
     expect(r.state.children.map((c) => c.pubkey)).toEqual([child.pk])
+  })
+})
+
+// ============================================================================
+// v0.3: snapshots heal lost GRANTs, and a child says when it is behind.
+// ============================================================================
+
+describe('snapshot GRANTs and the child gap signal (v0.3)', () => {
+  const denied = buildGrantPayload({ reqId: 'r-lost', nonce: 'n1', decision: 'deny', ts: AT, params: {} })
+  const snapshotWith = (grants: ReturnType<typeof buildGrantPayload>[]) =>
+    buildSnapshotPayload({ children: [], entries: [], docs: familyDocs as ConfigDocs }, undefined, grants)
+
+  it('folds a GRANT the child never received into its request list', () => {
+    const r = dispatchInner(childBase, KIND_SNAPSHOT, snapshotWith([denied]), guardian.pk, AT)
+    expect(r.state.requests.map((q) => [q.request.reqId, q.status])).toEqual([['r-lost', 'denied']])
+    // Healed silently: no grant effect, so no notification for old news.
+    expect(r.effects).toEqual([])
+  })
+
+  it('leaves an already-decided ask untouched', () => {
+    const once = dispatchInner(childBase, KIND_SNAPSHOT, snapshotWith([denied]), guardian.pk, AT).state
+    const twice = dispatchInner(once, KIND_SNAPSHOT, snapshotWith([{ ...denied, decision: 'allow' }]), guardian.pk, AT + 10).state
+    expect(twice.requests).toEqual(once.requests)
+  })
+
+  it('raises a gap effect when a child defers a live ENTRY on an unknown account', () => {
+    const stranger: Account = { id: 'a-unknown', child: child.pk, name: 'Savings', currency: 'GBP', custody: 'ledger' }
+    const entry = creditEntry({ id: 'e-gap', child: child.pk, createdAt: AT, author: 'guardian' }, stranger, 100)
+    const wrap = wrapFor({ innerKind: KIND_ENTRY, payload: buildEntryPayload(entry), authorSk: guardian.sk, recipientPk: child.pk, nowSec: AT })
+    const r = handleWrap(childBase, wrap, child.sk, guardian.pk, AT)
+    expect(r.state).toBe(childBase)
+    expect(r.effects).toEqual([{ type: 'gap', reason: 'entry-deferred' }])
   })
 })

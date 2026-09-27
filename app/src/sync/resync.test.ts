@@ -26,6 +26,7 @@ import type { AppState, ConfigDocs } from '../state/types'
 import type { Effect } from './ingress'
 import {
   acksFor,
+  catchUpDue,
   compareStatus,
   ingestResyncEvents,
   nextResyncCursor,
@@ -670,5 +671,13 @@ describe('servesResyncPage', () => {
 
   it('refuses a continuation with no exchange open — a peer must ask from the start', () => {
     expect(servesResyncPage(undefined, 'ev-1', 1000, 1800).serve).toBe(false)
+  })
+})
+
+describe('catchUpDue (v0.3 child catch-up)', () => {
+  it('allows the first ask, then no more than the guardian s own status gap', () => {
+    expect(catchUpDue(undefined, AT)).toBe(true)
+    expect(catchUpDue(AT, AT + STATUS_INTERVAL_SECS / 2 - 1)).toBe(false)
+    expect(catchUpDue(AT, AT + STATUS_INTERVAL_SECS / 2)).toBe(true)
   })
 })

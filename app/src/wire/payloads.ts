@@ -359,7 +359,16 @@ export interface SnapshotPayload {
   state: SnapshotState
   /** Additive (spec §1.5) — absent on any pre-v0.2 snapshot. */
   root?: RootAttestation
+  /** Additive (v0.3) — the addressed child's own decided asks, as the GRANTs
+   *  the guardian sent for them, so a GRANT a relay dropped is healed by the
+   *  next snapshot. Absent on an older snapshot, and ignored by an older
+   *  parser. */
+  grants?: GrantPayload[]
 }
+
+/** Most GRANTs one snapshot carries — the newest decisions; older ones have
+ *  long since been seen or stopped mattering. */
+export const MAX_SNAPSHOT_GRANTS = 200
 
 export interface CheckpointPayload {
   v: 1
@@ -373,8 +382,24 @@ function isChildProfileShape(x: unknown): x is ChildProfile {
   return isPlainObject(x) && isNonEmptyString(x.pubkey) && isNonEmptyString(x.name) && isNonNegSafeInt(x.index)
 }
 
-export function buildSnapshotPayload(state: SnapshotState, root?: RootAttestation): SnapshotPayload {
-  return { v: 1, kind: 'snapshot', state, ...(root !== undefined ? { root } : {}) }
+export function buildSnapshotPayload(state: SnapshotState, root?: RootAttestation, grants?: GrantPayload[]): SnapshotPayload {
+  return {
+    v: 1,
+    kind: 'snapshot',
+    state,
+    ...(root !== undefined ? { root } : {}),
+    ...(grants !== undefined && grants.length > 0 ? { grants: grants.slice(0, MAX_SNAPSHOT_GRANTS) } : {}),
+  }
+}
+
+/** Total, and like `root` a decoration that never fails the snapshot: a
+ *  malformed GRANT is dropped on its own, a non-array is no grants, and more
+ *  than `MAX_SNAPSHOT_GRANTS` refuses the whole list (a hostile size, not a
+ *  real one). */
+function parseSnapshotGrants(x: unknown): GrantPayload[] | undefined {
+  if (!Array.isArray(x) || x.length > MAX_SNAPSHOT_GRANTS) return undefined
+  const grants = x.map(parseGrantPayload).filter((g): g is GrantPayload => g !== null)
+  return grants.length > 0 ? grants : undefined
 }
 
 export function parseSnapshotPayload(json: unknown): SnapshotPayload | null {
@@ -393,6 +418,7 @@ export function parseSnapshotPayload(json: unknown): SnapshotPayload | null {
   }
   if (!isConfigDocsShape(state.docs)) return null
   const root = parseRootAttestation(json.root)
+  const grants = parseSnapshotGrants(json.grants)
   return {
     v: 1,
     kind: 'snapshot',
@@ -402,6 +428,7 @@ export function parseSnapshotPayload(json: unknown): SnapshotPayload | null {
       docs: state.docs as ConfigDocs,
     },
     ...(root !== undefined ? { root } : {}),
+    ...(grants !== undefined ? { grants } : {}),
   }
 }
 
@@ -649,6 +676,11 @@ export interface StatusPayload {
   docHighWater: Record<string, number>
   /** e.g. '0.2.0'. */
   appVersion: string
+  /** Additive (v0.3): the child has seen evidence it is behind (a GRANT with
+   *  no entry, an ENTRY on an account it does not know) and asks for a
+   *  snapshot whatever the counts say. Absent means false; an older guardian
+   *  ignores it and just compares. */
+  catchUp?: true
 }
 
 /** "Send me everything you have after `since`" — either direction. */
@@ -734,6 +766,7 @@ export function parseStatusKindPayload(
       entryCount: json.entryCount,
       docHighWater: json.docHighWater,
       appVersion: json.appVersion,
+      ...(json.catchUp === true ? { catchUp: true as const } : {}),
     }
   }
 

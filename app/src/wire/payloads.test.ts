@@ -44,6 +44,7 @@ import {
   parseStatusKindPayload,
   RESYNC_PAGE_SIZE,
   RESYNC_MAX_EVENTS_PER_REPLY,
+  MAX_SNAPSHOT_GRANTS,
 } from './payloads'
 import type { Entry } from '../domain/types'
 import type { ChoreTick } from '../domain/chores'
@@ -575,5 +576,44 @@ describe('dismissed grants (spec §4.3)', () => {
 
   it('an unknown decision is still refused', () => {
     expect(parseGrantPayload({ v: 1, reqId: 'r', nonce: 'n', decision: 'maybe', ts: 1, params: {} })).toBeNull()
+  })
+})
+
+// v0.3: a snapshot carries the addressed child's GRANTs, and a child can ask
+// to be caught up. Both fields are additive and optional.
+describe('snapshot grants and catch-up status (v0.3)', () => {
+  const docs = {
+    accounts: { v: 1 as const, issuedAt: 1, accounts: [] },
+    allowance: { v: 1 as const, issuedAt: 0, configs: [] },
+    interest: { v: 1 as const, issuedAt: 0, configs: [] },
+    chores: { v: 1 as const, issuedAt: 0, chores: [] },
+  }
+  const state = { children: [], entries: [], docs }
+  const grant = buildGrantPayload({ reqId: 'r1', nonce: 'n1', decision: 'deny', ts: 5, params: {} })
+
+  it('round-trips grants, and omits the field when there are none', () => {
+    expect(parseSnapshotPayload(buildSnapshotPayload(state, undefined, [grant]))?.grants).toEqual([grant])
+    expect('grants' in buildSnapshotPayload(state, undefined, [])).toBe(false)
+    expect(parseSnapshotPayload(buildSnapshotPayload(state))?.grants).toBeUndefined()
+  })
+
+  it('drops a malformed grant without failing the snapshot', () => {
+    const parsed = parseSnapshotPayload({ ...buildSnapshotPayload(state), grants: [grant, { v: 1, reqId: '' }] })
+    expect(parsed).not.toBeNull()
+    expect(parsed?.grants).toEqual([grant])
+    expect(parseSnapshotPayload({ ...buildSnapshotPayload(state), grants: 'nope' })?.grants).toBeUndefined()
+  })
+
+  it('refuses an oversized grant list outright, and never builds one', () => {
+    const many = Array.from({ length: MAX_SNAPSHOT_GRANTS + 1 }, (_, i) => ({ ...grant, reqId: `r${i}` }))
+    expect(parseSnapshotPayload({ ...buildSnapshotPayload(state), grants: many })?.grants).toBeUndefined()
+    expect(buildSnapshotPayload(state, undefined, many).grants).toHaveLength(MAX_SNAPSHOT_GRANTS)
+  })
+
+  it('round-trips catchUp on a status, and never invents it', () => {
+    const base = { at: 1, lastEntryId: null, entryCount: 0, docHighWater: {}, appVersion: '0.3.0' }
+    expect(parseStatusKindPayload(buildStatusPayload({ ...base, catchUp: true }))).toEqual({ v: 1, type: 'status', ...base, catchUp: true })
+    expect('catchUp' in (parseStatusKindPayload(buildStatusPayload(base)) ?? {})).toBe(false)
+    expect('catchUp' in (parseStatusKindPayload({ ...buildStatusPayload(base), catchUp: 'yes' }) ?? {})).toBe(false)
   })
 })

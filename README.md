@@ -46,3 +46,6 @@ hands off Signet sign-in links outside the WebView.
 
 App code lives in `app/` (Vite + React + TS); the native Android shell lives
 in `android/` (package `org.forgesworn.kinjar`).
+
+See [SECURITY.md](SECURITY.md) for the threat model, known limitations, and
+how to report a vulnerability.

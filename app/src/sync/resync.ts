@@ -537,3 +537,26 @@ export function servesResyncPage(
   if (exchange === undefined || exchange.pagesServed >= RESYNC_MAX_PAGES) return { serve: false, exchange }
   return { serve: true, exchange: { startedAt: exchange.startedAt, pagesServed: exchange.pagesServed + 1 } }
 }
+
+// ---------------------------------------------------------------------------
+// Child-initiated catch-up (v0.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a CHILD may send a catch-up `status` now, given when it last sent
+ * one (`lastAt`, unix SECONDS, `undefined` if never). Pure.
+ *
+ * Only the guardian used to compare statuses, so a child had no way to say
+ * "I know I am behind": a lost GRANT or a lost accounts CONFIG sat unhealed
+ * until an unrelated count mismatch. A catch-up status (`catchUp: true`) asks
+ * the guardian for a snapshot outright.
+ *
+ * It is bounded by the SAME gap the guardian applies to every inbound
+ * status (`statusAccepted`, half the heartbeat interval), on both ends: the
+ * child does not ask more often than the guardian would answer, and the
+ * guardian gates catch-ups per peer in their own bucket — so "I am behind"
+ * costs the guardian at most two extra snapshots an hour per child.
+ */
+export function catchUpDue(lastAt: number | undefined, nowSec: number, minGapSec: number = STATUS_INTERVAL_SECS / 2): boolean {
+  return lastAt === undefined || nowSec - lastAt >= minGapSec
+}

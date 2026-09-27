@@ -35,6 +35,7 @@ import {
   shouldRunRelayService,
   snapshotOf,
   pairingChildPk,
+  grantAwaitsEntry,
   stampConfigDoc,
   storeReducer,
   type PairingSessionState,
@@ -1274,5 +1275,21 @@ describe('shouldRunRelayService (item M1)', () => {
 
   it('does not run before a role exists — nothing to keep in touch with yet', () => {
     expect(shouldRunRelayService('unset')).toBe(false)
+  })
+})
+
+describe('grantAwaitsEntry (v0.3 child catch-up)', () => {
+  const allow = { v: 1 as const, reqId: 'r1', nonce: 'n', decision: 'allow' as const, ts: 1, params: { amountMinor: 200 } }
+  const account: Account = { id: 'acc1', child: 'sam', name: 'Pocket money', currency: 'GBP', custody: 'ledger' }
+
+  it('is true for an allowed spend whose grant: entry is missing, false once it lands', () => {
+    expect(grantAwaitsEntry(emptyState(), allow)).toBe(true)
+    const entry = creditEntry({ id: 'grant:r1', child: 'sam', createdAt: AT, author: 'guardian' }, account, 200)
+    expect(grantAwaitsEntry({ ...emptyState(), entries: [entry] }, allow)).toBe(false)
+  })
+
+  it('implies nothing for a deny, or for an allowance claim', () => {
+    expect(grantAwaitsEntry(emptyState(), { ...allow, decision: 'deny', params: {} })).toBe(false)
+    expect(grantAwaitsEntry(emptyState(), { ...allow, params: { periodKey: '2026-W36' } })).toBe(false)
   })
 })

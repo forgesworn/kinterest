@@ -58,6 +58,7 @@ import { startSync } from '../sync/engine'
 import type { Effect, PairTokenStore } from '../sync/ingress'
 import {
   acksFor,
+  catchUpDue,
   compareStatus,
   ingestResyncEvents,
   nextResyncCursor,
@@ -75,7 +76,7 @@ import { notificationToFire, type NotificationToFireOpts } from '../platform/not
 import type { NotifiableEvent, NotificationContext } from '../platform/notifications'
 import { formatMinor } from '../domain/money'
 import { runSchedulers } from './scheduler'
-import { scopeSnapshotState } from '../sync/snapshot'
+import { grantsFor, scopeSnapshotState } from '../sync/snapshot'
 // screens/approvals.ts's `clampGrant` is the tested home for the stepper's
 // 0..asked clamp rule (Task 5's file list puts the Approvals inbox's pure
 // logic there) — buildGrantDecision below is its one non-screen caller,
@@ -177,9 +178,10 @@ export function reMintPairingSession(session: PairingSessionState, nowSec: numbe
  *  the device an up-to-date ledger.
  *
  *  Scoped to `childPk` (audit P6): that child's profile, entries and config
- *  rows only — never a sibling's. See `sync/snapshot.ts`. */
+ *  rows only — never a sibling's. See `sync/snapshot.ts`. It also carries
+ *  that child's decided asks as GRANTs, so a GRANT a relay dropped heals. */
 export function snapshotOf(app: AppState, childPk: string): SnapshotPayload {
-  return buildSnapshotPayload(scopeSnapshotState(app, childPk), rootAttestationOf(app))
+  return buildSnapshotPayload(scopeSnapshotState(app, childPk), rootAttestationOf(app), grantsFor(app, childPk))
 }
 
 /** The pubkey a pairing session's claim will bind to — the roster entry the
@@ -550,9 +552,33 @@ export interface GrantDecisionBuild {
  *  it would apply BOTH as distinct, real debits/credits. A deterministic id
  *  makes a racing double-send produce byte-identical entries, which the
  *  child's dedupe then correctly collapses to one. */
-function grantEntryId(reqId: string): string {
+export function grantEntryId(reqId: string): string {
   return `grant:${reqId}`
 }
+
+/**
+ * Whether a GRANT a CHILD received implies a ledger entry it does not hold
+ * (v0.3 child catch-up). Pure.
+ *
+ * An allowed `spend.request` always comes with exactly one guardian ENTRY,
+ * under the deterministic id `grantEntryId(reqId)` (see `buildGrantDecision`).
+ * If the GRANT arrived and that entry has not, either it is still in flight
+ * (the caller waits a little before asking) or a relay dropped it.
+ *
+ * An allowed `allowance.claim` implies nothing checkable: the period may
+ * already have been paid by the scheduler under a different id.
+ */
+export function grantAwaitsEntry(app: AppState, grant: GrantPayload): boolean {
+  if (grant.decision !== 'allow') return false
+  if (typeof grant.params.amountMinor !== 'number') return false
+  const id = grantEntryId(grant.reqId)
+  return !app.entries.some((e) => e.id === id)
+}
+
+/** How long a child waits for a granted spend's ENTRY to follow its GRANT
+ *  before treating it as lost. The two are separate wraps, sent back to
+ *  back, and relays promise no order. */
+export const GRANT_ENTRY_GRACE_MS = 2 * 60_000
 
 /** Mirrors domain/allowance.ts's own `allowanceDue` internal "paid" set —
  *  see `buildGrantDecision`'s allowance.claim branch below (the plan's
@@ -1123,6 +1149,10 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   // nothing renders off it.
   const resyncPagesRef = useRef<Map<string, number>>(new Map())
 
+  // When this CHILD device last asked its guardian to catch it up (unix
+  // SECONDS) — the requester's half of the catch-up rate limit (`catchUpDue`).
+  const lastCatchUpRef = useRef<number | undefined>(undefined)
+
   // Inbound rate limiting (review fix, round 1). Answering a heartbeat costs
   // a whole-state snapshot wrap or a fresh exchange, and a fresh exchange
   // resets `resyncPagesRef` — so without a gap on the INBOUND side the
@@ -1131,6 +1161,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   // `servedExchangesRef` is the serving side's own per-peer page budget.
   // Both are plain refs: nothing renders off either.
   const statusSeenRef = useRef<Map<string, number>>(new Map())
+  const catchUpSeenRef = useRef<Map<string, number>>(new Map())
   const servedExchangesRef = useRef<Map<string, ResyncExchange>>(new Map())
 
   /**
@@ -1185,13 +1216,19 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       const scopePk = scope.kind === 'guardian' ? peerPk : scope.selfPk
 
       if (effect.type === 'status') {
-        if (!statusAccepted(statusSeenRef.current, peerPk, nowSec)) return
-        statusSeenRef.current.set(peerPk, nowSec)
+        // A child's catch-up (v0.3) asks for a snapshot outright. It is gated
+        // by the same gap as an ordinary heartbeat, in its own bucket, so an
+        // hourly beat landing just before cannot swallow it.
+        const catchUp = scope.kind === 'guardian' && effect.payload.catchUp === true
+        const seen = catchUp ? catchUpSeenRef.current : statusSeenRef.current
+        if (!statusAccepted(seen, peerPk, nowSec)) return
+        seen.set(peerPk, nowSec)
         const local = statusFor(app, scopePk, APP_VERSION, nowSec)
         const verdict = compareStatus(local, effect.payload)
-        if (verdict.kind === 'send-snapshot') {
+        if (verdict.kind === 'send-snapshot' || catchUp) {
           void sendSnapshot(snapshotOf(app, peerPk), wire).catch(() => {})
-        } else if (verdict.kind === 'request-resync') {
+        }
+        if (verdict.kind === 'request-resync') {
           // `null`, never `local.lastEntryId`: the corpus and the ledger sort
           // by different keys, so a ledger-derived cursor can sit after an
           // event we never received and hide it for ever. See `resyncPage`.
@@ -1483,6 +1520,8 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     // the narrowed type (TypeScript widens a narrowed outer binding inside a
     // function DECLARATION, which a hoisted one could in principle outlive).
     const sessionSk = childSk
+    // Pending "did the ENTRY follow its GRANT?" checks, cleared with the engine.
+    const grantTimers = new Set<number>()
 
     const stop = startSync({
       selfSk: childSk,
@@ -1508,7 +1547,20 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
         if (effect.type === 'grant') {
           const nowSec = Math.floor(Date.now() / 1000) // sampled once — see the guardian effect's own comment on this
           dispatch({ type: 'updateApp', update: (app) => recordGrantResult(app, effect.payload, selfPk, nowSec) })
+          // A granted spend whose ENTRY has not followed within the grace
+          // period was lost on the way: ask to catch up (v0.3).
+          const grant = effect.payload
+          if (grantAwaitsEntry(stateRef.current.app, grant)) {
+            const timer = window.setTimeout(() => {
+              grantTimers.delete(timer)
+              if (grantAwaitsEntry(stateRef.current.app, grant)) catchUp()
+            }, GRANT_ENTRY_GRACE_MS)
+            grantTimers.add(timer)
+          }
         }
+        // A live ENTRY this device could not place (v0.3): its accounts
+        // CONFIG never arrived, so ask to catch up now.
+        if (effect.type === 'gap') catchUp()
         // The guardian has removed this device (v0.2 spec §4.5). The key
         // goes from memory FIRST, then everything this device holds on disk
         // that could unlock it again: from here on there is nothing left to
@@ -1559,6 +1611,20 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     beat()
     const heartbeat = window.setInterval(beat, STATUS_INTERVAL_MS)
 
+    // Child-initiated catch-up (v0.3): the heartbeat with `catchUp: true`,
+    // which the guardian answers with a scoped snapshot whatever the counts
+    // say. Rate-limited here as the guardian would (`catchUpDue`), and read
+    // fresh from `stateRef` like every beat.
+    function catchUp(): void {
+      const nowSec = Math.floor(Date.now() / 1000)
+      if (!catchUpDue(lastCatchUpRef.current, nowSec)) return
+      lastCatchUpRef.current = nowSec
+      void sendStatus(
+        { ...statusFor(stateRef.current.app, selfPk, APP_VERSION, nowSec), catchUp: true },
+        { selfSk: sessionSk, peerPk: guardianPubkey, relay, storage, nowSec },
+      ).catch(() => {})
+    }
+
     // Periodic outbox drain — see the guardian engine's own comment above.
     const disarmFlush = armPeriodicFlush(() => {
       void flush(relay, Math.floor(Date.now() / 1000), storage).catch(() => {})
@@ -1567,6 +1633,8 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     return () => {
       disarmFlush()
       window.clearInterval(heartbeat)
+      for (const timer of grantTimers) window.clearTimeout(timer)
+      grantTimers.clear()
       stop()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
