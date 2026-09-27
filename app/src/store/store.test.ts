@@ -36,6 +36,8 @@ import {
   snapshotOf,
   pairingChildPk,
   grantAwaitsEntry,
+  readVaultPublished,
+  writeVaultPublished,
   stampConfigDoc,
   storeReducer,
   type PairingSessionState,
@@ -1291,5 +1293,25 @@ describe('grantAwaitsEntry (v0.3 child catch-up)', () => {
   it('implies nothing for a deny, or for an allowance claim', () => {
     expect(grantAwaitsEntry(emptyState(), { ...allow, decision: 'deny', params: {} })).toBe(false)
     expect(grantAwaitsEntry(emptyState(), { ...allow, params: { periodKey: '2026-W36' } })).toBe(false)
+  })
+})
+
+describe('vault publish record (v0.3)', () => {
+  it('round-trips through storage and never throws on a blocked one', () => {
+    const map = new Map<string, string>()
+    const storage = { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => void map.set(k, v) }
+    expect(readVaultPublished(storage)).toBeNull()
+    writeVaultPublished('sig', storage)
+    expect(readVaultPublished(storage)).toBe('sig')
+    const blocked = {
+      getItem: () => {
+        throw new Error('blocked')
+      },
+      setItem: () => {
+        throw new Error('blocked')
+      },
+    }
+    expect(readVaultPublished(blocked)).toBeNull()
+    expect(() => writeVaultPublished('sig', blocked)).not.toThrow()
   })
 })

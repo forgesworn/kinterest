@@ -16,7 +16,7 @@ import type { ReactElement } from 'react'
 import { Banner, Button, Card, EmptyState, ListRow, Pill, Screen } from '../components/ui'
 import { Money } from '../components/Money'
 import { MoneyInput } from '../components/MoneyInput'
-import { useApp, stampConfigDoc } from '../store/store'
+import { useApp, stampConfigDoc, writeVaultPublished } from '../store/store'
 import { applyConfigDoc, configRecipients } from '../state/state'
 import type { AppState, ConfigDocs } from '../state/types'
 import type { ConfigDocKind } from '../wire/payloads'
@@ -33,7 +33,7 @@ import type { Account, Entry } from '../domain/types'
 import type { Chore } from '../domain/chores'
 import { loadFamilyMnemonic } from '../identity/vault'
 import { rootCardModel } from './familyRoot'
-import { vaultPayloadFor, vaultRosterOf } from '../identity/signetVault'
+import { vaultPayloadFor, vaultRosterOf, vaultRosterSignature } from '../identity/signetVault'
 import { guardianFromMnemonic } from '../identity/derive'
 import { sendVault } from '../sync/publish'
 import type { SignetRoot } from '../identity/signetConnect'
@@ -960,6 +960,8 @@ function FamilyRootCard(): ReactElement {
         vaultPayloadFor(vaultRosterOf(app), mnemonic, guardianFromMnemonic(mnemonic).pk, root.authEvent, nowSec),
         { selfSk: guardianSk, peerPk: root.pubkey, relay, storage: window.localStorage, nowSec },
       )
+      // The store's automatic re-seal reads this, so a manual backup counts.
+      if (sent) writeVaultPublished(vaultRosterSignature(vaultRosterOf(app)))
       return sent
     } catch {
       return false

@@ -265,6 +265,45 @@ export function shouldPublishVault(signature: string, lastPublished: string | nu
   return true
 }
 
+/** How old a published vault may get before the guardian republishes it
+ *  unchanged, in SECONDS. Many relays expire kind-1059 gift wraps, and a
+ *  vault that has quietly aged off every relay is no backup at all. */
+export const VAULT_REPUBLISH_AFTER_SECS = 7 * 24 * 60 * 60
+
+/** Why a vault publish is due: the roster or relays changed since the last
+ *  one that landed, or the last one is old enough that relays may have
+ *  dropped it. */
+export type VaultDue = 'none' | 'changed' | 'stale'
+
+/**
+ * Whether the guardian should publish its vault now, and why. Pure.
+ *
+ *  - `signature` is `vaultRosterSignature` of the family as it stands.
+ *  - `lastPublished` is the signature of the last publish that actually left
+ *    the outbox, as this device RECORDED it — `null` when it never recorded
+ *    one (a fresh install, or one from before this was recorded), which
+ *    publishes once rather than assume the relays hold a current copy.
+ *  - `inFlight` is the signature of a publish still under way; its twin is
+ *    never started.
+ *  - `backedUpAt` is `AppState.root.backedUpAt`, unix SECONDS, or `null`.
+ *
+ * A change beats staleness, and nothing is due while the same roster is
+ * already on its way. `nowSec` is unix SECONDS.
+ */
+export function vaultPublishDue(o: {
+  signature: string
+  lastPublished: string | null
+  inFlight: string | null
+  backedUpAt: number | null
+  nowSec: number
+  maxAgeSecs?: number
+}): VaultDue {
+  if (o.signature === o.inFlight) return 'none'
+  if (shouldPublishVault(o.signature, o.lastPublished, o.inFlight)) return 'changed'
+  if (o.backedUpAt === null || o.nowSec - o.backedUpAt >= (o.maxAgeSecs ?? VAULT_REPUBLISH_AFTER_SECS)) return 'stale'
+  return 'none'
+}
+
 // --- the bounded relay hunt (recovery) ---------------------------------------
 
 /** The shape `wire/giftwrap.ts#unwrapWithSigner` resolves to, narrowed to the

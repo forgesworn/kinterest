@@ -10,7 +10,15 @@ import { wrapFor } from '../wire/giftwrap'
 import { KIND_VAULT } from '../wire/kinds'
 import { buildVaultPayload } from '../wire/payloads'
 import { rootChallenge } from './signetRoot'
-import { collectVaultCandidates, pickFamilyVault, pickNewestVault, shouldPublishVault, vaultPayloadFor } from './signetVault'
+import {
+  collectVaultCandidates,
+  pickFamilyVault,
+  pickNewestVault,
+  shouldPublishVault,
+  vaultPayloadFor,
+  vaultPublishDue,
+  VAULT_REPUBLISH_AFTER_SECS,
+} from './signetVault'
 
 /** The family's My Signet identity — the one a recovery logs in as, and the
  *  one every genuine vault's attestation must be signed by (item C1). */
@@ -527,5 +535,29 @@ describe('vaultRosterOf', () => {
       revoked: { ['d'.repeat(64)]: 500 },
     })
     expect(vaultRosterOf(base).revoked).toBeUndefined()
+  })
+})
+
+describe('vaultPublishDue (v0.3 vault freshness)', () => {
+  const NOW = 2_000_000_000
+  const base = { signature: 'sig-b', lastPublished: 'sig-b', inFlight: null, backedUpAt: NOW - 60, nowSec: NOW }
+
+  it('is due when the roster or relays changed since the last publish that landed', () => {
+    expect(vaultPublishDue({ ...base, lastPublished: 'sig-a' })).toBe('changed')
+  })
+
+  it('publishes once when this device never recorded a publish', () => {
+    expect(vaultPublishDue({ ...base, lastPublished: null })).toBe('changed')
+  })
+
+  it('is due weekly even with nothing changed, since relays may expire the wrap', () => {
+    expect(vaultPublishDue({ ...base, backedUpAt: NOW - VAULT_REPUBLISH_AFTER_SECS + 1 })).toBe('none')
+    expect(vaultPublishDue({ ...base, backedUpAt: NOW - VAULT_REPUBLISH_AFTER_SECS })).toBe('stale')
+    expect(vaultPublishDue({ ...base, backedUpAt: null })).toBe('stale')
+  })
+
+  it('never starts a twin of a publish already under way', () => {
+    expect(vaultPublishDue({ ...base, lastPublished: 'sig-a', inFlight: 'sig-b' })).toBe('none')
+    expect(vaultPublishDue({ ...base, backedUpAt: null, inFlight: 'sig-b' })).toBe('none')
   })
 })
