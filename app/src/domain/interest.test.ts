@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Account } from './types'
-import { interestMinor, matchMinor, project, interestDue, interestEntry, balanceAsOf, effectiveDay, depositMinor, depositsInWindow, matchDue, matchEntry, matchWindowStart, type InterestConfig } from './interest'
+import { interestMinor, matchMinor, project, interestDue, interestEntry, balanceAsOf, effectiveDay, projectBalance, depositMinor, depositsInWindow, matchDue, matchEntry, matchWindowStart, type InterestConfig } from './interest'
 import { creditEntry, reverseEntry, transferEntry } from './ledger'
 
 describe('interestMinor', () => {
@@ -222,5 +222,24 @@ describe('deposit match (audit S1)', () => {
   it('a scheduled match counts as of the due day it pays for', () => {
     const e = { ...creditEntry({ id: 'sched:match:kid:L:2026-08-14', child: 'kid', createdAt: at(20), author: 'guardian' }, acct, 100, 'match'), periodKey: '2026-W33' }
     expect(effectiveDay(e, 'Europe/London')).toBe('2026-08-14')
+  })
+})
+
+describe('projectBalance', () => {
+  it('is the last point of the compounding path', () => {
+    expect(projectBalance(1000, 1000, 4)).toBe(1464)
+    expect(projectBalance(1000, 1000, 4)).toBe(project(1000, 1000, 4)[3])
+  })
+  it('returns the balance unchanged for 0 periods, and pays nothing on a non-positive balance', () => {
+    expect(projectBalance(1234, 500, 0)).toBe(1234)
+    expect(projectBalance(0, 500, 4)).toBe(0)
+    expect(projectBalance(-50, 500, 4)).toBe(-50)
+  })
+  it('pays at least 1 minor unit per period on a positive balance', () => {
+    expect(projectBalance(1, 1, 4)).toBe(5)
+  })
+  it('throws on bad periods or overflow', () => {
+    expect(() => projectBalance(100, 100, -1)).toThrow(RangeError)
+    expect(() => projectBalance(Number.MAX_SAFE_INTEGER, 10000, 1)).toThrow(RangeError)
   })
 })

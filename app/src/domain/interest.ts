@@ -69,6 +69,21 @@ export function project(
 }
 
 /**
+ * The balance after `periods` interest payments, compounding, with no
+ * further deposits (v1 §Interest: "leave it 4 more weeks and it's £X").
+ * Integer maths throughout — each period's interest is `interestMinor`
+ * (half-up, minimum 1 minor unit on a positive balance), exactly what the
+ * scheduler would pay. `periods = 0` returns the balance unchanged. Throws
+ * RangeError on a bad `periods` or on overflow.
+ */
+export function projectBalance(balanceMinor: number, rateBps: number, periods: number): number {
+  const path = project(balanceMinor, rateBps, periods)
+  const out = path.length === 0 ? balanceMinor : path[path.length - 1]!
+  assertMinor(out)
+  return out
+}
+
+/**
  * The due days `cfg` still owes, oldest first (`nowSec` is unix SECONDS).
  *
  * The scan is bounded (review R1): it starts at the later of `startDay`

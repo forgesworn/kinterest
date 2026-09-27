@@ -34,7 +34,7 @@
 import type { ReactElement } from 'react'
 import { balances, sortForDisplay } from '../domain/ledger'
 import { dayKey } from '../domain/period'
-import { project } from '../domain/interest'
+import { project, projectBalance } from '../domain/interest'
 import type { InterestConfig } from '../domain/interest'
 import type { Account, Entry } from '../domain/types'
 import type { AppState } from '../state/types'
@@ -248,6 +248,28 @@ export function nextInterestProjection(rateBps: number, currentBalanceMinor: num
   }
 }
 
+/** How far ahead the child's "leave it" projection looks (v1 spec: "leave
+ *  it 4 more weeks and it's £X") — counted in interest periods, so a
+ *  monthly schedule reads "4 more months". */
+export const PROJECTION_PERIODS = 4
+
+/** The "leave it" line's words and amount: the balance after
+ *  `PROJECTION_PERIODS` compounding interest payments, no further deposits
+ *  (domain/interest.ts#projectBalance). `null` on any arithmetic failure
+ *  rather than throwing mid-render. */
+export function leaveItProjection(
+  cfg: Pick<InterestConfig, 'rateBps' | 'cadence'>,
+  currentBalanceMinor: number,
+): { label: string; minor: number } | null {
+  try {
+    const minor = projectBalance(currentBalanceMinor, cfg.rateBps, PROJECTION_PERIODS)
+    const unit = cfg.cadence === 'weekly' ? 'weeks' : 'months'
+    return { label: `Leave it ${PROJECTION_PERIODS} more ${unit} and it's`, minor }
+  } catch {
+    return null
+  }
+}
+
 // ============================================================================
 // Screen
 // ============================================================================
@@ -302,6 +324,7 @@ export function ChildHome({ onAsk, onChores, onAudit }: { onAsk: () => void; onC
   const interestTodayKey = dayKey(nowSec, interestCfg?.tz ?? tz)
   const interestDueDay = interestCfg !== undefined ? nextDueDay(interestCfg, nowSec) : null
   const interestProjected = interestCfg !== undefined ? nextInterestProjection(interestCfg.rateBps, interestBalance) : null
+  const leaveIt = interestCfg !== undefined && interestBalance > 0 ? leaveItProjection(interestCfg, interestBalance) : null
 
   const feedGroups = buildChildFeed(entries, accounts, tz, nowSec)
 
@@ -350,6 +373,11 @@ export function ChildHome({ onAsk, onChores, onAudit }: { onAsk: () => void; onC
           {interestProjected !== null && interestDueDay !== null && (
             <p className="card-sub">
               Then you'll have <Money currency={interestAccount.currency} minor={interestProjected} size="sm" />
+            </p>
+          )}
+          {leaveIt !== null && interestDueDay !== null && (
+            <p className="card-sub">
+              {leaveIt.label} <Money currency={interestAccount.currency} minor={leaveIt.minor} size="sm" />
             </p>
           )}
         </Card>

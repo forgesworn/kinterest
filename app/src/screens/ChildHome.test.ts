@@ -12,6 +12,7 @@ import {
   jarHighWaterMinor,
   jarState,
   nextInterestProjection,
+  leaveItProjection,
 } from './ChildHome'
 
 const CHILD = 'sam-pk'
@@ -236,5 +237,18 @@ describe('nextInterestProjection', () => {
   it('is total against arithmetic overflow — null, never an uncaught throw', () => {
     expect(() => nextInterestProjection(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER)).not.toThrow()
     expect(nextInterestProjection(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER)).toBeNull()
+  })
+})
+
+describe('leaveItProjection (v1: "leave it 4 more weeks and it\'s £X")', () => {
+  it('compounds four weekly periods with integer maths', () => {
+    // £10.00 at 10%/week: 1000 -> 1100 -> 1210 -> 1331 -> 1464 (half-up: 1331 * 0.1 = 133.1 -> 133)
+    expect(leaveItProjection({ rateBps: 1000, cadence: 'weekly' }, 1000)).toEqual({ label: "Leave it 4 more weeks and it's", minor: 1464 })
+  })
+  it('names months for a monthly schedule', () => {
+    expect(leaveItProjection({ rateBps: 100, cadence: 'monthly' }, 10000)?.label).toBe("Leave it 4 more months and it's")
+  })
+  it('returns null instead of throwing on overflow', () => {
+    expect(leaveItProjection({ rateBps: 10000, cadence: 'weekly' }, Number.MAX_SAFE_INTEGER)).toBeNull()
   })
 })
