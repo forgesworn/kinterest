@@ -476,3 +476,13 @@ describe('runSchedulers: deposit match (audit S1)', () => {
     expect(runSchedulers(s, t(2026, 8, 14)).entries.filter((e) => e.category === 'match')).toEqual([])
   })
 })
+
+describe('scheduler ids are deterministic, not ULIDs (audit S5)', () => {
+  it('two independent runs over the same state mint identical ids', () => {
+    const state = baseState({ docs: { ...baseState().docs, allowance: { v: 1, issuedAt: 1, configs: [allowanceCfg] } } })
+    const a = runSchedulers(state, NOW).entries.map((e) => e.id)
+    const b = runSchedulers(state, NOW + 60).entries.map((e) => e.id)
+    expect(a).toEqual(b)
+    expect(a[0]).toBe('sched:allowance:sam:a-ledger:2026-08-07')
+  })
+})

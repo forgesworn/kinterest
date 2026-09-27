@@ -26,6 +26,15 @@ export interface Leg {
 
 export interface Entry {
   v: 1
+  /** A ULID (domain/id.ts#newId) for anything a person does. Two kinds of
+   *  entry deliberately use a deterministic id instead, contrary to v1's
+   *  "entryId is a ULID" (audit S5): scheduler payouts
+   *  (`sched:<kind>:<child>:<account>:<due day>`, store/scheduler.ts) and
+   *  approved requests (`grant:<reqId>`, store/store.tsx). The same payout
+   *  must get the same id however many times, or on however many devices,
+   *  it is computed — `addEntry` dedupes by id, and that is what makes a
+   *  re-run catch-up or a retried approval idempotent. A random ULID would
+   *  let two computations of one payout both land. Keep them. */
   id: string
   child: string
   kind: EntryKind

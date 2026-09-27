@@ -206,7 +206,9 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
  *  exact duplicate through `addEntry`'s id-dedupe too. Deliberately NOT
  *  `newId()` (domain/id.ts): that mints fresh randomness every call, which
  *  is correct for anything a human action originates but wrong for a
- *  scheduler expected to be idempotent by construction. */
+ *  scheduler expected to be idempotent by construction. This is why these
+ *  ids are not ULIDs, as v1 otherwise asks (audit S5) — see Entry.id in
+ *  domain/types.ts. */
 function schedulerEntryId(child: string, account: string, dueDay: string, kind: 'allowance' | 'interest' | 'match'): string {
   return `sched:${kind}:${child}:${account}:${dueDay}`
 }
