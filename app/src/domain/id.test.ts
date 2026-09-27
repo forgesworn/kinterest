@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { newId } from './id'
+import { newId, ulidTimeMs } from './id'
 
 const fixedRandom = (bytes: number) => new Uint8Array(bytes).fill(7)
 
@@ -21,5 +21,16 @@ describe('newId', () => {
   it('rejects non-integer or negative time', () => {
     expect(() => newId(-1)).toThrow(RangeError)
     expect(() => newId(1.5)).toThrow(RangeError)
+  })
+})
+
+describe('ulidTimeMs', () => {
+  it('round-trips the time newId encodes', () => {
+    expect(ulidTimeMs(newId(1_755_000_000_123))).toBe(1_755_000_000_123)
+  })
+  it('is null for anything that is not a ULID', () => {
+    expect(ulidTimeMs('c1')).toBeNull()
+    expect(ulidTimeMs('sched:allowance:sam:a:2026-08-07')).toBeNull()
+    expect(ulidTimeMs('0'.repeat(25) + 'U')).toBeNull() // U is not Crockford
   })
 })

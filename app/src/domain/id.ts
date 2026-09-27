@@ -25,3 +25,17 @@ export function newId(nowMs: number, random: (bytes: number) => Uint8Array = def
   for (let i = 0; i < 16; i++) tail += ALPHABET[rnd[i]! % 32]!
   return time.join('') + tail
 }
+
+/** The creation time (milliseconds) encoded in a `newId`/ULID's first 10
+ *  characters, or null if `id` is not a 26-character Crockford ULID (older
+ *  or hand-written ids such as `c1`). Pure. */
+export function ulidTimeMs(id: string): number | null {
+  if (id.length !== 26) return null
+  let t = 0
+  for (let i = 0; i < 26; i++) {
+    const v = ALPHABET.indexOf(id[i]!)
+    if (v === -1) return null
+    if (i < 10) t = t * 32 + v
+  }
+  return Number.isSafeInteger(t) ? t : null
+}
