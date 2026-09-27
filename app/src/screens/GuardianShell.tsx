@@ -22,6 +22,7 @@ import { Approvals } from './Approvals'
 import { PairDevice } from './PairDevice'
 import { Onboarding } from './Onboarding'
 import { StorageBanner } from '../components/StorageBanner'
+import { NotificationOptIn } from '../components/NotificationOptIn'
 import { Banner, Button } from '../components/ui'
 import { useApp } from '../store/store'
 import { addChildStep } from './onboardingFlow'
@@ -56,6 +57,7 @@ export default function GuardianShell(): ReactElement {
           </Button>
         </Banner>
       )}
+      <NotificationOptIn />
       <GuardianRoutes />
     </>
   )

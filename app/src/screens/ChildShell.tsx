@@ -14,6 +14,7 @@ import { useState } from 'react'
 import type { ReactElement } from 'react'
 import { useApp } from '../store/store'
 import { StorageBanner } from '../components/StorageBanner'
+import { NotificationOptIn } from '../components/NotificationOptIn'
 import { ChildLock } from './ChildLock'
 import { ChildHome } from './ChildHome'
 import { Ask } from './Ask'
@@ -40,9 +41,14 @@ export default function ChildShell(): ReactElement {
   else if (route === 'chores') screen = <Chores onBack={() => setRoute('home')} />
   else if (route === 'audit') screen = <Audit onBack={() => setRoute('home')} />
   else screen = <ChildHome onAsk={() => setRoute('ask')} onChores={() => setRoute('chores')} onAudit={() => setRoute('audit')} />
+  // The notification opt-in only makes sense once the child is actually
+  // past ChildLock — asking "turn on notifications?" on the lock screen
+  // itself would be a strange first thing to show.
+  const unlocked = childSk !== null && !locked
   return (
     <>
       <StorageBanner />
+      {unlocked && <NotificationOptIn />}
       {screen}
     </>
   )

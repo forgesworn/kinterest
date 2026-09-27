@@ -1,7 +1,23 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { isShell } from './platform/shell'
 import './theme.css'
+
+// Register the minimal service worker (public/sw.js) — web build only.
+// Never inside the Android WebView shell: the shell fires notifications
+// natively (platform/shell.ts#notify prefers `KinjarShell.notify` over any
+// service worker), so a registration there would just be dead weight.
+// Best-effort and silent on failure — nothing here depends on it; it only
+// improves how `notify()` can show a notification on Android Chrome (see
+// public/sw.js's own header).
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && !isShell()) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Swallowed — see comment above.
+    })
+  })
+}
 
 interface ErrorBoundaryState {
   hasError: boolean
