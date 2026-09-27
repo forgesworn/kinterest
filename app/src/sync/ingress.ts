@@ -192,6 +192,51 @@ export function applySnapshot(state: AppState, snapshot: PairingSnapshotPayload,
 }
 
 /**
+ * `applySnapshot` for a live SNAPSHOT arriving on a CHILD device (audit P6):
+ * a sibling's entries and roster rows in the snapshot are not folded, and any
+ * this device already holds are dropped (`dropSiblingData`). An older
+ * guardian build still sends the whole family; a newer one sends a scoped
+ * snapshot (`sync/snapshot.ts`), and this is the receiving end's own check.
+ * Pure. Anywhere other than a paired child it is plain `applySnapshot`.
+ */
+export function applyLiveSnapshot(state: AppState, snapshot: PairingSnapshotPayload, nowSec: number): AppState {
+  const selfPk = state.role === 'child' ? state.self.pubkey : null
+  if (selfPk === null) return applySnapshot(state, snapshot, nowSec)
+  const own: PairingSnapshotPayload = {
+    ...snapshot,
+    state: {
+      ...snapshot.state,
+      entries: snapshot.state.entries.filter((e) => e.child === selfPk),
+      children: snapshot.state.children.filter((c) => c.pubkey === selfPk),
+    },
+  }
+  return dropSiblingData(applySnapshot(state, own, nowSec), selfPk)
+}
+
+/**
+ * Drops what a child device holds about its SIBLINGS: their entries and
+ * their roster rows (audit P6). Pure; `state` by reference when there is
+ * nothing to drop.
+ *
+ * Safe on a child, which is why it runs on every snapshot a child applies:
+ * nothing a child does reads a sibling's ledger (`statusFor` already counts
+ * only the child's own entries, and every child screen reads its own
+ * accounts), and the guardian — which holds the authoritative copy — never
+ * asks a child for one. It is how a device that took a family-wide snapshot
+ * under an older build is cleaned up by the first scoped one.
+ *
+ * Not dropped: sibling rows inside a config doc the child already holds.
+ * Those are replaced by the next newer doc (a scoped snapshot's narrowed doc
+ * or a live CONFIG), never edited in place — see `sync/snapshot.ts`.
+ */
+function dropSiblingData(state: AppState, selfPk: string): AppState {
+  const entries = state.entries.filter((e) => e.child === selfPk)
+  const children = state.children.filter((c) => c.pubkey === selfPk)
+  if (entries.length === state.entries.length && children.length === state.children.length) return state
+  return { ...state, entries, children }
+}
+
+/**
  * Folds a family root carried on a SNAPSHOT into state (v0.2 spec §1.5).
  *
  * This is the ONLY way a child that paired BEFORE its guardian connected My
@@ -565,7 +610,7 @@ export function dispatchInner(
         if (parsed.kind === 'snapshot') {
           // issuedAt clamp applied per-doc inside applySnapshot — see its
           // doc comment and handleWrap's header comment.
-          next = applySnapshot(next, parsed, nowSec)
+          next = applyLiveSnapshot(next, parsed, nowSec)
           next = adoptRoot(next, parsed.root, authorPk)
         } else {
           effects.push({ type: 'notify', text: `checkpoint received: lastEntryId=${parsed.lastEntryId}, ts=${parsed.ts}` })

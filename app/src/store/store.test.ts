@@ -34,6 +34,7 @@ import {
   runSchedulersAndSend,
   shouldRunRelayService,
   snapshotOf,
+  pairingChildPk,
   stampConfigDoc,
   storeReducer,
   type PairingSessionState,
@@ -199,11 +200,52 @@ describe('snapshotOf', () => {
       docs: { ...emptyState().docs, accounts: { v: 1, issuedAt: AT, accounts: [account] } },
     }
 
-    const snap = snapshotOf(app)
+    const snap = snapshotOf(app, 'sam')
 
     expect(snap.state.children).toEqual(app.children)
     expect(snap.state.entries).toEqual([entry])
     expect(snap.state.docs).toEqual(app.docs)
+  })
+
+  // Audit P6: the snapshot sent to one child carries nothing of a sibling's.
+  it('scopes to the addressed child: no sibling profile, entry, account, config or chore', () => {
+    const samAcc: Account = { id: 'acc-sam', child: 'sam', name: 'Pocket money', currency: 'GBP', custody: 'ledger' }
+    const alexAcc: Account = { id: 'acc-alex', child: 'alex', name: 'Savings', currency: 'GBP', custody: 'ledger' }
+    const samEntry = creditEntry({ id: newId(AT * 1000), child: 'sam', createdAt: AT, author: 'guardian' }, samAcc, 500)
+    const alexEntry = creditEntry({ id: newId(AT * 1000 + 1), child: 'alex', createdAt: AT, author: 'guardian' }, alexAcc, 700)
+    const cfg = (child: string, account: string) => ({ child, account, amountMinor: 100, cadence: 'weekly' as const, day: 5, tz: 'Europe/London', startDay: '2026-09-01' })
+    const app: AppState = {
+      ...emptyState(),
+      children: [
+        { pubkey: 'sam', name: 'Sam', index: 0 },
+        { pubkey: 'alex', name: 'Alex', index: 1 },
+      ],
+      entries: [samEntry, alexEntry],
+      docs: {
+        accounts: { v: 1, issuedAt: AT, accounts: [samAcc, alexAcc], revoked: { alex: AT } },
+        allowance: { v: 1, issuedAt: AT, configs: [cfg('sam', 'acc-sam'), cfg('alex', 'acc-alex')] },
+        interest: { v: 1, issuedAt: AT, configs: [{ ...cfg('alex', 'acc-alex'), rateBps: 100 }] },
+        chores: { v: 1, issuedAt: AT, chores: [{ id: 'c1', child: 'alex', name: 'Dishes', cadence: 'daily' }] },
+      },
+    }
+
+    const snap = snapshotOf(app, 'sam')
+    const text = JSON.stringify(snap)
+    expect(text).not.toContain('alex')
+    expect(text).not.toContain('Alex')
+    expect(snap.state.entries).toEqual([samEntry])
+    expect(snap.state.docs.accounts.accounts).toEqual([samAcc])
+    expect(snap.state.docs.accounts.revoked).toBeUndefined()
+    // issuedAt is kept, so the narrowed doc slots into the child's LWW.
+    expect(snap.state.docs.allowance.issuedAt).toBe(AT)
+    // A revoked child's own revocation row does travel — it is how it learns.
+    expect(snapshotOf(app, 'alex').state.docs.accounts.revoked).toEqual({ alex: AT })
+  })
+
+  it('pairingChildPk resolves the roster entry a ceremony binds to', () => {
+    const app: AppState = { ...emptyState(), children: [{ pubkey: 'sam', name: 'Sam', index: 3 }] }
+    expect(pairingChildPk(app, 3)).toBe('sam')
+    expect(pairingChildPk(app, 4)).toBeNull()
   })
 
   // v0.2 §1.5: the family root rides along, so a child that syncs a snapshot
@@ -214,9 +256,9 @@ describe('snapshotOf', () => {
       ...emptyState(),
       root: { kind: 'signet', pubkey: 'a'.repeat(64), authEvent, backedUpAt: 5 },
     }
-    expect(snapshotOf(withRoot).root).toEqual({ pubkey: 'a'.repeat(64), authEvent })
-    expect(snapshotOf(emptyState()).root).toBeUndefined()
-    expect(snapshotOf({ ...emptyState(), root: { kind: 'phrase' } }).root).toBeUndefined()
+    expect(snapshotOf(withRoot, 'sam').root).toEqual({ pubkey: 'a'.repeat(64), authEvent })
+    expect(snapshotOf(emptyState(), 'sam').root).toBeUndefined()
+    expect(snapshotOf({ ...emptyState(), root: { kind: 'phrase' } }, 'sam').root).toBeUndefined()
   })
 })
 

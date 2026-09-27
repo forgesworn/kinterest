@@ -584,3 +584,40 @@ describe('a CONFIG beyond the skew clamp is deferred, not lost (audit P3)', () =
     expect(later.effects).toContainEqual({ type: 'config', docKind: 'chores' })
   })
 })
+
+// ============================================================================
+// Snapshot scoping on the child (audit P6): a child keeps its own ledger only.
+// ============================================================================
+
+describe('applySnapshot on a child keeps its own ledger only (audit P6)', () => {
+  const siblingEntry = creditEntry({ id: 'e-sibling', child: sibling.pk, createdAt: AT, author: 'guardian' }, siblingAccount, 900)
+  const familySnapshot = buildSnapshotPayload({
+    children: [
+      { pubkey: child.pk, name: 'Alex', index: 0 },
+      { pubkey: sibling.pk, name: 'Sam', index: 1 },
+    ],
+    entries: [entryFixture, siblingEntry],
+    docs: familyDocs as ConfigDocs,
+  })
+
+  it('does not fold a sibling entry or roster row from an old-style family snapshot', () => {
+    const r = dispatchInner(childBase, KIND_SNAPSHOT, familySnapshot, guardian.pk, AT)
+    expect(r.state.entries).toEqual([entryFixture])
+    expect(r.state.children.map((c) => c.pubkey)).toEqual([child.pk])
+  })
+
+  it('drops sibling data a device already holds from an earlier family-wide snapshot', () => {
+    const stale: AppState = {
+      ...childBase,
+      entries: [entryFixture, siblingEntry],
+      children: [
+        { pubkey: child.pk, name: 'Alex', index: 0 },
+        { pubkey: sibling.pk, name: 'Sam', index: 1 },
+      ],
+    }
+    const scoped = buildSnapshotPayload({ children: [{ pubkey: child.pk, name: 'Alex', index: 0 }], entries: [entryFixture], docs: familyDocs as ConfigDocs })
+    const r = dispatchInner(stale, KIND_SNAPSHOT, scoped, guardian.pk, AT)
+    expect(r.state.entries).toEqual([entryFixture])
+    expect(r.state.children.map((c) => c.pubkey)).toEqual([child.pk])
+  })
+})

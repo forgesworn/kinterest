@@ -75,6 +75,7 @@ import { notificationToFire, type NotificationToFireOpts } from '../platform/not
 import type { NotifiableEvent, NotificationContext } from '../platform/notifications'
 import { formatMinor } from '../domain/money'
 import { runSchedulers } from './scheduler'
+import { scopeSnapshotState } from '../sync/snapshot'
 // screens/approvals.ts's `clampGrant` is the tested home for the stepper's
 // 0..asked clamp rule (Task 5's file list puts the Approvals inbox's pure
 // logic there) — buildGrantDecision below is its one non-screen caller,
@@ -169,15 +170,23 @@ export function reMintPairingSession(session: PairingSessionState, nowSec: numbe
   return { ...session, token: mintToken(nowSec), status: 'active' }
 }
 
-/** The family snapshot a PAIR_OFFER embeds — built fresh from current
- *  `AppState` rather than captured once at `beginPairingSession` time, so a
- *  claim landing near the end of the token's 600s TTL still hands the
- *  device an up-to-date ledger. */
-export function snapshotOf(app: AppState): SnapshotPayload {
-  return buildSnapshotPayload(
-    { children: app.children, entries: app.entries, docs: app.docs },
-    rootAttestationOf(app),
-  )
+/** The snapshot for ONE child device — a PAIR_OFFER's embedded one, or the
+ *  answer to a heartbeat that shows the child behind. Built fresh from
+ *  current `AppState` rather than captured once at `beginPairingSession`
+ *  time, so a claim landing near the end of the token's 600s TTL still hands
+ *  the device an up-to-date ledger.
+ *
+ *  Scoped to `childPk` (audit P6): that child's profile, entries and config
+ *  rows only — never a sibling's. See `sync/snapshot.ts`. */
+export function snapshotOf(app: AppState, childPk: string): SnapshotPayload {
+  return buildSnapshotPayload(scopeSnapshotState(app, childPk), rootAttestationOf(app))
+}
+
+/** The pubkey a pairing session's claim will bind to — the roster entry the
+ *  ceremony was opened for (`beginPairingSession` copies its index). `null`
+ *  if that child has since left the roster. Pure. */
+export function pairingChildPk(app: AppState, childIndex: number): string | null {
+  return app.children.find((c) => c.index === childIndex)?.pubkey ?? null
 }
 
 /** The family root as it travels on the wire (v0.2 spec §1.5) — the pubkey
@@ -1181,7 +1190,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
         const local = statusFor(app, scopePk, APP_VERSION, nowSec)
         const verdict = compareStatus(local, effect.payload)
         if (verdict.kind === 'send-snapshot') {
-          void sendSnapshot(snapshotOf(app), wire).catch(() => {})
+          void sendSnapshot(snapshotOf(app, peerPk), wire).catch(() => {})
         } else if (verdict.kind === 'request-resync') {
           // `null`, never `local.lastEntryId`: the corpus and the ledger sort
           // by different keys, so a ledger-derived cursor can sit after an
@@ -1399,12 +1408,16 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       getPairingSession: (): MultiPairingSession | null => {
         const session = pairingRef.current
         if (session === null || session.status === 'burned') return null
+        const pairingApp = stateRef.current.app
+        // Scoped to the child being paired (audit P6). A roster entry that has
+        // vanished mid-ceremony gets an empty scope rather than the family's.
+        const pairingPk = pairingChildPk(pairingApp, session.childIndex) ?? ''
         return {
           tokenStore,
           mnemonic: session.mnemonic,
           childIndex: session.childIndex,
           childName: session.childName,
-          snapshot: snapshotOf(stateRef.current.app),
+          snapshot: snapshotOf(pairingApp, pairingPk),
           relays: session.relays,
           // The offer carries the root too (spec §1.5): a device pairing for
           // the first time has no snapshot history to learn it from later.
