@@ -51,10 +51,6 @@ function looksLikeAppState(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && (x as { v?: unknown }).v === 1
 }
 
-function isIdObject(x: unknown): x is { id: string } {
-  return typeof x === 'object' && x !== null && typeof (x as { id?: unknown }).id === 'string'
-}
-
 function isPlainObject(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x)
 }
@@ -121,6 +117,48 @@ function sanitiseDocHighWater(x: Record<string, unknown>): Record<string, number
 }
 
 const HEX64 = /^[0-9a-f]{64}$/
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/
+
+function isNonEmptyString(x: unknown): x is string {
+  return typeof x === 'string' && x !== ''
+}
+
+function isNonNegSafeInt(x: unknown): x is number {
+  return Number.isSafeInteger(x) && (x as number) >= 0
+}
+
+// Per-row guards (audit D13): additive fields must be sanitised row by row,
+// not just checked for an `id`. A child without an `index` broke
+// nextFreeChildIndex; a tick without a `day` or an audit without amounts
+// breaks every consumer that reads them.
+function isChildProfile(x: unknown): x is AppState['children'][number] {
+  return isPlainObject(x) && isNonEmptyString(x.pubkey) && typeof x.name === 'string' && isNonNegSafeInt(x.index)
+}
+
+function isChoreTick(x: unknown): x is AppState['ticks'][number] {
+  return (
+    isPlainObject(x) &&
+    isNonEmptyString(x.id) &&
+    isNonEmptyString(x.chore) &&
+    typeof x.day === 'string' &&
+    DAY_KEY.test(x.day) &&
+    isNonNegSafeInt(x.at)
+  )
+}
+
+function isAuditResult(x: unknown): x is AppState['audits'][number] {
+  return (
+    isPlainObject(x) &&
+    isNonEmptyString(x.id) &&
+    isNonEmptyString(x.account) &&
+    isNonEmptyString(x.child) &&
+    Number.isSafeInteger(x.countedMinor) &&
+    Number.isSafeInteger(x.expectedMinor) &&
+    Number.isSafeInteger(x.deltaMinor) &&
+    isNonNegSafeInt(x.at) &&
+    (x.author === 'guardian' || x.author === 'child')
+  )
+}
 
 /** The Signet root attestation event kind (v0.2 spec §1.1). */
 const KIND_SIGNET_AUTH = 21236
@@ -277,8 +315,8 @@ function sanitiseState(raw: Record<string, unknown>): AppState {
       })
     : empty.entries
 
-  const ticks = (Array.isArray(raw.ticks) ? raw.ticks.filter(isIdObject) : empty.ticks) as AppState['ticks']
-  const audits = (Array.isArray(raw.audits) ? raw.audits.filter(isIdObject) : empty.audits) as AppState['audits']
+  const ticks = Array.isArray(raw.ticks) ? raw.ticks.filter(isChoreTick) : empty.ticks
+  const audits = Array.isArray(raw.audits) ? raw.audits.filter(isAuditResult) : empty.audits
   const requests = Array.isArray(raw.requests)
     ? raw.requests.map(sanitiseStoredRequest).filter((r): r is StoredRequest => r !== null)
     : empty.requests
@@ -293,8 +331,8 @@ function sanitiseState(raw: Record<string, unknown>): AppState {
     chores: hasValidDocShape(rawDocs.chores, 'chores') ? (rawDocs.chores as ConfigDocs['chores']) : empty.docs.chores,
   }
   const docHighWater = isPlainObject(raw.docHighWater) ? sanitiseDocHighWater(raw.docHighWater) : empty.docHighWater
-  const children = (Array.isArray(raw.children) ? raw.children : empty.children) as AppState['children']
-  const relays = (Array.isArray(raw.relays) ? raw.relays : empty.relays) as AppState['relays']
+  const children = Array.isArray(raw.children) ? raw.children.filter(isChildProfile) : empty.children
+  const relays = Array.isArray(raw.relays) ? raw.relays.filter((r): r is string => typeof r === 'string') : empty.relays
 
   const role = isRole(raw.role) ? raw.role : empty.role
   const guardianPubkey =

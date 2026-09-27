@@ -533,3 +533,24 @@ describe('synthetic request rows survive a reload (audit D9)', () => {
     expect(loaded.requests[1]!.grantedAmountMinor).toBe(250)
   })
 })
+
+describe('sanitiseState per-row guards (audit D13)', () => {
+  it('drops malformed children, relays, ticks and audits row by row, keeping the good ones', () => {
+    const mem = makeFakeStorage()
+    const goodChild = { pubkey: 'a'.repeat(64), name: 'Sam', index: 0 }
+    const goodTick = { id: 't1', chore: 'c1', day: '2026-08-10', at: 100 }
+    const goodAudit = { id: 'au1', account: 'a-box', child: 'sam', countedMinor: 700, expectedMinor: 767, deltaMinor: -67, at: 100, author: 'child' }
+    mem.setItem('kinjar.state.v1', JSON.stringify({
+      ...emptyState(),
+      children: [goodChild, { pubkey: 'b'.repeat(64), name: 'Alex' }, 'junk'],
+      relays: ['wss://relay.example', 42, null],
+      ticks: [goodTick, { id: 't2' }, { ...goodTick, id: 't3', day: 'yesterday' }],
+      audits: [goodAudit, { id: 'au2' }, { ...goodAudit, id: 'au3', countedMinor: 1.5 }],
+    }))
+    const loaded = loadState(mem)
+    expect(loaded.children).toEqual([goodChild])
+    expect(loaded.relays).toEqual(['wss://relay.example'])
+    expect(loaded.ticks).toEqual([goodTick])
+    expect(loaded.audits).toEqual([goodAudit])
+  })
+})
