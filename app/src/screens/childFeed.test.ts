@@ -172,3 +172,15 @@ describe('buildChildFeed — grouping (shared day-labelling convention with the 
     expect(buildChildFeed([], accounts, TZ, AT)).toEqual([])
   })
 })
+
+describe('buildChildFeed — a catch-up shows each payout on its own due day (audit D11)', () => {
+  it('groups scheduler payouts by the due day they pay for, newest day first', () => {
+    const now = Date.UTC(2026, 7, 21, 12) / 1000
+    const cfg: AllowanceConfig = { child: CHILD, account: spending.id, amountMinor: 500, cadence: 'weekly', day: 5, tz: 'UTC', startDay: '2026-08-01' }
+    const paid = (day: string) => allowanceEntry(cfg, spending, day, { id: `sched:allowance:${CHILD}:${spending.id}:${day}`, child: CHILD, createdAt: now, author: 'guardian' })
+    const gift = creditEntry({ id: 'g', child: CHILD, createdAt: Date.UTC(2026, 7, 10, 9) / 1000, author: 'guardian' }, spending, 100)
+    const groups = buildChildFeed([paid('2026-08-07'), paid('2026-08-14'), gift, paid('2026-08-21')], accounts, 'UTC', now)
+    expect(groups.map((g) => g.dayKey)).toEqual(['2026-08-21', '2026-08-14', '2026-08-10', '2026-08-07'])
+    expect(groups[0]!.label).toBe('Today')
+  })
+})

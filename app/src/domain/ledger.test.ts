@@ -225,3 +225,16 @@ describe('adjustment fields (audit S3)', () => {
     expect(() => assertEntry({ ...credit, countedMinor: 100 })).toThrow(/only valid on an adjustment/)
   })
 })
+
+describe('sortForDisplay orders a catch-up by due day (audit D11)', () => {
+  it('interleaves same-second scheduler payouts by due day: allowance, match, interest', () => {
+    const at = 5000
+    const mk = (kind: string, day: string): Entry => ({
+      ...creditEntry({ id: `sched:${kind}:sam:a-ledger:${day}`, child: sam, createdAt: at, author: 'guardian' }, ledgerAcct, 100, kind),
+    })
+    const shuffled = [mk('interest', '2026-08-14'), mk('allowance', '2026-08-14'), mk('interest', '2026-08-07'), mk('match', '2026-08-14'), mk('allowance', '2026-08-07')]
+    expect(sortForDisplay(shuffled).map((e) => e.id.split(':')[1] + '@' + e.id.split(':')[4])).toEqual([
+      'allowance@2026-08-07', 'interest@2026-08-07', 'allowance@2026-08-14', 'match@2026-08-14', 'interest@2026-08-14',
+    ])
+  })
+})

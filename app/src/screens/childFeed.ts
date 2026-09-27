@@ -21,7 +21,7 @@
 // convention (Today/Yesterday/a full date reads the same either way) —
 // everything ELSE (the row text) is this module's own.
 
-import { sortForDisplay } from '../domain/ledger'
+import { scheduledDueDay, sortForDisplay } from '../domain/ledger'
 import { dayKey } from '../domain/period'
 import type { Account, Entry } from '../domain/types'
 import { feedIcon, formatDayLabel, headlineLeg } from './feed'
@@ -174,16 +174,16 @@ export function buildChildFeed(entries: Entry[], accounts: Account[], tz: string
   const todayKey = dayKey(nowSec, tz)
   const yesterdayKey = dayKey(nowSec - 86400, tz)
 
-  const order: string[] = []
+  // A scheduler payout is shown on the due day it pays for, not the day a
+  // catch-up happened to run (audit D11) — so days are ordered by key, not
+  // by first appearance.
   const rowsByDay = new Map<string, ChildFeedRow[]>()
   for (const entry of [...sortForDisplay(entries)].reverse()) {
-    const dk = dayKey(entry.createdAt, tz)
-    if (!rowsByDay.has(dk)) {
-      rowsByDay.set(dk, [])
-      order.push(dk)
-    }
+    const dk = scheduledDueDay(entry) ?? dayKey(entry.createdAt, tz)
+    if (!rowsByDay.has(dk)) rowsByDay.set(dk, [])
     rowsByDay.get(dk)!.push(toChildFeedRow(entry, accounts))
   }
+  const order = [...rowsByDay.keys()].sort().reverse()
 
   return order.map((dk) => ({
     dayKey: dk,

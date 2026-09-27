@@ -192,6 +192,31 @@ export function scheduledDueDay(e: Pick<Entry, 'id' | 'author'>): string | null 
   return m ? m[1]! : null
 }
 
+// Within one due day, the order the scheduler pays in: pocket money, then
+// the deposit match, then interest on the lot.
+const SCHEDULED_KIND_RANK: Record<string, number> = { allowance: 0, match: 1, interest: 2 }
+
+function scheduledRank(e: Entry): number {
+  return SCHEDULED_KIND_RANK[e.id.slice(6, e.id.indexOf(':', 6))] ?? 3
+}
+
+/**
+ * Chronological display order: `createdAt`, then — for entries stamped at
+ * the same second — scheduler payouts by the due day they pay for (audit
+ * D11: a catch-up stamps every payout with the run's own time, and ordering
+ * those by id alone put every allowance before every interest payment,
+ * whatever their due days), then by id.
+ */
 export function sortForDisplay(entries: Entry[]): Entry[] {
-  return [...entries].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  return [...entries].sort((a, b) => {
+    if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
+    const da = scheduledDueDay(a)
+    const db = scheduledDueDay(b)
+    if (da !== null && db !== null) {
+      if (da !== db) return da < db ? -1 : 1
+      const r = scheduledRank(a) - scheduledRank(b)
+      if (r !== 0) return r
+    }
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  })
 }
