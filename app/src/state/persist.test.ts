@@ -4,7 +4,7 @@ import type { Account, Entry } from '../domain/types'
 import { buildGrantPayload, buildRequestPayload } from '../wire/payloads'
 import { runSchedulers } from '../store/scheduler'
 import { emptyState, addEntry, recordGrantResult, recordRequestDecision, upsertRequest } from './state'
-import { clearState, loadState, saveState, type StorageLike } from './persist'
+import { clearState, loadState, quarantinedEntries, saveState, type StorageLike } from './persist'
 
 const ledgerAcct: Account = { id: 'a-ledger', child: 'sam', name: 'With Mum & Dad', currency: 'GBP', custody: 'ledger' }
 
@@ -552,5 +552,23 @@ describe('sanitiseState per-row guards (audit D13)', () => {
     expect(loaded.relays).toEqual(['wss://relay.example'])
     expect(loaded.ticks).toEqual([goodTick])
     expect(loaded.audits).toEqual([goodAudit])
+  })
+})
+
+describe('invalid entries are quarantined, not silently lost (review R8)', () => {
+  it('sets a failing entry aside under its own key, once, and keeps it out of state', () => {
+    const mem = makeFakeStorage()
+    const good = creditEntry({ id: 'ok', child: 'sam', createdAt: 1, author: 'guardian' }, ledgerAcct, 100)
+    const bad = { ...good, id: 'bad', legs: [{ account: 'a-ledger', currency: 'GBP', amountMinor: -5 }] } // a negative credit
+    mem.setItem('kinjar.state.v1', JSON.stringify({ ...emptyState(), entries: [good, bad] }))
+    expect(loadState(mem).entries.map((e) => e.id)).toEqual(['ok'])
+    expect(quarantinedEntries(mem)).toEqual([bad])
+    loadState(mem) // a second load does not duplicate it
+    expect(quarantinedEntries(mem)).toHaveLength(1)
+    clearState(mem) // "Start again" leaves nothing behind
+    expect(quarantinedEntries(mem)).toEqual([])
+  })
+  it('is empty when nothing was ever quarantined', () => {
+    expect(quarantinedEntries(makeFakeStorage())).toEqual([])
   })
 })

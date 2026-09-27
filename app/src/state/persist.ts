@@ -301,7 +301,7 @@ function sanitiseStoredRequest(x: unknown): StoredRequest | null {
 // see MAX_ISSUED_AT_SKEW_SECS's doc comment in sync/ingress.ts — so a
 // corrupted value there would fail closed in a confusing way rather than a
 // clean, obvious one).
-function sanitiseState(raw: Record<string, unknown>): AppState {
+function sanitiseState(raw: Record<string, unknown>, dropped: unknown[] = []): AppState {
   const empty = emptyState()
 
   const entries = Array.isArray(raw.entries)
@@ -310,6 +310,7 @@ function sanitiseState(raw: Record<string, unknown>): AppState {
           assertEntry(e as Entry)
           return true
         } catch {
+          dropped.push(e)
           return false
         }
       })
@@ -374,10 +375,48 @@ export function loadState(storage: StorageLike = defaultStorage()): AppState {
     if (raw === null) return emptyState()
     const parsed: unknown = JSON.parse(raw)
     if (!looksLikeAppState(parsed)) return emptyState()
-    return sanitiseState(parsed)
+    const dropped: unknown[] = []
+    const state = sanitiseState(parsed, dropped)
+    if (dropped.length > 0) quarantine(dropped, storage)
+    return state
   } catch {
     return emptyState()
   }
+}
+
+// Entries that fail `assertEntry` on load are not silently lost (review R8):
+// the next saveState would otherwise erase them for good. They are kept,
+// raw, under their own key, so they can be counted, shown and inspected.
+// Never folded into balances. Bounded; the newest rows win.
+const QUARANTINE_KEY = 'kinjar.quarantine.v1'
+export const MAX_QUARANTINED = 500
+
+function readQuarantine(storage: StorageLike): unknown[] {
+  try {
+    const raw = storage.getItem(QUARANTINE_KEY)
+    if (raw === null) return []
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function quarantine(rows: unknown[], storage: StorageLike): void {
+  try {
+    const existing = readQuarantine(storage)
+    const seen = new Set(existing.map((r) => JSON.stringify(r)))
+    const merged = [...existing, ...rows.filter((r) => !seen.has(JSON.stringify(r)))]
+    storage.setItem(QUARANTINE_KEY, JSON.stringify(merged.slice(-MAX_QUARANTINED)))
+  } catch {
+    // a full or blocked storage: nothing more can be done here
+  }
+}
+
+/** The ledger rows set aside on load because they failed validation
+ *  (review R8), raw. Total; never throws. */
+export function quarantinedEntries(storage: StorageLike = defaultStorage()): unknown[] {
+  return readQuarantine(storage)
 }
 
 /** Never throws (audit D7): a full or blocked storage (QuotaExceededError,
@@ -401,4 +440,5 @@ export function saveState(s: AppState, storage: StorageLike = defaultStorage()):
  *  a storage that throws is not this function's problem to report. */
 export function clearState(storage: StorageLike = defaultStorage()): void {
   storage.removeItem(STORAGE_KEY)
+  storage.removeItem(QUARANTINE_KEY)
 }
