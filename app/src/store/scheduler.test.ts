@@ -7,7 +7,7 @@ import { addEntry, emptyState } from '../state/state'
 import type { AppState } from '../state/types'
 import type { AllowanceConfig } from '../domain/allowance'
 import type { InterestConfig } from '../domain/interest'
-import { balances, creditEntry } from '../domain/ledger'
+import { balances, creditEntry, transferEntry } from '../domain/ledger'
 import { reanchorConfigs } from '../domain/reanchor'
 import { runSchedulers } from './scheduler'
 
@@ -401,5 +401,78 @@ describe('R1: an interest rate moved off 0 never back-pays past periods', () => 
     expect(runSchedulers(s, t(2026, 8, 22)).entries).toEqual([])
     // The next Friday pays once, at the new rate.
     expect(runSchedulers(s, t(2026, 8, 28)).entries.map((e) => e.legs[0]!.amountMinor)).toEqual([500])
+  })
+})
+
+describe('runSchedulers: deposit match (audit S1)', () => {
+  const account = { id: ACCOUNT_ID, child: CHILD, name: 'Pocket money', currency: 'GBP', custody: 'ledger' as const }
+  const box = { id: 'a-box', child: CHILD, name: 'Money box', currency: 'GBP', custody: 'physical' as const }
+  const t = (y: number, m: number, d: number, h = 8) => Date.UTC(y, m - 1, d, h) / 1000
+  const cfg: InterestConfig = {
+    child: CHILD, account: ACCOUNT_ID, rateBps: 100, cadence: 'weekly', day: 5, tz: 'Europe/London', startDay: '2026-08-07',
+    matchBps: 5000, matchCapMinor: 1000,
+  }
+  function withDocs(s: AppState, allowance: AllowanceConfig[] = []): AppState {
+    return {
+      ...s,
+      docs: {
+        ...s.docs,
+        accounts: { v: 1, issuedAt: 1, accounts: [account, box] },
+        allowance: { v: 1, issuedAt: 1, configs: allowance },
+        interest: { v: 1, issuedAt: 1, configs: [cfg] },
+      },
+    }
+  }
+
+  it('matches a gift in its window, capped, before the same day\'s interest', () => {
+    let s = withDocs(baseState())
+    s = addEntry(s, creditEntry({ id: 'gift', child: CHILD, createdAt: t(2026, 8, 10), author: 'guardian' }, account, 4000, 'gift'))
+    const { entries } = runSchedulers(s, t(2026, 8, 14))
+    expect(entries.map((e) => [e.id, e.legs[0]!.amountMinor])).toEqual([
+      ['sched:match:sam:a-ledger:2026-08-14', 1000], // 50% of £40 = £20, capped at £10
+      ['sched:interest:sam:a-ledger:2026-08-14', 50], // 1% of £50 (gift + match)
+    ])
+    expect(entries[0]!.category).toBe('match')
+    expect(entries[0]!.periodKey).toBe('2026-W33')
+  })
+
+  it('is idempotent: a second run after folding the first pays no second match', () => {
+    let s = withDocs(baseState())
+    s = addEntry(s, creditEntry({ id: 'gift', child: CHILD, createdAt: t(2026, 8, 10), author: 'guardian' }, account, 400))
+    for (const e of runSchedulers(s, t(2026, 8, 14)).entries) s = addEntry(s, e)
+    expect(runSchedulers(s, t(2026, 8, 14)).entries).toEqual([])
+    // The next week's window starts after 08-14: the same gift is never matched twice.
+    expect(runSchedulers(s, t(2026, 8, 21)).entries.filter((e) => e.category === 'match')).toEqual([])
+  })
+
+  it('does not match pocket money, transfers between own pots, or deposits before the schedule started', () => {
+    let s = withDocs(baseState(), [{ ...allowanceCfg, startDay: '2026-08-07' }])
+    s = addEntry(s, creditEntry({ id: 'early', child: CHILD, createdAt: t(2026, 8, 6), author: 'guardian' }, account, 1000))
+    s = addEntry(s, creditEntry({ id: 'boxcash', child: CHILD, createdAt: t(2026, 8, 9), author: 'guardian' }, box, 1000))
+    s = addEntry(s, transferEntry({ id: 'tx', child: CHILD, createdAt: t(2026, 8, 10), author: 'guardian' }, box, account, 1000))
+    const { entries } = runSchedulers(s, t(2026, 8, 14))
+    expect(entries.filter((e) => e.category === 'match')).toEqual([])
+    expect(entries.some((e) => e.category === 'allowance')).toBe(true)
+  })
+
+  it('catch-up pays each missed week\'s match on that week\'s own deposits', () => {
+    let s = withDocs(baseState())
+    s = addEntry(s, creditEntry({ id: 'w1', child: CHILD, createdAt: t(2026, 8, 12), author: 'guardian' }, account, 200))
+    s = addEntry(s, creditEntry({ id: 'w2', child: CHILD, createdAt: t(2026, 8, 19), author: 'guardian' }, account, 600))
+    const matches = runSchedulers(s, t(2026, 8, 28)).entries.filter((e) => e.category === 'match')
+    expect(matches.map((e) => [e.periodKey, e.legs[0]!.amountMinor])).toEqual([
+      ['2026-W33', 100],
+      ['2026-W34', 300],
+    ])
+  })
+
+  it('a match-terms edit re-anchors, so deposits before the edit are never matched at the new terms', () => {
+    let s = withDocs(baseState())
+    s = { ...s, docs: { ...s.docs, interest: { v: 1, issuedAt: 1, configs: [{ ...cfg, matchBps: undefined, matchCapMinor: undefined }] } } }
+    s = addEntry(s, creditEntry({ id: 'gift', child: CHILD, createdAt: t(2026, 8, 10), author: 'guardian' }, account, 1000))
+    const prev = s.docs.interest.configs
+    const edited = reanchorConfigs(prev, [{ ...prev[0]!, matchBps: 5000 }], t(2026, 8, 12))
+    s = { ...s, docs: { ...s.docs, interest: { v: 1, issuedAt: 2, configs: edited } } }
+    expect(runSchedulers(s, t(2026, 8, 14)).entries.filter((e) => e.category === 'match')).toEqual([])
   })
 })

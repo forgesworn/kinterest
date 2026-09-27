@@ -10,6 +10,7 @@ import {
   clearPin,
   isValidPinFormat,
   loadBackoffState,
+  maxBackoffState,
   nextLockedUntil,
   pinIsSet,
   saveBackoffState,
@@ -264,6 +265,117 @@ describe('nextLockedUntil / canAttempt', () => {
     expect(canAttempt(NaN, 1_000)).toBe(true)
     expect(canAttempt(Infinity, 1_000)).toBe(true)
     expect(() => canAttempt(NaN, 1_000)).not.toThrow()
+  })
+})
+
+describe('maxBackoffState', () => {
+  it('takes the more restrictive field from each side', () => {
+    const a = { consecutiveFailures: 2, lockedUntilSec: 1_000 }
+    const b = { consecutiveFailures: 5, lockedUntilSec: 100 }
+    expect(maxBackoffState(a, b)).toEqual({ consecutiveFailures: 5, lockedUntilSec: 1_000 })
+  })
+
+  it('is a no-op merging with the zero state', () => {
+    const a = { consecutiveFailures: 3, lockedUntilSec: 500 }
+    expect(maxBackoffState(a, { consecutiveFailures: 0, lockedUntilSec: 0 })).toEqual(a)
+  })
+})
+
+// ============================================================================
+// unlockWithPin's embedded backoff hardening — the attempt counter is also
+// carried in the wrap blob itself (a second, IndexedDB-backed storage
+// location entirely independent of the `localStorage` ChildLock.tsx owns),
+// and the two are merged by taking the max of each field. The point: a
+// caller who clears ONE storage (the trivial `localStorage.clear()` any
+// script on the page can do) must not thereby reset a live lockout.
+// ============================================================================
+
+describe('unlockWithPin — embedded backoff hardening', () => {
+  it('escalates and eventually refuses even correct PINs while locked out, using only the embedded counter', async () => {
+    await setPin('123456', SK)
+    const storage = makeFakeStorage() // localStorage half stays empty throughout
+
+    // Two failures where the table only starts padding real delay (index 2).
+    await unlockWithPin('000000', { storage, nowSec: 1_000 })
+    await unlockWithPin('000000', { storage, nowSec: 1_000 })
+    // Third failure crosses into a real backoff window (5s at index 2).
+    await unlockWithPin('000000', { storage, nowSec: 1_000 })
+
+    // Still within the lockout window: even the CORRECT pin is refused.
+    expect(await unlockWithPin('123456', { storage, nowSec: 1_002 })).toBeNull()
+
+    // Past the window: the correct PIN now succeeds.
+    expect(await unlockWithPin('123456', { storage, nowSec: 1_010 })).toEqual(SK)
+  })
+
+  it('clearing localStorage alone does not reset a lockout the embedded counter still remembers', async () => {
+    await setPin('123456', SK)
+    let storage = makeFakeStorage()
+
+    await unlockWithPin('000000', { storage, nowSec: 2_000 })
+    await unlockWithPin('000000', { storage, nowSec: 2_000 })
+    await unlockWithPin('000000', { storage, nowSec: 2_000 }) // now locked out for 5s
+
+    // Simulate an attacker clearing localStorage (a fresh, empty fake).
+    storage = makeFakeStorage()
+
+    // The embedded (vault-side) counter alone still enforces the lockout.
+    expect(await unlockWithPin('123456', { storage, nowSec: 2_001 })).toBeNull()
+    expect(await unlockWithPin('123456', { storage, nowSec: 2_010 })).toEqual(SK)
+  })
+
+  it('clearing the embedded counter alone (a fresh setPin) does not help once localStorage is ahead', async () => {
+    await setPin('123456', SK)
+    const storage = makeFakeStorage()
+    saveBackoffState(storage, { consecutiveFailures: 3, lockedUntilSec: 3_050 })
+
+    // Embedded counter is still zero (fresh setPin above), but localStorage's
+    // half of the merge alone is enough to keep the lockout in force.
+    expect(await unlockWithPin('123456', { storage, nowSec: 3_000 })).toBeNull()
+    expect(await unlockWithPin('123456', { storage, nowSec: 3_050 })).toEqual(SK)
+  })
+
+  it('resets the embedded counter back to zero on a successful unlock', async () => {
+    await setPin('123456', SK)
+    const storage = makeFakeStorage()
+    await unlockWithPin('000000', { storage, nowSec: 4_000 })
+    await unlockWithPin('000000', { storage, nowSec: 4_000 })
+    await unlockWithPin('000000', { storage, nowSec: 4_000 })
+    await unlockWithPin('123456', { storage, nowSec: 4_010 }) // succeeds, resets embedded state
+
+    // A fresh wrong-PIN run afterwards starts the escalation table over from
+    // scratch (0 -> 0s, 1 -> 0s), rather than continuing where it left off.
+    const secondStorage = makeFakeStorage()
+    await unlockWithPin('000000', { storage: secondStorage, nowSec: 5_000 })
+    expect(await unlockWithPin('123456', { storage: secondStorage, nowSec: 5_000 })).toEqual(SK)
+  })
+
+  it('still parses a legacy 4-field blob (no embedded counter) as an implicit zero', async () => {
+    await setPin('123456', SK)
+    // Reach past the public API to rewrite the stored blob in the OLD
+    // (pre-hardening) 4-field shape, simulating a device that paired before
+    // this change landed.
+    const req = indexedDB.open('kin-jar-key-vault', 1)
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    const stored = await new Promise<string>((resolve, reject) => {
+      const r = db.transaction('secrets', 'readonly').objectStore('secrets').get('child-pin-wrap')
+      r.onsuccess = () => resolve(r.result as string)
+      r.onerror = () => reject(r.error)
+    })
+    const legacy = stored.split(':').slice(0, 4).join(':')
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('secrets', 'readwrite')
+      tx.objectStore('secrets').put(legacy, 'child-pin-wrap')
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    db.close()
+
+    const storage = makeFakeStorage()
+    expect(await unlockWithPin('123456', { storage, nowSec: 6_000 })).toEqual(SK)
   })
 })
 

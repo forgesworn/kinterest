@@ -73,6 +73,7 @@ function allowanceTitle(entry: Entry): string {
 const CATEGORY_CHILD_TITLES: Record<string, (entry: Entry) => string> = {
   allowance: allowanceTitle,
   interest: () => 'Interest day!',
+  match: () => 'Your parent matched the money you put in',
   spend: spendTitle,
 }
 

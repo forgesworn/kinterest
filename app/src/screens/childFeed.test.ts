@@ -91,6 +91,11 @@ describe('buildChildFeed — every entry kind', () => {
 })
 
 describe('buildChildFeed — category precedence and copy', () => {
+  it('a deposit match reads as the parent matching what the child put in (audit S1)', () => {
+    const e = creditEntry(meta('m1'), savings, 250, 'match')
+    expect(firstRow([e]).title).toBe('Your parent matched the money you put in')
+  })
+
   it('allowance category, guardian-authored: mentions the parent, never a raw period key/day', () => {
     const cfg: AllowanceConfig = { child: CHILD, account: spending.id, amountMinor: 500, cadence: 'weekly', day: 5, tz: 'UTC', startDay: '2026-08-01' }
     const e = allowanceEntry(cfg, spending, '2026-08-07', { id: 'al1', child: CHILD, createdAt: AT, author: 'guardian' })

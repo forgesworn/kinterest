@@ -88,6 +88,48 @@ function fromB64(s: string): Uint8Array {
   return out
 }
 
+/** The wrap blob's trailing pair of fields carrying the backoff counter
+ *  embedded alongside the sealed key — see "second storage location" below.
+ *  A blob written before this hardening landed has only the first four
+ *  colon-separated fields (`SEAL_PREFIX:salt:iv:ct`); that shape still
+ *  parses, just with an implicit zero counter, so an existing paired device
+ *  upgrading mid-session never sees a spurious lockout. */
+interface ParsedWrapBlob {
+  salt: Uint8Array
+  iv: Uint8Array
+  ct: Uint8Array
+  failures: number
+  lockedUntilSec: number
+}
+
+function encodeWrapBlob(salt: Uint8Array, iv: Uint8Array, ct: Uint8Array, failures: number, lockedUntilSec: number): string {
+  return `${SEAL_PREFIX}:${toB64(salt)}:${toB64(iv)}:${toB64(ct)}:${failures}:${lockedUntilSec}`
+}
+
+/** Total against both shapes (4-field legacy, 6-field with an embedded
+ *  counter) and against garbage — `null` on anything else, same "can't tell
+ *  wrong PIN from corruption" collapse `unlockWithPin` itself relies on. */
+function parseWrapBlob(text: string): ParsedWrapBlob | null {
+  const parts = text.split(':')
+  if ((parts.length !== 4 && parts.length !== 6) || parts[0] !== SEAL_PREFIX) return null
+  try {
+    const salt = fromB64(parts[1]!)
+    const iv = fromB64(parts[2]!)
+    const ct = fromB64(parts[3]!)
+    let failures = 0
+    let lockedUntilSec = 0
+    if (parts.length === 6) {
+      const f = Number(parts[4])
+      const l = Number(parts[5])
+      failures = Number.isFinite(f) && f >= 0 ? Math.trunc(f) : 0
+      lockedUntilSec = Number.isFinite(l) && l >= 0 ? Math.trunc(l) : 0
+    }
+    return { salt, iv, ct, failures, lockedUntilSec }
+  } catch {
+    return null
+  }
+}
+
 /** PBKDF2-SHA-256 (600,000 iterations) -> non-extractable AES-256-GCM
  *  `CryptoKey` — identical algorithm/iteration-count to keystore-kit's
  *  `deriveAesKey`. */
@@ -133,7 +175,9 @@ export async function setPin(pin: string, sk: Uint8Array): Promise<boolean> {
   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH))
   const key = await deriveAesKey(pin, salt)
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: toBuffer(iv) }, key, toBuffer(sk)))
-  const blob = `${SEAL_PREFIX}:${toB64(salt)}:${toB64(iv)}:${toB64(ct)}`
+  // Freshly-set PIN starts with a zeroed embedded backoff counter — see
+  // `unlockWithPin`'s doc comment for what this field is for.
+  const blob = encodeWrapBlob(salt, iv, ct, 0, 0)
   await vaultStore(CHILD_PIN_WRAP_NAME, new TextEncoder().encode(blob))
   await vaultDelete(CHILD_SK_NAME)
   return true
@@ -172,33 +216,109 @@ export async function clearPin(storage?: StorageLike): Promise<void> {
   }
 }
 
+export interface UnlockWithPinOpts {
+  /** Where the UI-visible half of the backoff counter lives — `localStorage`
+   *  in production (ChildLock.tsx's own `loadBackoffState`/`saveBackoffState`
+   *  calls), an injectable fake in tests. Defaults to the same
+   *  `defaultBackoffStorage()` fallback `clearPin` already uses below. */
+  storage?: StorageLike
+  /** Injected clock — "time is a parameter", same seam `nextLockedUntil` and
+   *  `canAttempt` already use — so this stays deterministic under test.
+   *  Defaults to the real clock. */
+  nowSec?: number
+}
+
 /**
  * Recovers `sk` from `pin`, or `null` on any failure — no PIN ever set,
- * wrong PIN, or a corrupt/tampered blob all collapse to the SAME `null`,
- * deliberately: mirrors identity/vault.ts's own `vaultLoad` and keystore-kit
- * itself ("Tampering is detected, not silently accepted... turns that
- * failure into a null return... so callers can't tell 'wrong PIN' from
- * 'corrupted blob'"). Writes NOTHING durable on success or failure — see
- * this module's header; the caller is responsible for holding the returned
- * `sk` in memory only (store.tsx's `unlockChildSk`).
+ * wrong PIN, a corrupt/tampered blob, or a live backoff lockout all collapse
+ * to the SAME `null`, deliberately: mirrors identity/vault.ts's own
+ * `vaultLoad` and keystore-kit itself ("Tampering is detected, not silently
+ * accepted... turns that failure into a null return... so callers can't
+ * tell 'wrong PIN' from 'corrupted blob'") — a live lockout is just one more
+ * member of that same collapsed set. Writes NOTHING durable *about the key
+ * itself* on success or failure — see this module's header; the caller is
+ * responsible for holding the returned `sk` in memory only (store.tsx's
+ * `unlockChildSk`). It DOES write the backoff counter embedded in the wrap
+ * blob (see below) — that write carries no secret material, only two plain
+ * integers, so it doesn't weaken the "sk is never persisted" guarantee.
+ *
+ * BACKOFF HARDENING: ChildLock.tsx's own backoff state
+ * (`loadBackoffState`/`saveBackoffState`, `localStorage`) is trivially
+ * resettable by anyone with script access on the page — `localStorage`
+ * offers no protection at all against the very attacker this soft backoff
+ * exists to slow down. This function additionally carries a backoff counter
+ * embedded as two plain (unencrypted — see `parseWrapBlob`) trailing fields
+ * on the SAME durable IndexedDB record `unlockWithPin` already has to load
+ * to attempt decryption at all (`identity/vault.ts`, a second storage
+ * location entirely independent of `localStorage`). Every call merges the
+ * two — `localStorage`'s count and the embedded one — by taking the MAX of
+ * each field, so clearing either one alone resets nothing: the more
+ * restrictive of the two always wins, and a lockout can only be shortened by
+ * actually waiting it out.
+ *
+ * RESIDUAL LIMIT (document, don't oversell): both storage locations live on
+ * the SAME origin, and both are ordinary script-writable browser storage —
+ * an attacker with full JS execution on the page (the same console access
+ * this whole backoff is a soft deterrent against, not a hard boundary) can
+ * still clear BOTH `localStorage` and this IndexedDB record in the same
+ * session, or simply call `unlockWithPin` in a tight loop with no UI
+ * involved at all, since nothing here rate-limits the FUNCTION CALL itself
+ * beyond the merged counter's own escalation table. Splitting the counter
+ * across two storages raises the bar from "clear one key" to "clear two
+ * independent records in two different storage engines", it does not make
+ * the backoff tamper-proof — see this module's header and SECURITY.md for
+ * the same limit stated plainly for a non-technical reader.
  */
-export async function unlockWithPin(pin: string): Promise<Uint8Array | null> {
+export async function unlockWithPin(pin: string, opts?: UnlockWithPinOpts): Promise<Uint8Array | null> {
+  const storage = opts?.storage ?? defaultBackoffStorage()
+  const nowSec = opts?.nowSec ?? Math.floor(Date.now() / 1000)
   const stored = await vaultLoad(CHILD_PIN_WRAP_NAME)
   if (stored === null) return null
   const text = new TextDecoder().decode(stored)
-  const parts = text.split(':')
-  if (parts.length !== 4 || parts[0] !== SEAL_PREFIX) return null
+  const parsed = parseWrapBlob(text)
+  if (parsed === null) return null
+
+  const merged = maxBackoffState(loadBackoffState(storage), {
+    consecutiveFailures: parsed.failures,
+    lockedUntilSec: parsed.lockedUntilSec,
+  })
+  if (!canAttempt(merged.lockedUntilSec, nowSec)) return null
+
   try {
-    const salt = fromB64(parts[1]!)
-    const iv = fromB64(parts[2]!)
-    const ct = fromB64(parts[3]!)
-    const key = await deriveAesKey(pin, salt)
-    const sk = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: toBuffer(iv) }, key, toBuffer(ct)))
+    const key = await deriveAesKey(pin, parsed.salt)
+    const sk = new Uint8Array(
+      await crypto.subtle.decrypt({ name: 'AES-GCM', iv: toBuffer(parsed.iv) }, key, toBuffer(parsed.ct)),
+    )
+    // Success — reset the embedded counter so it can't outlive the failures
+    // that earned it (mirrors `clearBackoffState`'s rule for the
+    // `localStorage` half, which the caller, e.g. ChildLock.tsx, still owns
+    // clearing itself). Best-effort: a failed rewrite here is no worse than
+    // this hardening not existing at all.
+    await rewriteEmbeddedBackoff(parsed, 0, 0)
     return sk
   } catch {
     // Wrong PIN (GCM tag mismatch) or a tampered/corrupt blob — same `null`
-    // either way, see this function's own doc comment.
+    // either way, see this function's own doc comment. Escalate the embedded
+    // counter from the MERGED count, not just the embedded one, so a caller
+    // who only ever looks at localStorage can't under-count what this
+    // function itself now enforces.
+    const failures = merged.consecutiveFailures + 1
+    await rewriteEmbeddedBackoff(parsed, failures, nextLockedUntil(failures, nowSec))
     return null
+  }
+}
+
+/** Rewrites the wrap blob's trailing counter fields in place, keeping the
+ *  same salt/iv/ciphertext — no PIN is needed for this, since those fields
+ *  are plain integers, not part of the sealed secret. Best-effort: swallows
+ *  any failure (a full IndexedDB, a closed tab mid-write), matching every
+ *  other "durable but non-critical" write in this module. */
+async function rewriteEmbeddedBackoff(parsed: ParsedWrapBlob, failures: number, lockedUntilSec: number): Promise<void> {
+  try {
+    const blob = encodeWrapBlob(parsed.salt, parsed.iv, parsed.ct, failures, lockedUntilSec)
+    await vaultStore(CHILD_PIN_WRAP_NAME, new TextEncoder().encode(blob))
+  } catch {
+    // best-effort — see this function's own doc comment.
   }
 }
 
@@ -232,6 +352,18 @@ export interface BackoffState {
 }
 
 const ZERO_BACKOFF_STATE: BackoffState = { consecutiveFailures: 0, lockedUntilSec: 0 }
+
+/** The more restrictive of two backoff states, field by field — the merge
+ *  rule `unlockWithPin` uses to combine `localStorage`'s counter with the
+ *  one embedded in the wrap blob, so that clearing either storage location
+ *  alone can never make a live lockout look less advanced than it is. Pure,
+ *  exported so it's directly unit-testable without going through crypto. */
+export function maxBackoffState(a: BackoffState, b: BackoffState): BackoffState {
+  return {
+    consecutiveFailures: Math.max(a.consecutiveFailures, b.consecutiveFailures),
+    lockedUntilSec: Math.max(a.lockedUntilSec, b.lockedUntilSec),
+  }
+}
 
 /** Reads the persisted backoff state, or the zero state if nothing is
  *  stored, or if what IS stored doesn't parse as one — total against a

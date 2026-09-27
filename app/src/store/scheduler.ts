@@ -31,7 +31,7 @@
 // carries the shape the approvals inbox already knows how to render/act on.
 
 import { allowanceDue, allowanceEntry, periodKeyOf, type AllowanceConfig } from '../domain/allowance'
-import { balanceAsOf, interestDue, interestEntry } from '../domain/interest'
+import { balanceAsOf, depositsInWindow, interestDue, interestEntry, matchDue, matchEntry, matchWindowStart } from '../domain/interest'
 import type { Account, Entry } from '../domain/types'
 import type { RequestPayload } from '../wire/payloads'
 import type { AppState } from '../state/types'
@@ -94,7 +94,7 @@ function gatedClaim(cfg: AllowanceConfig, dueDay: string, periodKey: string, now
 // flagged as a drift risk by Task 3's review).
 
 /**
- * Computes every allowance/interest entry currently due across every child
+ * Computes every allowance/interest/deposit-match entry currently due across every child
  * and account, plus any gated allowance periods as claims. `entries` is
  * ready to fold via `state/state.ts#addEntry` and send as-is; `claims` are
  * informational only (see module header) — Task 2 does not itself persist
@@ -161,16 +161,30 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
     try {
       const account = accountFor(state, cfg.account)
       if (account === undefined) continue
-      const dueDays = interestDue(cfg, [...state.entries, ...entries], nowSec)
+      const interestDays = new Set(interestDue(cfg, [...state.entries, ...entries], nowSec))
+      const matchDays = new Set(matchDue(cfg, [...state.entries, ...entries], nowSec))
+      const dueDays = [...new Set([...interestDays, ...matchDays])].sort()
       if (dueDays.length === 0) continue
 
       for (const dueDay of dueDays) {
+        // The deposit match (audit S1) for a due day is queued BEFORE that
+        // day's interest, so it counts towards the balance the interest is
+        // computed on — the same as an allowance paid on the same day. It
+        // covers deposits made since the previous due day
+        // (domain/interest.ts#matchWindowStart), capped per period.
+        if (matchDays.has(dueDay)) {
+          const deposited = depositsInWindow([...state.entries, ...entries], account.id, matchWindowStart(cfg, dueDay), dueDay, cfg.tz)
+          const meta = { id: schedulerEntryId(cfg.child, cfg.account, dueDay, 'match'), child: cfg.child, createdAt: nowSec, author: 'guardian' as const }
+          const match = matchEntry(cfg, account, dueDay, deposited, meta)
+          if (match !== null) entries.push(match)
+        }
+        if (!interestDays.has(dueDay)) continue
         // Interest is computed on the balance AS OF this period's due day
         // (audit D2), not today's: a deposit made later never earns
         // back-interest, and a missed-weeks catch-up compounds in due-day
         // order. `entries` includes everything this pass already queued —
-        // allowance payouts and earlier interest periods — each counted as
-        // of its own due day (domain/interest.ts#effectiveDay).
+        // allowance payouts, matches and earlier interest periods — each
+        // counted as of its own due day (domain/interest.ts#effectiveDay).
         const balanceMinor = balanceAsOf([...state.entries, ...entries], account.id, dueDay, cfg.tz)
         const meta = { id: schedulerEntryId(cfg.child, cfg.account, dueDay, 'interest'), child: cfg.child, createdAt: nowSec, author: 'guardian' as const }
         const entry = interestEntry(cfg, account, dueDay, balanceMinor, meta)
@@ -193,6 +207,6 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
  *  `newId()` (domain/id.ts): that mints fresh randomness every call, which
  *  is correct for anything a human action originates but wrong for a
  *  scheduler expected to be idempotent by construction. */
-function schedulerEntryId(child: string, account: string, dueDay: string, kind: 'allowance' | 'interest'): string {
+function schedulerEntryId(child: string, account: string, dueDay: string, kind: 'allowance' | 'interest' | 'match'): string {
   return `sched:${kind}:${child}:${account}:${dueDay}`
 }

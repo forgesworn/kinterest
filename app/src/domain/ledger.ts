@@ -169,6 +169,19 @@ export function reverseEntry(original: Entry, meta: EntryMeta): Entry {
   return { ...base(meta, original.kind, legs), reverses: original.id, category: original.category }
 }
 
+// Scheduler-created payouts carry a deterministic id ending in the due day
+// they pay for (store/scheduler.ts#schedulerEntryId:
+// `sched:<kind>:<child>:<account>:<YYYY-MM-DD>`).
+const SCHEDULED_ID = /^sched:(?:allowance|interest|match):.+:(\d{4}-\d{2}-\d{2})$/
+
+/** The due day a guardian-authored scheduler payout pays for, or null for
+ *  any other entry. */
+export function scheduledDueDay(e: Pick<Entry, 'id' | 'author'>): string | null {
+  if (e.author !== 'guardian') return null
+  const m = SCHEDULED_ID.exec(e.id)
+  return m ? m[1]! : null
+}
+
 export function sortForDisplay(entries: Entry[]): Entry[] {
   return [...entries].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 }

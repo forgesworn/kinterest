@@ -1,6 +1,6 @@
 import { assertMinor, assertPositiveMinor } from './money'
-import { dayKey, dueDays, isoWeekKey, monthKeyOf, periodDaysFor } from './period'
-import type { EntryMeta } from './ledger'
+import { addDays, dayKey, dueDays, isoWeekKey, monthKeyOf, periodDaysFor } from './period'
+import { scheduledDueDay, type EntryMeta } from './ledger'
 import type { Account, Entry } from './types'
 
 export interface InterestConfig {
@@ -29,9 +29,12 @@ export function interestMinor(balanceMinor: number, rateBps: number): number {
   return Math.max(rounded, 1)
 }
 
-// matchMinor is a helper only: the app layer computes the match and posts it
-// as its own separate credit entry (so it shows on the ledger distinctly
-// from the interest payment itself). It is not wired into interestEntry.
+// The deposit match (v1 §Interest: "every £1 you deposit, I add 50p",
+// capped per period). `matchMinor` is the arithmetic; the scheduler posts
+// the result as its own `credit` entry, category `match` (matchEntry below),
+// so it shows on the ledger distinctly from the interest payment itself.
+// Rounded half-up like interest (§Interest's rounding rule), but with no
+// 1-minor-unit minimum: that minimum is specific to the interest payout.
 export function matchMinor(depositedMinor: number, matchBps: number, capMinor?: number): number {
   assertMinor(depositedMinor)
   if (capMinor !== undefined) {
@@ -104,16 +107,10 @@ export function interestDue(cfg: InterestConfig, existing: Entry[], nowSec: numb
 // <YYYY-MM-DD>`). Their `createdAt` is whenever the guardian's app happened
 // to run the catch-up, so for "balance as of a due day" they count as of
 // the due day they pay for — which is what makes catch-up compound in
-// due-day order and interleave allowance and interest correctly.
-const SCHEDULED_ID = /^sched:(?:allowance|interest):.+:(\d{4}-\d{2}-\d{2})$/
-
+// due-day order and interleave allowance, match and interest correctly.
 /** The day an entry counts from for as-of-due-day balances, in `tz`. */
 export function effectiveDay(e: Entry, tz: string): string {
-  if (e.author === 'guardian') {
-    const m = SCHEDULED_ID.exec(e.id)
-    if (m) return m[1]!
-  }
-  return dayKey(e.createdAt, tz)
+  return scheduledDueDay(e) ?? dayKey(e.createdAt, tz)
 }
 
 /**
@@ -156,5 +153,145 @@ export function interestEntry(
     periodKey: periodKeyOf(cfg, dueDay),
     ...meta,
     note: meta.note ?? `Interest — ${dueDay}`,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Deposit match (audit S1)
+// ---------------------------------------------------------------------------
+
+export const MATCH_CATEGORY = 'match'
+
+// Credits that are NOT the child adding money: scheduled pocket money,
+// interest, a previous match, and a spend coming back (a refund).
+const NON_DEPOSIT_CATEGORIES: ReadonlySet<string> = new Set(['allowance', 'interest', MATCH_CATEGORY, 'spend'])
+
+/**
+ * What counts as a "deposit" for the match — the conservative reading of
+ * v1 §Interest: money the child adds to, or is given into, the matched
+ * account. That is a `credit` leg on `accountId` (a gift, birthday money, a
+ * guardian's "Add money"), excluding:
+ *   - pocket money, interest, an earlier match and spend refunds (by
+ *     category — NON_DEPOSIT_CATEGORIES);
+ *   - transfers and exchanges between the child's own accounts (moving
+ *     money between pots adds nothing new; matching it would pay for
+ *     shuttling money back and forth);
+ *   - audit adjustments, debits, reversal entries, and any credit that has
+ *     itself been reversed (`reversedIds`).
+ * Returns the positive amount deposited on `accountId`, or 0.
+ */
+export function depositMinor(e: Entry, accountId: string, reversedIds: ReadonlySet<string>): number {
+  if (e.kind !== 'credit' || e.reverses !== undefined || reversedIds.has(e.id)) return 0
+  if (e.category !== undefined && NON_DEPOSIT_CATEGORIES.has(e.category)) return 0
+  let sum = 0
+  for (const l of e.legs) if (l.account === accountId && l.amountMinor > 0) sum += l.amountMinor
+  return sum
+}
+
+/** The exclusive lower bound of the deposit window a match on `dueDay`
+ *  covers: the schedule's previous due day, or `cfg.startDay` if that is
+ *  later (a deposit made before the schedule — or before a re-anchoring
+ *  edit — is never matched). Every deposit therefore falls into exactly one
+ *  window: the one of the first due day on or after it. */
+export function matchWindowStart(cfg: Pick<InterestConfig, 'cadence' | 'day' | 'startDay'>, dueDay: string): string {
+  const earlier = dueDays({ cadence: cfg.cadence, day: cfg.day, fromExclusive: addDays(dueDay, -32), toInclusive: addDays(dueDay, -1) })
+  const prev = earlier[earlier.length - 1] ?? addDays(dueDay, -32)
+  return prev >= cfg.startDay ? prev : cfg.startDay
+}
+
+/** Total deposits on `accountId` whose effective day (in `tz`) is in
+ *  (`fromExclusive`, `toInclusive`]. Pure; integer sum, overflow-checked. */
+export function depositsInWindow(
+  entries: readonly Entry[],
+  accountId: string,
+  fromExclusive: string,
+  toInclusive: string,
+  tz: string,
+): number {
+  const reversedIds = new Set(entries.map((e) => e.reverses).filter((r): r is string => r !== undefined))
+  let sum = 0
+  for (const e of entries) {
+    const amount = depositMinor(e, accountId, reversedIds)
+    if (amount === 0) continue
+    const day = effectiveDay(e, tz)
+    if (day > fromExclusive && day <= toInclusive) sum += amount
+  }
+  assertMinor(sum)
+  return sum
+}
+
+function isMatchPayout(e: Entry, accountId: string, reversedIds: ReadonlySet<string>): boolean {
+  return (
+    e.kind === 'credit' &&
+    e.category === MATCH_CATEGORY &&
+    e.periodKey !== undefined &&
+    e.reverses === undefined &&
+    !reversedIds.has(e.id) &&
+    e.legs.some((l) => l.account === accountId)
+  )
+}
+
+/**
+ * The due days whose deposit match `cfg` still owes, oldest first (`nowSec`
+ * is unix SECONDS). Empty when the match is off (`matchBps` unset or ≤ 0) or
+ * the config is paused. Idempotent by periodKey, like `interestDue`.
+ *
+ * Bounded the same way as `interestDue` (review R1): a period is closed
+ * once a later match has been paid, or once interest has been paid for a
+ * LATER period (the scheduler pays a period's match and interest in the
+ * same pass, so an interest payout proves the match for every earlier
+ * period was already evaluated). A period whose match came to 0 mints no
+ * entry and would otherwise stay open for ever.
+ */
+export function matchDue(cfg: InterestConfig, existing: Entry[], nowSec: number): string[] {
+  if (cfg.paused) return []
+  if (cfg.matchBps === undefined || !(cfg.matchBps > 0)) return []
+  const today = dayKey(nowSec, cfg.tz)
+  const reversedIds = new Set(existing.map((e) => e.reverses).filter((r): r is string => r !== undefined))
+  const matches = existing.filter((e) => isMatchPayout(e, cfg.account, reversedIds))
+  let fromExclusive = cfg.startDay
+  for (const e of matches) {
+    const days = periodDaysFor(e.periodKey as string, cfg.cadence)
+    if (days === null || days.length === 0) continue
+    const lastDay = days[days.length - 1]!
+    if (lastDay > fromExclusive) fromExclusive = lastDay
+  }
+  for (const e of existing) {
+    if (e.kind !== 'interest' || !e.periodKey || reversedIds.has(e.id) || !e.legs.some((l) => l.account === cfg.account)) continue
+    const days = periodDaysFor(e.periodKey, cfg.cadence)
+    if (days === null || days.length === 0) continue
+    const beforeFirst = addDays(days[0]!, -1)
+    if (beforeFirst > fromExclusive) fromExclusive = beforeFirst
+  }
+  const due = dueDays({ cadence: cfg.cadence, day: cfg.day, fromExclusive, toInclusive: today })
+  const paid = new Set(matches.map((e) => e.periodKey as string))
+  return due.filter((d) => !paid.has(periodKeyOf(cfg, d)))
+}
+
+/** The match credit for `dueDay`, or null when it comes to 0 (no deposits
+ *  in the window, or the match is off). `depositedMinor` is the window's
+ *  total from `depositsInWindow`. */
+export function matchEntry(
+  cfg: InterestConfig,
+  account: Account,
+  dueDay: string,
+  depositedMinor: number,
+  meta: EntryMeta,
+): Entry | null {
+  if (account.id !== cfg.account)
+    throw new RangeError(`match is configured for account ${cfg.account}, got ${account.id}`)
+  if (account.child !== meta.child)
+    throw new RangeError(`account ${account.id} belongs to child ${account.child}, not ${meta.child}`)
+  const amountMinor = matchMinor(depositedMinor, cfg.matchBps ?? 0, cfg.matchCapMinor)
+  if (amountMinor === 0) return null
+  assertPositiveMinor(amountMinor)
+  return {
+    v: 1,
+    kind: 'credit',
+    legs: [{ account: account.id, currency: account.currency, amountMinor }],
+    category: MATCH_CATEGORY,
+    periodKey: periodKeyOf(cfg, dueDay),
+    ...meta,
+    note: meta.note ?? `Deposit match — ${dueDay}`,
   }
 }

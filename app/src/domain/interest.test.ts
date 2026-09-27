@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { Account } from './types'
-import { interestMinor, matchMinor, project, interestDue, interestEntry, balanceAsOf, effectiveDay, type InterestConfig } from './interest'
-import { reverseEntry } from './ledger'
+import { interestMinor, matchMinor, project, interestDue, interestEntry, balanceAsOf, effectiveDay, depositMinor, depositsInWindow, matchDue, matchEntry, matchWindowStart, type InterestConfig } from './interest'
+import { creditEntry, reverseEntry, transferEntry } from './ledger'
 
 describe('interestMinor', () => {
   it('computes basis points on the balance', () => {
@@ -151,5 +151,76 @@ describe('balanceAsOf / effectiveDay (audit D2)', () => {
     const forged = { ...base, id: 'sched:allowance:c:acc:2026-09-04', author: 'child' as const }
     expect(effectiveDay(sched, 'UTC')).toBe('2026-09-04')
     expect(effectiveDay(forged, 'UTC')).toBe('2026-09-20')
+  })
+})
+
+describe('deposit match (audit S1)', () => {
+  const acct: Account = { id: 'L', child: 'kid', name: 'With Mum & Dad', currency: 'GBP', custody: 'ledger' }
+  const box: Account = { id: 'B', child: 'kid', name: 'Money box', currency: 'GBP', custody: 'physical' }
+  const cfg: InterestConfig = {
+    child: 'kid', account: 'L', rateBps: 0, cadence: 'weekly', day: 5, tz: 'Europe/London', startDay: '2026-08-01',
+    matchBps: 5000, matchCapMinor: 300,
+  }
+  const at = (d: number, h = 10) => Date.UTC(2026, 7, d, h) / 1000
+  const meta = (id: string, d: number) => ({ id, child: 'kid', createdAt: at(d), author: 'guardian' as const })
+
+  it('counts credits given to the child, but not allowance, interest, match, spend refunds, transfers or adjustments', () => {
+    const none = new Set<string>()
+    expect(depositMinor(creditEntry(meta('g', 3), acct, 1000, 'gift'), 'L', none)).toBe(1000)
+    expect(depositMinor(creditEntry(meta('m', 3), acct, 1000), 'L', none)).toBe(1000)
+    expect(depositMinor(creditEntry(meta('a', 3), acct, 1000, 'allowance'), 'L', none)).toBe(0)
+    expect(depositMinor(creditEntry(meta('i', 3), acct, 1000, 'interest'), 'L', none)).toBe(0)
+    expect(depositMinor(creditEntry(meta('x', 3), acct, 1000, 'match'), 'L', none)).toBe(0)
+    expect(depositMinor(creditEntry(meta('s', 3), acct, 1000, 'spend'), 'L', none)).toBe(0)
+    expect(depositMinor(transferEntry(meta('t', 3), box, acct, 1000), 'L', none)).toBe(0)
+    expect(depositMinor(creditEntry(meta('o', 3), box, 1000), 'L', none)).toBe(0) // another account
+    const reversed = creditEntry(meta('r', 3), acct, 1000)
+    expect(depositMinor(reversed, 'L', new Set(['r']))).toBe(0)
+    expect(depositMinor(reverseEntry(reversed, meta('rr', 4)), 'L', none)).toBe(0)
+  })
+
+  it('a match window runs from the previous due day (exclusive) to the due day (inclusive), never before startDay', () => {
+    expect(matchWindowStart(cfg, '2026-08-14')).toBe('2026-08-07')
+    expect(matchWindowStart(cfg, '2026-08-07')).toBe('2026-08-01') // previous Friday 07-31 is before startDay
+    expect(matchWindowStart({ cadence: 'monthly', day: 31, startDay: '2026-01-01' }, '2026-03-31')).toBe('2026-02-28')
+  })
+
+  it('sums deposits inside the window only', () => {
+    const entries = [
+      creditEntry(meta('d1', 7), acct, 100), // on the previous due day: previous window
+      creditEntry(meta('d2', 8), acct, 200),
+      creditEntry(meta('d3', 14), acct, 300),
+      creditEntry(meta('d4', 15), acct, 400), // after the due day: next window
+    ]
+    expect(depositsInWindow(entries, 'L', '2026-08-07', '2026-08-14', 'Europe/London')).toBe(500)
+  })
+
+  it('pays 50p per £1 deposited, capped per period, as a match credit carrying the periodKey', () => {
+    const e = matchEntry(cfg, acct, '2026-08-14', 1000, { id: 'sched:match:kid:L:2026-08-14', child: 'kid', createdAt: at(14), author: 'guardian' })
+    expect(e?.kind).toBe('credit')
+    expect(e?.category).toBe('match')
+    expect(e?.periodKey).toBe('2026-W33')
+    expect(e?.legs[0]!.amountMinor).toBe(300) // 500 capped at 300
+    expect(matchEntry(cfg, acct, '2026-08-14', 0, meta('z', 14))).toBeNull()
+    expect(matchEntry({ ...cfg, matchCapMinor: undefined }, acct, '2026-08-14', 1000, meta('y', 14))!.legs[0]!.amountMinor).toBe(500)
+  })
+
+  it('matchDue is empty with no match configured, and idempotent by periodKey once paid', () => {
+    expect(matchDue({ ...cfg, matchBps: undefined }, [], at(21))).toEqual([])
+    expect(matchDue({ ...cfg, matchBps: 0 }, [], at(21))).toEqual([])
+    expect(matchDue({ ...cfg, paused: true }, [], at(21))).toEqual([])
+    expect(matchDue(cfg, [], at(21))).toEqual(['2026-08-07', '2026-08-14', '2026-08-21'])
+    const paid = { ...creditEntry(meta('sched:match:kid:L:2026-08-14', 14), acct, 100, 'match'), periodKey: '2026-W33' }
+    expect(matchDue(cfg, [paid], at(21))).toEqual(['2026-08-21'])
+  })
+
+  it('an interest payout closes match periods before its own period, not its own', () => {
+    const interest = { ...creditEntry(meta('sched:interest:kid:L:2026-08-14', 14), acct, 10, 'interest'), kind: 'interest' as const, periodKey: '2026-W33' }
+    expect(matchDue(cfg, [interest], at(21))).toEqual(['2026-08-14', '2026-08-21'])
+  })
+
+  it('a scheduled match counts as of the due day it pays for', () => {
+    const e = { ...creditEntry({ id: 'sched:match:kid:L:2026-08-14', child: 'kid', createdAt: at(20), author: 'guardian' }, acct, 100, 'match'), periodKey: '2026-W33' }
+    expect(effectiveDay(e, 'Europe/London')).toBe('2026-08-14')
   })
 })
