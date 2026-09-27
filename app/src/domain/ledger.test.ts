@@ -10,6 +10,7 @@ import {
   sortForDisplay,
   assertEntry,
   assertEntryAgainst,
+  assertReversalOf,
 } from './ledger'
 
 const sam = 'sam'
@@ -246,5 +247,21 @@ describe('balances overflow guard (audit D12)', () => {
     const b = creditEntry({ id: 'b', child: sam, createdAt: 2, author: 'guardian' }, ledgerAcct, 1)
     expect(() => balances([a, b])).toThrow(RangeError)
     expect(balances([a]).get('a-ledger')).toBe(big)
+  })
+})
+
+describe('assertReversalOf (review R7)', () => {
+  const orig = creditEntry({ id: 'o', child: sam, createdAt: 1, author: 'guardian' }, ledgerAcct, 500)
+  const m = { id: 'r', child: sam, createdAt: 2, author: 'guardian' as const }
+  it('accepts an exact mirror', () => {
+    expect(() => assertReversalOf(orig, reverseEntry(orig, m))).not.toThrow()
+  })
+  it('refuses a wrong target, child, kind, account, or amount', () => {
+    const good = reverseEntry(orig, m)
+    expect(() => assertReversalOf(orig, { ...good, reverses: 'x' })).toThrow(RangeError)
+    expect(() => assertReversalOf(orig, { ...good, child: 'alex' })).toThrow(RangeError)
+    expect(() => assertReversalOf(orig, { ...good, kind: 'interest' })).toThrow(RangeError)
+    expect(() => assertReversalOf(orig, { ...good, legs: [{ ...good.legs[0]!, account: 'a-box' }] })).toThrow(RangeError)
+    expect(() => assertReversalOf(orig, { ...good, legs: [{ ...good.legs[0]!, amountMinor: -1 }] })).toThrow(RangeError)
   })
 })

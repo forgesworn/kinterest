@@ -59,7 +59,8 @@ import {
   type RootAttestation,
   type StatusPayload,
 } from '../wire/payloads'
-import { addEntry, applyConfigDoc, recordGrantResult, retainInnerEvents } from '../state/state'
+import { addEntry, applyConfigDoc, recordGrantResult } from '../state/state'
+import { retainCorpus } from './corpus'
 import { verifyRootAttestation } from '../identity/signetRoot'
 import type { AppState, ChildProfile, ConfigDocs } from '../state/types'
 import type { Entry } from '../domain/types'
@@ -407,12 +408,12 @@ export function handleWrap(
   // older parser and can still be handed on to a third device that does
   // understand it, but NOT when the direction guard refused the event (see
   // `retainsInnerEvent`). Keyed by the inner event id; bounded by
-  // `retainInnerEvents` on every insert.
+  // `retainCorpus` on every insert.
   if (!retainsInnerEvent(seen, unwrapped.innerKind, unwrapped.authorPk)) return { state: seen, effects: dispatched.effects }
 
   const next: AppState = {
     ...seen,
-    innerEvents: retainInnerEvents({
+    innerEvents: retainCorpus({
       ...seen.innerEvents,
       [unwrapped.inner.id]: toStoredEvent(unwrapped.inner),
     }),

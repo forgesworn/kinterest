@@ -31,9 +31,9 @@ import {
   type ResyncReplyPayload,
   type StatusPayload,
 } from '../wire/payloads'
-import { retainInnerEvents } from '../state/state'
 import type { AppState } from '../state/types'
 import { dispatchInner, toStoredEvent, MAX_SEEN_EVENT_IDS, type Effect } from './ingress'
+import { retainCorpus } from './corpus'
 
 // ---------------------------------------------------------------------------
 // §2.2 — comparison
@@ -245,7 +245,7 @@ function verifiesSafely(ev: NostrEvent): boolean {
  *
  * The fold itself goes through `dispatchInner`, the same path live wire
  * traffic takes, so there is exactly ONE implementation of the direction
- * guards, the issuedAt clamp and every parser. `retainInnerEvents` is applied
+ * guards, the issuedAt clamp and every parser. `retainCorpus` is applied
  * once at the end of the batch rather than per event — the bound is on what
  * is kept, not on how it got there.
  */
@@ -319,7 +319,7 @@ export function ingestResyncEvents(state: AppState, events: unknown[], opts: Ing
     accepted += 1
   }
 
-  if (corpusChanged) next = { ...next, innerEvents: retainInnerEvents(next.innerEvents) }
+  if (corpusChanged) next = { ...next, innerEvents: retainCorpus(next.innerEvents) }
 
   return { state: next, accepted, rejected, effects }
 }
@@ -364,8 +364,9 @@ export function statusFor(app: AppState, forChildPk: string | null, appVersion: 
 /**
  * One page of the lossless corpus, in answer to a `resync.request`. Pure.
  *
- * The corpus is ordered by `created_at` then id — the same stable order on
- * every device, so a cursor means the same thing to both ends.
+ * The corpus is ordered CONFIG first, then by `created_at` then id
+ * (`corpusOrder`) — the same stable order on every device, so a cursor means
+ * the same thing to both ends.
  *
  * `forChildPk` SCOPES the reply (review fix). A guardian's corpus holds every
  * child's events, and serving all of it to whichever child asked would put a
@@ -395,7 +396,7 @@ export function statusFor(app: AppState, forChildPk: string | null, appVersion: 
 export function resyncPage(app: AppState, since: string | null, page: number, forChildPk: string | null = null): ResyncReplyPayload {
   const ordered = Object.values(app.innerEvents)
     .filter((ev) => servesTo(ev, forChildPk))
-    .sort((a, b) => (a.created_at !== b.created_at ? a.created_at - b.created_at : a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .sort(corpusOrder)
 
   let start = 0
   if (since !== null) {
@@ -406,6 +407,25 @@ export function resyncPage(app: AppState, since: string | null, page: number, fo
   const from = start + page * RESYNC_PAGE_SIZE
   const events = ordered.slice(from, from + RESYNC_PAGE_SIZE)
   return buildResyncReplyPayload({ events, page, more: ordered.length > from + events.length })
+}
+
+/**
+ * The order a corpus is served in: CONFIG first, then everything by
+ * `created_at`, then id. Pure; a total order, so both ends of an exchange
+ * mean the same thing by a cursor.
+ *
+ * Policy goes first because the rest depends on it: an ENTRY or CHILD_SIG
+ * naming an account or chore whose doc has not been folded yet is deferred,
+ * and would wait for the NEXT exchange. With superseded docs pruned
+ * (`sync/corpus.ts`), the surviving doc can be much younger than the entries
+ * it describes, so serving by age alone would defer most of a replay.
+ */
+function corpusOrder(a: NostrEvent, b: NostrEvent): number {
+  const ca = a.kind === KIND_CONFIG ? 0 : 1
+  const cb = b.kind === KIND_CONFIG ? 0 : 1
+  if (ca !== cb) return ca - cb
+  if (a.created_at !== b.created_at) return a.created_at - b.created_at
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }
 
 /** Whether one corpus event belongs in a reply scoped to `forChildPk` — see

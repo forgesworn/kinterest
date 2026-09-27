@@ -1,4 +1,4 @@
-import { assertEntry } from '../domain/ledger'
+import { assertEntry, assertReversalOf } from '../domain/ledger'
 import { legitimatePeriodKeys, type AllowanceConfig } from '../domain/allowance'
 import type { Entry } from '../domain/types'
 import type { ChoreTick } from '../domain/chores'
@@ -121,9 +121,19 @@ export function selfRevokedAt(app: AppState): number | null {
 // is expected to catch and drop the offending event, per the plan's
 // "assertEntry on ingress" rule). Dedupes by id: a repeat returns the exact
 // same state reference so callers can cheaply detect a no-op with `===`.
+//
+// Reversals (review R7): a reversal arriving after the entry it names must
+// be that entry's exact mirror, or it is refused. One whose original has not
+// arrived yet cannot be checked and is accepted — refusing the original
+// later instead would let a bad reversal block a genuine entry. Only the
+// guardian authors entries today, so this is integrity, not an attack path.
 export function addEntry(s: AppState, e: Entry): AppState {
   assertEntry(e)
   if (s.entries.some((existing) => existing.id === e.id)) return s
+  if (e.reverses !== undefined) {
+    const original = s.entries.find((x) => x.id === e.reverses)
+    if (original !== undefined) assertReversalOf(original, e)
+  }
   return { ...s, entries: [...s.entries, e] }
 }
 

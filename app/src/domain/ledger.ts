@@ -175,6 +175,27 @@ export function balances(entries: Iterable<Entry>): Map<string, number> {
   return out
 }
 
+/**
+ * Context check for a reversal against the entry it names (review R7).
+ * `assertEntry` flips the one-leg sign rules for any entry carrying
+ * `reverses`, and a reversed payout reopens its period, so a reversal must
+ * really be the original's mirror: `reverses` names `original`, same child
+ * and kind, and legs that are exactly the original's negated (same
+ * accounts and currencies, in order). Throws RangeError otherwise. Pure.
+ */
+export function assertReversalOf(original: Entry, reversal: Entry): void {
+  if (reversal.reverses !== original.id) throw new RangeError(`entry ${reversal.id} does not reverse ${original.id}`)
+  if (original.reverses !== undefined) throw new RangeError(`entry ${original.id} is itself a reversal; reverse it by a new entry instead`)
+  if (reversal.child !== original.child) throw new RangeError(`reversal child ${reversal.child} does not match original child ${original.child}`)
+  if (reversal.kind !== original.kind) throw new RangeError(`reversal kind ${reversal.kind} does not match original kind ${original.kind}`)
+  if (reversal.legs.length !== original.legs.length) throw new RangeError('reversal must have the same number of legs as the original')
+  original.legs.forEach((leg, i) => {
+    const r = reversal.legs[i]!
+    if (r.account !== leg.account || r.currency !== leg.currency || r.amountMinor !== -leg.amountMinor)
+      throw new RangeError(`reversal leg ${i} is not the exact negation of the original's`)
+  })
+}
+
 // Deliberately does NOT carry periodKey forward onto the reversal:
 // allowanceDue()/interestDue() build their paid-set from entries that carry
 // a periodKey, so a reversal without one cannot re-enter that set — which is

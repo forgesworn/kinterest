@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Entry } from '../domain/types'
+import { creditEntry, reverseEntry } from '../domain/ledger'
 import { buildGrantPayload, buildRequestPayload, type GrantPayload, type RequestPayload } from '../wire/payloads'
 import type { ChoreTick } from '../domain/chores'
 import type { AuditResult } from '../domain/audit'
@@ -539,5 +540,18 @@ describe('recordGrantResult synthetic rows take their op from the GRANT (audit D
   it('a known reqId is never marked synthetic', () => {
     const s0 = upsertRequest(emptyState(), req('r1'), CHILD, 1000)
     expect(recordGrantResult(s0, g('r1'), CHILD, 2000).requests[0]!.synthetic).toBeUndefined()
+  })
+})
+
+describe('addEntry checks reversals against their original (review R7)', () => {
+  const acct = { id: 'acc1', child: CHILD, name: 'Pot', currency: 'GBP', custody: 'ledger' as const }
+  const orig = creditEntry({ id: 'o', child: CHILD, createdAt: 1, author: 'guardian' }, acct, 500)
+  const bogus: Entry = { ...reverseEntry(orig, { id: 'r', child: CHILD, createdAt: 2, author: 'guardian' }), legs: [{ account: 'acc1', currency: 'GBP', amountMinor: -1 }] }
+  it('refuses a mismatched reversal when the original is already present', () => {
+    expect(() => addEntry(addEntry(emptyState(), orig), bogus)).toThrow(RangeError)
+  })
+  it('accepts a true reversal', () => {
+    const good = reverseEntry(orig, { id: 'r', child: CHILD, createdAt: 2, author: 'guardian' })
+    expect(addEntry(addEntry(emptyState(), orig), good).entries).toHaveLength(2)
   })
 })
