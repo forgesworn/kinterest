@@ -210,9 +210,22 @@ function isRequestStatus(x: unknown): x is StoredRequest['status'] {
 // there is no separate shape authority for RequestPayload, and this on-disk
 // blob is exactly as untrusted as anything arriving over the wire. Invalid
 // rows are dropped rather than failing the whole `requests` array.
+/** The lenient shape a `synthetic` row's request is held to (audit D9): the
+ *  envelope fields and a known op, but params need only be an object. */
+function parseSyntheticRequest(x: unknown): StoredRequest['request'] | null {
+  if (!isPlainObject(x) || x.v !== 1) return null
+  if (typeof x.reqId !== 'string' || x.reqId === '' || typeof x.nonce !== 'string' || x.nonce === '') return null
+  if (typeof x.child !== 'string' || x.child === '') return null
+  if (!Number.isSafeInteger(x.ts) || (x.ts as number) < 0) return null
+  if (x.op !== 'allowance.claim' && x.op !== 'spend.request') return null
+  if (!isPlainObject(x.params)) return null
+  return { v: 1, op: x.op, reqId: x.reqId, nonce: x.nonce, child: x.child, ts: x.ts as number, params: x.params }
+}
+
 function sanitiseStoredRequest(x: unknown): StoredRequest | null {
   if (!isPlainObject(x)) return null
-  const request = parseRequestPayload(x.request)
+  const synthetic = x.synthetic === true
+  const request = parseRequestPayload(x.request) ?? (synthetic ? parseSyntheticRequest(x.request) : null)
   if (request === null) return null
   if (typeof x.authorPk !== 'string' || x.authorPk === '') return null
   if (!isRequestStatus(x.status)) return null
@@ -227,6 +240,7 @@ function sanitiseStoredRequest(x: unknown): StoredRequest | null {
     ...(decidedAt !== undefined ? { decidedAt } : {}),
     ...(grantedAmountMinor !== undefined ? { grantedAmountMinor } : {}),
     ...(x.periodLegitimateAtReceipt === true ? { periodLegitimateAtReceipt: true as const } : {}),
+    ...(synthetic ? { synthetic: true as const } : {}),
   }
 }
 

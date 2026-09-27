@@ -518,3 +518,26 @@ describe('selfRevokedAt', () => {
     expect(selfRevokedAt(s)).toBe(0)
   })
 })
+
+describe('recordGrantResult synthetic rows take their op from the GRANT (audit D9)', () => {
+  const g = (reqId: string, overrides: Partial<GrantPayload> = {}): GrantPayload =>
+    buildGrantPayload({ reqId, nonce: `n-${reqId}`, decision: 'allow', ts: 2000, params: {}, ...overrides })
+
+  it('an unknown spend reqId (local state lost) is recorded as a spend with the granted amount, not a claim', () => {
+    const s1 = recordGrantResult(emptyState(), g('01JSPENDREQ', { params: { amountMinor: 250 } }), CHILD, 2000)
+    const row = s1.requests[0]!
+    expect(row.request.op).toBe('spend.request')
+    expect(row.request.params).toEqual({ amountMinor: 250 })
+    expect(row.grantedAmountMinor).toBe(250)
+    expect(row.synthetic).toBe(true)
+  })
+  it('a denied unknown spend is a spend too; a periodKey or scheduler reqId still marks a claim', () => {
+    expect(recordGrantResult(emptyState(), g('01JSPENDREQ', { decision: 'deny' }), CHILD, 2000).requests[0]!.request.op).toBe('spend.request')
+    expect(recordGrantResult(emptyState(), g('01JCLAIM', { params: { periodKey: '2026-W32' } }), CHILD, 2000).requests[0]!.request.op).toBe('allowance.claim')
+    expect(recordGrantResult(emptyState(), g('scheduler:sam:acc1:2026-W32', { decision: 'deny' }), CHILD, 2000).requests[0]!.request.op).toBe('allowance.claim')
+  })
+  it('a known reqId is never marked synthetic', () => {
+    const s0 = upsertRequest(emptyState(), req('r1'), CHILD, 1000)
+    expect(recordGrantResult(s0, g('r1'), CHILD, 2000).requests[0]!.synthetic).toBeUndefined()
+  })
+})

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { creditEntry } from '../domain/ledger'
 import type { Account, Entry } from '../domain/types'
-import { buildRequestPayload } from '../wire/payloads'
+import { buildGrantPayload, buildRequestPayload } from '../wire/payloads'
 import { runSchedulers } from '../store/scheduler'
-import { emptyState, addEntry, recordRequestDecision, upsertRequest } from './state'
+import { emptyState, addEntry, recordGrantResult, recordRequestDecision, upsertRequest } from './state'
 import { clearState, loadState, saveState, type StorageLike } from './persist'
 
 const ledgerAcct: Account = { id: 'a-ledger', child: 'sam', name: 'With Mum & Dad', currency: 'GBP', custody: 'ledger' }
@@ -517,5 +517,19 @@ describe('clearState', () => {
     clearState(storage)
     clearState(storage)
     expect(loadState(storage)).toEqual(emptyState())
+  })
+})
+
+describe('synthetic request rows survive a reload (audit D9)', () => {
+  it('keeps a synthetic row that parseRequestPayload would reject, and still drops a non-synthetic one', () => {
+    let s = recordGrantResult(emptyState(), buildGrantPayload({ reqId: 'scheduler:sam:a:2026-W32', nonce: 'n', decision: 'deny', ts: 1, params: {} }), 'sam', 10)
+    s = recordGrantResult(s, buildGrantPayload({ reqId: '01JSPEND', nonce: 'n2', decision: 'allow', ts: 1, params: { amountMinor: 250 } }), 'sam', 11)
+    const bogus = { ...s.requests[0]!, synthetic: undefined, request: { ...s.requests[0]!.request, reqId: 'plain' } }
+    const loaded = roundTrip({ ...s, requests: [...s.requests, bogus] })
+    expect(loaded.requests.map((r) => [r.request.reqId, r.request.op, r.status, r.synthetic])).toEqual([
+      ['scheduler:sam:a:2026-W32', 'allowance.claim', 'denied', true],
+      ['01JSPEND', 'spend.request', 'approved', true],
+    ])
+    expect(loaded.requests[1]!.grantedAmountMinor).toBe(250)
   })
 })

@@ -366,15 +366,29 @@ export function recordGrantResult(s: AppState, grant: GrantPayload, selfPk: stri
   // so `grant.params.periodKey` had nothing to copy in the first place. See
   // that function's own doc comment for the fix — this line has always
   // faithfully copied whatever periodKey the GRANT actually carried.
-  const periodKey = grant.params.periodKey
+  const periodKey = typeof grant.params.periodKey === 'string' && grant.params.periodKey.length > 0 ? grant.params.periodKey : undefined
+  const amountMinor = grant.params.amountMinor
+  // The op comes from the GRANT itself (audit D9): a periodKey, or the
+  // scheduler's own reqId convention, marks a pocket-money claim; anything
+  // else is a spend (e.g. this device lost its state and a spend's GRANT
+  // arrived afterwards), carrying the granted amount when there is one.
+  const isClaim = periodKey !== undefined || grant.reqId.startsWith('scheduler:')
+  const grantedAmount =
+    !isClaim && status === 'approved' && typeof amountMinor === 'number' && Number.isSafeInteger(amountMinor) ? amountMinor : undefined
   const synthetic: RequestPayload = {
     v: 1,
-    op: 'allowance.claim',
+    op: isClaim ? 'allowance.claim' : 'spend.request',
     reqId: grant.reqId,
     nonce: grant.nonce,
     child: selfPk,
     ts: nowSec,
-    params: typeof periodKey === 'string' && periodKey.length > 0 ? { periodKey } : {},
+    params: periodKey !== undefined ? { periodKey } : grantedAmount !== undefined ? { amountMinor: grantedAmount } : {},
   }
-  return recordRequestDecision(s, synthetic, selfPk, status, nowSec)
+  const next = recordRequestDecision(s, synthetic, selfPk, status, nowSec, grantedAmount)
+  // Marked so persistence keeps it even though it may not satisfy
+  // parseRequestPayload (see StoredRequest.synthetic).
+  return {
+    ...next,
+    requests: next.requests.map((r) => (r.request === synthetic ? { ...r, synthetic: true as const } : r)),
+  }
 }

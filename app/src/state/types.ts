@@ -92,6 +92,12 @@ export interface StoredRequest {
    *  that config stays grantable (review R2) — see
    *  state.ts#claimPeriodGrantable. */
   periodLegitimateAtReceipt?: true
+  /** Child side only: this row was synthesised by `recordGrantResult` from a
+   *  GRANT for a reqId this device never held (a scheduler claim, or after
+   *  local state loss). Its `request` may not satisfy `parseRequestPayload`
+   *  (e.g. a spend with no currency), so persistence loads it through a
+   *  lenient path instead of dropping it (audit D9). Display only. */
+  synthetic?: true
 }
 
 export interface AppState {
