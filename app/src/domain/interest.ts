@@ -62,7 +62,9 @@ export function project(
   let balance = balanceMinor
   for (let i = 0; i < periods; i++) {
     balance += depositPerPeriodMinor
+    assertMinor(balance) // audit D12: the running balance, not just each input
     balance += interestMinor(balance, rateBps)
+    assertMinor(balance)
     out.push(balance)
   }
   return out

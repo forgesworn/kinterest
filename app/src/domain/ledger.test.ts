@@ -238,3 +238,13 @@ describe('sortForDisplay orders a catch-up by due day (audit D11)', () => {
     ])
   })
 })
+
+describe('balances overflow guard (audit D12)', () => {
+  it('throws rather than return an unsafe sum', () => {
+    const big = Number.MAX_SAFE_INTEGER
+    const a = creditEntry({ id: 'a', child: sam, createdAt: 1, author: 'guardian' }, ledgerAcct, big)
+    const b = creditEntry({ id: 'b', child: sam, createdAt: 2, author: 'guardian' }, ledgerAcct, 1)
+    expect(() => balances([a, b])).toThrow(RangeError)
+    expect(balances([a]).get('a-ledger')).toBe(big)
+  })
+})

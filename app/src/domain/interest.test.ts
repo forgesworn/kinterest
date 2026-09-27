@@ -243,3 +243,9 @@ describe('projectBalance', () => {
     expect(() => projectBalance(Number.MAX_SAFE_INTEGER, 10000, 1)).toThrow(RangeError)
   })
 })
+
+describe('project overflow guard (audit D12)', () => {
+  it('throws when the running balance plus deposits leaves safe integers', () => {
+    expect(() => project(Number.MAX_SAFE_INTEGER - 1, 0, 2, 1)).toThrow(RangeError)
+  })
+})

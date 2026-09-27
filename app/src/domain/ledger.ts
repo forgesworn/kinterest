@@ -69,8 +69,8 @@ export function exchangeEntry(
 }
 
 // The sync layer must call this on every entry received from a paired
-// device before folding it in — balances() itself stays a total,
-// validation-free fold and trusts its input completely.
+// device before folding it in — balances() does no validation of its own
+// beyond refusing an unsafe running total (audit D12).
 export function assertEntry(e: Entry): void {
   if (e.v !== 1) throw new RangeError(`unsupported entry version: ${e.v}`)
   if (typeof e.id !== 'string' || e.id === '') throw new RangeError('entry id must be a non-empty string')
@@ -161,10 +161,17 @@ export function assertEntryAgainst(accounts: readonly Account[], entry: Entry): 
   }
 }
 
+/** Per-account balance fold. Each leg is a safe integer (assertEntry), but
+ *  their running sum need not be (audit D12): it throws RangeError rather
+ *  than return an unsafe total. */
 export function balances(entries: Iterable<Entry>): Map<string, number> {
   const out = new Map<string, number>()
   for (const e of entries)
-    for (const leg of e.legs) out.set(leg.account, (out.get(leg.account) ?? 0) + leg.amountMinor)
+    for (const leg of e.legs) {
+      const sum = (out.get(leg.account) ?? 0) + leg.amountMinor
+      if (!Number.isSafeInteger(sum)) throw new RangeError(`balance of ${leg.account} overflows safe integers`)
+      out.set(leg.account, sum)
+    }
   return out
 }
 
