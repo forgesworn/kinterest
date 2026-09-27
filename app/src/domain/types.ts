@@ -37,6 +37,13 @@ export interface Entry {
   link?: string
   requestId?: string
   reverses?: string
+  /** `adjustment` only: the audit this adjustment resolves (v1 §Entries:
+   *  "requires the audit reference"). Optional on the type so entries stored
+   *  or sent before it was set by every builder still parse (audit S3). */
   auditId?: string
+  /** `adjustment` only: the counted total, minor units (v1 §Entries: an
+   *  adjustment "carries the counted total and the delta"; the delta is the
+   *  leg). Additive/optional for the same reason as `auditId`. */
+  countedMinor?: number
   periodKey?: string
 }

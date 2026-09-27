@@ -47,6 +47,7 @@ describe('auditResult and adjustment', () => {
     const adj = adjustmentEntry(audit, box, meta)!
     expect(adj.kind).toBe('adjustment')
     expect(adj.auditId).toBe('au2')
+    expect(adj.countedMinor).toBe(700) // S3: carries the counted total; the delta is the leg
     expect(adj.legs).toEqual([{ account: 'a-box', currency: 'GBP', amountMinor: -67 }])
   })
   it('an over count produces a positive adjustment', () => {

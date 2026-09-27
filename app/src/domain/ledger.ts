@@ -94,6 +94,16 @@ export function assertEntry(e: Entry): void {
     throw new RangeError(`${e.kind} entries need exactly 1 leg, got ${e.legs.length}`)
   if (e.reverses !== undefined && (typeof e.reverses !== 'string' || e.reverses === ''))
     throw new RangeError('reverses must be a non-empty string when present')
+  // Adjustment fields (audit S3): optional, so an entry without them — any
+  // stored or on-the-wire adjustment from before they were set — still
+  // parses; when present they must be well-formed and on an adjustment.
+  if (e.auditId !== undefined && (typeof e.auditId !== 'string' || e.auditId === ''))
+    throw new RangeError('auditId must be a non-empty string when present')
+  if (e.countedMinor !== undefined) {
+    if (e.kind !== 'adjustment') throw new RangeError(`countedMinor is only valid on an adjustment, got ${e.kind}`)
+    if (!Number.isSafeInteger(e.countedMinor) || e.countedMinor < 0)
+      throw new RangeError(`countedMinor must be a safe integer >= 0, got ${e.countedMinor}`)
+  }
   assertLedgerInvariants(e)
 }
 

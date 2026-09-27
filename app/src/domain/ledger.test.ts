@@ -204,3 +204,24 @@ describe('assertEntryAgainst (audit D5)', () => {
     expect(() => assertEntryAgainst(accounts, e('sam-gbp', 'EUR'))).toThrow(RangeError)
   })
 })
+
+describe('adjustment fields (audit S3)', () => {
+  const adj: Entry = {
+    v: 1, id: 'adj', child: sam, kind: 'adjustment', createdAt: 1, author: 'child',
+    legs: [{ account: 'a-box', currency: 'GBP', amountMinor: -67 }],
+  }
+  it('an adjustment without auditId/countedMinor (stored or sent before they existed) still parses', () => {
+    expect(() => assertEntry(adj)).not.toThrow()
+  })
+  it('accepts well-formed auditId and countedMinor', () => {
+    expect(() => assertEntry({ ...adj, auditId: 'au1', countedMinor: 700 })).not.toThrow()
+    expect(() => assertEntry({ ...adj, auditId: 'au1', countedMinor: 0 })).not.toThrow()
+  })
+  it('rejects malformed values, and countedMinor on any other kind', () => {
+    expect(() => assertEntry({ ...adj, auditId: '' })).toThrow(RangeError)
+    expect(() => assertEntry({ ...adj, countedMinor: -1 })).toThrow(RangeError)
+    expect(() => assertEntry({ ...adj, countedMinor: 1.5 })).toThrow(RangeError)
+    const credit = creditEntry({ id: 'c', child: sam, createdAt: 1, author: 'guardian' }, ledgerAcct, 100)
+    expect(() => assertEntry({ ...credit, countedMinor: 100 })).toThrow(/only valid on an adjustment/)
+  })
+})

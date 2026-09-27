@@ -84,6 +84,7 @@ export function adjustmentEntry(audit: AuditResult, account: Account, meta: Entr
     kind: 'adjustment',
     legs: [{ account: account.id, currency: account.currency, amountMinor: audit.deltaMinor }],
     auditId: audit.id,
+    countedMinor: audit.countedMinor,
     ...meta,
   }
 }
