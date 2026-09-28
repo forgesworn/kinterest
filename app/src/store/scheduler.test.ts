@@ -9,6 +9,7 @@ import type { AllowanceConfig } from '../domain/allowance'
 import type { InterestConfig } from '../domain/interest'
 import { balances, creditEntry, transferEntry } from '../domain/ledger'
 import { reanchorConfigs } from '../domain/reanchor'
+import { dayKey } from '../domain/period'
 import { runSchedulers } from './scheduler'
 
 const ACCOUNT_ID = 'a-ledger'
@@ -516,14 +517,58 @@ describe('runSchedulers: a due-day edit never matches a deposit twice', () => {
     expect(matches(s)).toEqual([['sched:match:sam:a-ledger:2026-08-20', 500]])
   })
 
-  it('a timezone change re-anchors like a due-day change', () => {
+  it('a timezone edit keeps the old timezone and never re-matches', () => {
     let s = withCfg(base)
     s = addEntry(s, creditEntry({ id: 'gift', child: CHILD, createdAt: t(2026, 8, 11), author: 'guardian' }, account, 1000))
     s = run(s, t(2026, 8, 14, 9))
     s = edit(s, { tz: 'Pacific/Auckland' }, t(2026, 8, 15))
-    expect(s.docs.interest.configs[0]!.startDay > base.startDay).toBe(true)
+    expect(s.docs.interest.configs[0]!.tz).toBe('Europe/London')
+    expect(s.docs.interest.configs[0]!.startDay).toBe(base.startDay)
     s = run(s, t(2026, 8, 21, 9))
     expect(matches(s)).toEqual([['sched:match:sam:a-ledger:2026-08-14', 500]])
+  })
+
+  it('a deposit just before midnight is matched once across a timezone edit', () => {
+    // Weekly on Sunday in London. Sun 2 Aug is a due day; the deposit is
+    // Sat 1 Aug 23:30 BST, which is already Sunday 00:30 in Berlin.
+    let s = withCfg({ ...base, rateBps: 0, day: 7, startDay: '2026-07-20', matchBps: 10000 })
+    s = addEntry(s, creditEntry({ id: 'gift', child: CHILD, createdAt: Date.UTC(2026, 7, 1, 22, 30) / 1000, author: 'guardian' }, account, 1000))
+    s = run(s, Date.UTC(2026, 7, 1, 23, 10) / 1000) // Sun 00:10 BST tick
+    s = edit(s, { tz: 'Europe/Berlin' }, Date.UTC(2026, 7, 2, 9) / 1000)
+    s = run(s, Date.UTC(2026, 7, 20) / 1000)
+    expect(matches(s)).toEqual([['sched:match:sam:a-ledger:2026-08-02', 1000]])
+  })
+
+  it('monthly: moving day 5 to day 20 matches the deposits in between exactly once', () => {
+    let s = withCfg({ ...base, rateBps: 0, cadence: 'monthly', day: 5, startDay: '2026-07-01', matchBps: 10000 })
+    s = addEntry(s, creditEntry({ id: 'g1', child: CHILD, createdAt: t(2026, 8, 3), author: 'guardian' }, account, 100))
+    s = run(s, t(2026, 8, 5, 9)) // pays 100 for [1 Jul, 5 Aug)
+    s = addEntry(s, creditEntry({ id: 'g2', child: CHILD, createdAt: t(2026, 8, 8), author: 'guardian' }, account, 200))
+    s = edit(s, { day: 20 }, t(2026, 8, 10)) // August is already paid
+    s = addEntry(s, creditEntry({ id: 'g3', child: CHILD, createdAt: t(2026, 8, 25), author: 'guardian' }, account, 400))
+    s = run(s, t(2026, 8, 21, 9))
+    s = run(s, t(2026, 9, 20, 9))
+    s = run(s, t(2026, 10, 20, 9))
+    expect(matches(s)).toEqual([
+      ['sched:match:sam:a-ledger:2026-08-05', 100],
+      ['sched:match:sam:a-ledger:2026-09-20', 600],
+    ])
+  })
+
+  it('monthly: moving day 20 to day 5 on the 10th matches the next window once and pays August', () => {
+    let s = withCfg({ ...base, rateBps: 0, cadence: 'monthly', day: 20, startDay: '2026-07-01', matchBps: 10000 })
+    s = addEntry(s, creditEntry({ id: 'g1', child: CHILD, createdAt: t(2026, 7, 10), author: 'guardian' }, account, 100))
+    s = run(s, t(2026, 7, 20, 9)) // pays 100 for [1 Jul, 20 Jul)
+    s = addEntry(s, creditEntry({ id: 'g2', child: CHILD, createdAt: t(2026, 7, 25), author: 'guardian' }, account, 200))
+    s = addEntry(s, creditEntry({ id: 'g3', child: CHILD, createdAt: t(2026, 8, 7), author: 'guardian' }, account, 400))
+    s = edit(s, { day: 5 }, t(2026, 8, 10))
+    s = run(s, t(2026, 8, 10, 10))
+    s = run(s, t(2026, 9, 5, 9))
+    expect(matches(s)).toEqual([
+      ['sched:match:sam:a-ledger:2026-07-20', 100],
+      ['sched:match:sam:a-ledger:2026-08-05', 200], // [20 Jul, 5 Aug), paid late on the 10th
+      ['sched:match:sam:a-ledger:2026-09-05', 400], // [5 Aug, 5 Sep)
+    ])
   })
 })
 
@@ -575,5 +620,144 @@ describe('scheduler ids are deterministic, not ULIDs', () => {
     const b = runSchedulers(state, NOW + 60).entries.map((e) => e.id)
     expect(a).toEqual(b)
     expect(a[0]).toBe('sched:allowance:sam:a-ledger:2026-08-07')
+  })
+})
+
+describe('runSchedulers: a due-day or timezone edit pays every period exactly once', () => {
+  const t = (y: number, m: number, d: number, h = 9) => Date.UTC(y, m - 1, d, h) / 1000
+  const withCfg = (cfg: AllowanceConfig): AppState => {
+    const s = baseState()
+    return { ...s, docs: { ...s.docs, allowance: { v: 1, issuedAt: 1, configs: [cfg] } } }
+  }
+  const run = (s: AppState, now: number): AppState => {
+    for (const e of runSchedulers(s, now).entries) s = addEntry(s, e)
+    return s
+  }
+  const edit = (s: AppState, change: Partial<AllowanceConfig>, now: number): AppState => {
+    const prev = s.docs.allowance.configs
+    const configs = reanchorConfigs(prev, [{ ...prev[0]!, ...change }], now)
+    return { ...s, docs: { ...s.docs, allowance: { v: 1, issuedAt: s.docs.allowance.issuedAt + 1, configs } } }
+  }
+  const paid = (s: AppState) => s.entries.filter((e) => e.category === 'allowance').map((e) => e.periodKey)
+  const monthly: AllowanceConfig = { child: CHILD, account: ACCOUNT_ID, amountMinor: 500, cadence: 'monthly', day: 20, tz: 'Europe/London', startDay: '2026-05-01' }
+  const weekly: AllowanceConfig = { ...monthly, cadence: 'weekly', day: 5, startDay: '2026-08-01' }
+
+  it('monthly day 20 -> 5, edited on 10 Aug: August is still paid', () => {
+    let s = run(withCfg(monthly), t(2026, 7, 21)) // May, June, July
+    s = edit(s, { day: 5 }, t(2026, 8, 10))
+    expect(s.docs.allowance.configs[0]!.startDay).toBe(monthly.startDay)
+    s = run(s, t(2026, 8, 10, 10))
+    s = run(s, t(2026, 9, 6))
+    expect(paid(s)).toEqual(['2026-05', '2026-06', '2026-07', '2026-08', '2026-09'])
+  })
+
+  it('monthly day 5 -> 20, edited on 10 Aug after August paid: August is not paid again', () => {
+    let s = run(withCfg({ ...monthly, day: 5 }), t(2026, 8, 6)) // May..August
+    s = edit(s, { day: 20 }, t(2026, 8, 10))
+    s = run(s, t(2026, 8, 21))
+    s = run(s, t(2026, 9, 21))
+    expect(paid(s)).toEqual(['2026-05', '2026-06', '2026-07', '2026-08', '2026-09'])
+  })
+
+  it('weekly Friday -> Monday mid-week: that week is paid once', () => {
+    let s = run(withCfg(weekly), t(2026, 8, 7)) // Fri 7 Aug: W32
+    s = edit(s, { day: 1 }, t(2026, 8, 12)) // Wed of W33, its Monday has passed
+    s = run(s, t(2026, 8, 12, 10))
+    s = run(s, t(2026, 8, 14))
+    s = run(s, t(2026, 8, 17))
+    expect(paid(s)).toEqual(['2026-W32', '2026-W33', '2026-W34'])
+  })
+
+  it('weekly Monday -> Friday after Monday paid: that week is not paid again', () => {
+    let s = run(withCfg({ ...weekly, day: 1 }), t(2026, 8, 10)) // W32, and Mon 10 Aug: W33
+    s = edit(s, { day: 5 }, t(2026, 8, 12))
+    s = run(s, t(2026, 8, 14))
+    s = run(s, t(2026, 8, 21))
+    expect(paid(s)).toEqual(['2026-W32', '2026-W33', '2026-W34'])
+  })
+
+  it('a timezone change pays every period once, via the editor or a raw doc', () => {
+    let s = run(withCfg(monthly), t(2026, 7, 21))
+    const viaEditor = run(run(edit(s, { tz: 'Pacific/Auckland' }, t(2026, 8, 10)), t(2026, 8, 21)), t(2026, 9, 21))
+    expect(viaEditor.docs.allowance.configs[0]!.tz).toBe('Europe/London')
+    expect(paid(viaEditor)).toEqual(['2026-05', '2026-06', '2026-07', '2026-08', '2026-09'])
+    // A doc that changes tz without the editor: periods are keyed by month, so still once each.
+    s = { ...s, docs: { ...s.docs, allowance: { v: 1, issuedAt: 2, configs: [{ ...monthly, tz: 'Pacific/Auckland' }] } } }
+    s = run(run(s, t(2026, 8, 21)), t(2026, 9, 21))
+    expect(paid(s)).toEqual(['2026-05', '2026-06', '2026-07', '2026-08', '2026-09'])
+  })
+})
+
+describe('runSchedulers: deposit match fuzz', () => {
+  const account = { id: ACCOUNT_ID, child: CHILD, name: 'P', currency: 'GBP', custody: 'ledger' as const }
+  const withCfg = (cfg: InterestConfig): AppState => {
+    const s = baseState()
+    return { ...s, docs: { ...s.docs, accounts: { v: 1, issuedAt: 1, accounts: [account] }, interest: { v: 1, issuedAt: 1, configs: [cfg] } } }
+  }
+  const run = (s: AppState, now: number): AppState => {
+    for (const e of runSchedulers(s, now).entries) s = addEntry(s, e)
+    return s
+  }
+  const matchTotal = (s: AppState) => s.entries.filter((e) => e.category === 'match').reduce((a, e) => a + e.legs[0]!.amountMinor, 0)
+  const T0 = Date.UTC(2026, 0, 1) / 1000
+  const TZS = ['Europe/London', 'America/New_York', 'Pacific/Kiritimati', 'Pacific/Pago_Pago', 'Asia/Kolkata']
+  const rng = (seed: number) => (n: number) => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff
+    return seed % n
+  }
+
+  // Random ticks, skipped days and deposits; `edit` is 'none', 'day' (same
+  // cadence) or 'schedule' (cadence and day). Returns [matched, deposited].
+  function simulate(rnd: (n: number) => number, edit: 'none' | 'day' | 'schedule', days: number): [number, number] {
+    const tz = TZS[rnd(TZS.length)]!
+    const dayFor = (cadence: 'weekly' | 'monthly') => (cadence === 'weekly' ? 1 + rnd(7) : 1 + rnd(31))
+    const c0 = rnd(2) ? ('weekly' as const) : ('monthly' as const)
+    const startSec = T0 + rnd(86400 * 20)
+    let s = withCfg({ child: CHILD, account: ACCOUNT_ID, rateBps: 0, cadence: c0, day: dayFor(c0), tz, startDay: dayKey(startSec, tz), matchBps: 10000 })
+    let now = startSec
+    let deposited = 0
+    let n = 0
+    const endSec = startSec + 86400 * days
+    while (now < endSec) {
+      now += 3600 * (1 + rnd(30))
+      if (rnd(3) === 0) {
+        const a = 100 + rnd(900)
+        s = addEntry(s, creditEntry({ id: `d${n++}`, child: CHILD, createdAt: now, author: 'guardian' }, account, a))
+        deposited += a
+      }
+      if (rnd(2) === 0) s = run(s, now)
+      if (edit !== 'none' && rnd(40) === 0) {
+        const prev = s.docs.interest.configs
+        const cadence = edit === 'day' ? prev[0]!.cadence : rnd(2) ? ('weekly' as const) : ('monthly' as const)
+        const configs = reanchorConfigs(prev, [{ ...prev[0]!, cadence, day: dayFor(cadence) }], now)
+        s = { ...s, docs: { ...s.docs, interest: { v: 1, issuedAt: s.docs.interest.issuedAt + 1, configs } } }
+      }
+    }
+    s = run(s, endSec + 86400 * 70) // settle
+    return [matchTotal(s), deposited]
+  }
+
+  it('no edits: every deposit on or after startDay is matched exactly once', () => {
+    const rnd = rng(12345)
+    for (let trial = 0; trial < 20; trial++) {
+      const [got, want] = simulate(rnd, 'none', 120)
+      expect({ trial, got }).toEqual({ trial, got: want })
+    }
+  })
+
+  it('due-day edits within a cadence: every deposit is still matched exactly once', () => {
+    const rnd = rng(777)
+    for (let trial = 0; trial < 20; trial++) {
+      const [got, want] = simulate(rnd, 'day', 150)
+      expect({ trial, got }).toEqual({ trial, got: want })
+    }
+  })
+
+  it('cadence and day edits: no deposit is ever matched twice', () => {
+    const rnd = rng(4242)
+    for (let trial = 0; trial < 30; trial++) {
+      const [got, want] = simulate(rnd, 'schedule', 150)
+      expect(got <= want).toBe(true)
+    }
   })
 })

@@ -170,10 +170,11 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
         // The deposit match for a due day is queued BEFORE that day's
         // interest, so it counts towards the balance the interest is
         // computed on — the same as an allowance paid on the same day. It
-        // covers deposits from the previous due day up to, not including,
+        // covers deposits from the last matched due day up to, not including,
         // this one (domain/interest.ts#matchWindowStart), capped per period.
         if (matchDays.has(dueDay)) {
-          const deposited = depositsInWindow([...state.entries, ...entries], account.id, matchWindowStart(cfg, dueDay), dueDay, cfg.tz)
+          const all = [...state.entries, ...entries]
+          const deposited = depositsInWindow(all, account.id, matchWindowStart(cfg, all), dueDay, cfg.tz)
           const meta = { id: schedulerEntryId(cfg.child, cfg.account, dueDay, 'match'), child: cfg.child, createdAt: nowSec, author: 'guardian' as const }
           const match = matchEntry(cfg, account, dueDay, deposited, meta)
           if (match !== null) entries.push(match)

@@ -179,10 +179,18 @@ describe('deposit match', () => {
     expect(depositMinor(reverseEntry(reversed, meta('rr', 4)), 'L', none)).toBe(0)
   })
 
-  it('a match window runs from the previous due day (inclusive) to the due day (exclusive), never before startDay', () => {
-    expect(matchWindowStart(cfg, '2026-08-14')).toBe('2026-08-07')
-    expect(matchWindowStart(cfg, '2026-08-07')).toBe('2026-08-01') // previous Friday 07-31 is before startDay
-    expect(matchWindowStart({ cadence: 'monthly', day: 31, startDay: '2026-01-01' }, '2026-03-31')).toBe('2026-02-28')
+  it('a match window starts at the last matched due day (inclusive), never before startDay', () => {
+    const paid = (d: number, id = `sched:match:kid:L:2026-08-${String(d).padStart(2, '0')}`) => creditEntry({ ...meta(id, d + 3) }, acct, 10, 'match')
+    expect(matchWindowStart(cfg, [])).toBe('2026-08-01') // nothing matched yet: from startDay
+    expect(matchWindowStart(cfg, [paid(7)])).toBe('2026-08-07') // read from the id, not the (later) tick day
+    expect(matchWindowStart(cfg, [paid(7), paid(14)])).toBe('2026-08-14')
+    expect(matchWindowStart(cfg, [paid(7, 'hand-made')])).toBe('2026-08-10') // no scheduler id: its date
+    expect(matchWindowStart({ ...cfg, startDay: '2026-08-20' }, [paid(14)])).toBe('2026-08-20')
+    // a reversed payout still consumed its window
+    const m = paid(14)
+    expect(matchWindowStart(cfg, [m, reverseEntry(m, meta('rev', 20))])).toBe('2026-08-14')
+    // another account's payouts do not count
+    expect(matchWindowStart(cfg, [creditEntry(meta('sched:match:kid:X:2026-08-14', 17), { ...acct, id: 'X' }, 10, 'match')])).toBe('2026-08-01')
   })
 
   it('sums deposits inside the window only', () => {

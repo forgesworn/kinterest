@@ -4,13 +4,25 @@
 // `allowanceDue`/`interestDue` rescan from `startDay` and treat a period as
 // paid only when an entry carries that period's key AND a leg on the
 // config's account. Changing `account` or `cadence` therefore makes every
-// past period look unpaid; changing the due day or the timezone moves the
-// deposit-match window back over deposits the old schedule already matched; un-pausing or switching a gate off exposes every
+// past period look unpaid; un-pausing or switching a gate off exposes every
 // period that was deliberately never paid; changing an interest config's
-// rate would pay every still-open past period at the new rate.
-// Re-anchoring moves `startDay`
-// forward at the moment of such an edit so none of those periods can come
-// back.
+// rate or match terms would pay every still-open past period at the new
+// terms. Re-anchoring moves `startDay` forward at the moment of such an
+// edit so none of those periods can come back.
+//
+// Moving the due weekday or day of month within the same cadence does NOT
+// re-anchor. Periods are keyed by period (ISO week / month), so the period
+// the old day already paid stays paid and the new day cannot pay it twice;
+// re-anchoring there would skip the current period when pay day moves
+// earlier. The deposit match stays exact because its window starts at the
+// last matched due day, not the schedule's previous one
+// (interest.ts#matchWindowStart).
+//
+// The timezone is fixed once a config exists (as the settings screen
+// already does): an edit that names another timezone keeps the old one.
+// Match windows are counted in day keys of that timezone, and a deposit
+// near midnight has a different day key in another, so a timezone change
+// could match it twice or never.
 //
 // Invariant (for a triggering edit made on `today`):
 //   - no period whose due day is before `today` is ever paid by the new
@@ -19,9 +31,9 @@
 //     at most once in total across old and new configs: if its due day has
 //     already arrived (so the old config paid it, or deliberately did not),
 //     the new schedule starts only after that whole period ends;
-//   - a deposit is matched at most once across all edits: every earlier
-//     match window ends before the new `startDay`, where the new schedule's
-//     first window begins.
+//   - a deposit is matched at most once across all edits: every match
+//     window starts at or after both `startDay` and the previous payout's
+//     due day.
 //
 // Known edge cases. Both under-pay or overlap; neither pays
 // the same period twice. Kept deliberately, pinned by tests:
@@ -70,22 +82,13 @@ function amountTermsChanged(prev: SchedulableConfig, next: SchedulableConfig): b
   return AMOUNT_TERMS.some((f) => p[f] !== n[f])
 }
 
-/** True when an edit changes which days are due: the cadence, the due
- *  weekday or day of month, or the timezone the days are counted in. A
- *  deposit-match window reaches back to the previous due day under the
- *  CURRENT schedule, so moving the due day without re-anchoring would let
- *  the next window cover deposits the old schedule already matched. */
-function scheduleChanged(prev: SchedulableConfig, next: SchedulableConfig): boolean {
-  return prev.cadence !== next.cadence || prev.day !== next.day || prev.tz !== next.tz
-}
-
 /** True when moving from `prev` to `next` could expose periods that were
  *  never meant to be paid under `next`'s schedule or terms. */
 export function needsReanchor<C extends SchedulableConfig>(prev: C, next: C): boolean {
   return (
     amountTermsChanged(prev, next) ||
     prev.account !== next.account ||
-    scheduleChanged(prev, next) ||
+    prev.cadence !== next.cadence ||
     Boolean(prev.paused) !== Boolean(next.paused) ||
     (Boolean(prev.choresGate) && !next.choresGate) ||
     (Boolean(prev.auditGate) && !next.auditGate)
@@ -113,6 +116,7 @@ function currentPeriodOf(prev: SchedulableConfig, today: string): { dueDay: stri
  * config's timezone.
  *
  * - No previous config: `next` is returned unchanged (a brand-new schedule).
+ * - A previous config: `next` keeps `prev.tz` (unless that is unusable).
  * - A triggering edit (`needsReanchor`): `startDay` becomes the later of
  *   `next.startDay` and a floor. The floor is the last day of the old
  *   config's current period when that period's due day is on or before
@@ -124,6 +128,7 @@ function currentPeriodOf(prev: SchedulableConfig, today: string): { dueDay: stri
  */
 export function reanchorConfig<C extends SchedulableConfig>(prev: C | undefined, next: C, today: string): C {
   if (prev === undefined) return next
+  if (next.tz !== prev.tz && usableTz(prev.tz)) next = { ...next, tz: prev.tz }
   let floor: string
   if (needsReanchor(prev, next)) {
     const { dueDay, lastDay } = currentPeriodOf(prev, today)
@@ -133,6 +138,15 @@ export function reanchorConfig<C extends SchedulableConfig>(prev: C | undefined,
   }
   const startDay = laterOf(next.startDay, floor)
   return startDay === next.startDay ? next : { ...next, startDay }
+}
+
+function usableTz(tz: string): boolean {
+  try {
+    dayKey(0, tz)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** For a config with no exact (child, account) predecessor: the first
@@ -166,9 +180,11 @@ export function reanchorConfigs<C extends SchedulableConfig>(prev: readonly C[],
       if (i !== -1) used.add(i)
     }
     const before = i === -1 ? undefined : prev[i]
+    // The edit day in the timezone the config will keep (see reanchorConfig).
+    const tz = before !== undefined && usableTz(before.tz) ? before.tz : cfg.tz
     let today: string
     try {
-      today = dayKey(nowSec, cfg.tz)
+      today = dayKey(nowSec, tz)
     } catch {
       return cfg // an unusable tz: dueDays would reject this config anyway
     }

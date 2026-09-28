@@ -123,11 +123,19 @@ describe('an interest amount-term edit re-anchors', () => {
     expect(needsReanchor(i0, { ...i0, matchCapMinor: 1000 })).toBe(true)
     expect(needsReanchor(i0, { ...i0 })).toBe(false)
   })
-  it('needsReanchor is true for any change to which days are due', () => {
-    expect(needsReanchor(i0, { ...i0, day: 5 })).toBe(true)
-    expect(needsReanchor(i0, { ...i0, tz: 'Europe/London' })).toBe(true)
+  it('needsReanchor is true for a cadence change, false for a due-day or timezone change', () => {
     expect(needsReanchor(i0, { ...i0, cadence: 'monthly' })).toBe(true)
-    expect(needsReanchor(base, { ...base, day: 5 })).toBe(true)
+    expect(needsReanchor(i0, { ...i0, day: 5 })).toBe(false)
+    expect(needsReanchor(i0, { ...i0, tz: 'Europe/London' })).toBe(false)
+    expect(needsReanchor(base, { ...base, day: 5 })).toBe(false)
+  })
+  it('an existing config keeps its timezone; a new one takes its own', () => {
+    const [kept] = reanchorConfigs([i0], [{ ...i0, tz: 'Europe/Berlin' }], now)
+    expect(kept!.tz).toBe('UTC')
+    const [fresh] = reanchorConfigs([], [{ ...i0, tz: 'Europe/Berlin' }], now)
+    expect(fresh!.tz).toBe('Europe/Berlin')
+    const [fixed] = reanchorConfigs([{ ...i0, tz: 'Not/AZone' }], [{ ...i0, tz: 'Europe/Berlin' }], now)
+    expect(fixed!.tz).toBe('Europe/Berlin') // an unusable timezone may be corrected
   })
   it('0 % -> 5 %: no period before the edit is due at the new rate', () => {
     // Wednesday edit; this week's Tuesday has already passed, so nothing is due now.

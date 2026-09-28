@@ -205,18 +205,40 @@ export function depositMinor(e: Entry, accountId: string, reversedIds: ReadonlyS
   return sum
 }
 
-/** The inclusive first day of the deposit window a match on `dueDay`
- *  covers. A window runs from the schedule's previous due day (included) up
- *  to `dueDay` (excluded), so money added ON a due day counts towards the
- *  next period, whatever time of day that day's tick ran. The first period
- *  starts at `cfg.startDay` (a deposit made before the schedule, or before a
- *  re-anchoring edit, is never matched). Every deposit on or after
- *  `startDay` therefore falls into exactly one window: the one of the first
- *  due day strictly after it. */
-export function matchWindowStart(cfg: Pick<InterestConfig, 'cadence' | 'day' | 'startDay'>, dueDay: string): string {
-  const earlier = dueDays({ cadence: cfg.cadence, day: cfg.day, fromExclusive: addDays(dueDay, -32), toInclusive: addDays(dueDay, -1) })
-  const prev = earlier[earlier.length - 1] ?? addDays(dueDay, -32)
-  return prev >= cfg.startDay ? prev : cfg.startDay
+/** The latest due day a match payout on `accountId` has paid for, read
+ *  from its deterministic id (or, failing that, its date in `tz`), or null
+ *  when none has been paid. A reversed payout still counts: its window's
+ *  deposits were consumed, and reversing it must not re-offer them. */
+export function lastMatchedDueDay(entries: readonly Entry[], accountId: string, tz: string): string | null {
+  let latest: string | null = null
+  for (const e of entries) {
+    if (e.kind !== 'credit' || e.category !== MATCH_CATEGORY || e.reverses !== undefined) continue
+    if (!e.legs.some((l) => l.account === accountId)) continue
+    const day = effectiveDay(e, tz)
+    if (latest === null || day > latest) latest = day
+  }
+  return latest
+}
+
+/** The inclusive first day of the deposit window of the next match `cfg`
+ *  pays. A window runs up to its own due day (excluded), so money added ON
+ *  a due day counts towards the next period, whatever time of day that
+ *  day's tick ran. It starts at the due day of the most recent match payout
+ *  for this config (the day the previous window ended), never before
+ *  `cfg.startDay` (a deposit made before the schedule, or before a
+ *  re-anchoring edit, is never matched).
+ *
+ *  Keying the start to the last payout rather than to the schedule's
+ *  previous due day keeps every deposit on or after `startDay` in exactly
+ *  one window across any due-day edit: moving pay day earlier cannot reach
+ *  back over deposits already matched, and moving it later (so the old
+ *  due day's period counts as paid and the new one is skipped) cannot drop
+ *  the deposits in between. Consecutive windows are [M_prev, M) and so
+ *  never overlap. `entries` must include any payout queued earlier in the
+ *  same pass. */
+export function matchWindowStart(cfg: Pick<InterestConfig, 'account' | 'tz' | 'startDay'>, entries: readonly Entry[]): string {
+  const last = lastMatchedDueDay(entries, cfg.account, cfg.tz)
+  return last !== null && last > cfg.startDay ? last : cfg.startDay
 }
 
 /** Total deposits on `accountId` whose effective day (in `tz`) is in
