@@ -81,7 +81,7 @@ android {
 // of git, same as charter/android/carrier/build.gradle.kts's own pattern.
 val consoleDist = rootProject.file("../app/dist")
 
-// Separate task, not a doFirst on the Copy: a Copy whose source dir is absent
+// Separate task, not a doFirst on staging: a task whose source dir is absent
 // is skipped as NO-SOURCE and never runs its actions — the failure must not
 // be skippable, or an empty dist ships a blank console silently.
 val checkConsoleDist by tasks.registering {
@@ -94,7 +94,7 @@ val checkConsoleDist by tasks.registering {
         }
     }
 }
-val stageConsoleAssets by tasks.registering(Copy::class) {
+val stageConsoleAssets by tasks.registering(Sync::class) {
     description = "Stage app/dist into APK assets as the bundled console."
     dependsOn(checkConsoleDist)
     from(consoleDist)
