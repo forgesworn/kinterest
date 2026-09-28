@@ -11,11 +11,11 @@ in place and unchanged in kind):
 1. **Signet root of recovery and authority.** Signing in with My Signet
    (`nostrconnect://` NIP-46) is now the guardian's login. The family mnemonic
    is generated silently behind it — never a 12-word ceremony on this path —
-   and stays viewable from Settings as the standalone fallback either way. A
-   vault carrying the mnemonic, the active children, and the family's relays
-   is gift-wrapped to the Signet pubkey on those relays, so recovery is "sign
-   in again", not "type the words back in". Full design: internal design spec
-   2026-09-02-signet-rooted-family-design §1.
+   and stays viewable from Settings as an optional, advanced fallback either
+   way. A vault carrying the mnemonic, the active children, and the family's
+   relays is gift-wrapped to the Signet pubkey on those relays, so recovery is
+   "sign in again", not "type the words back in". Full design: internal
+   design spec 2026-09-02-signet-rooted-family-design §1.
 2. **Resilient sync.** Each child sends an hourly heartbeat (`status`); the
    guardian reconciles it against its own checkpoint for that child — a peer
    that's behind gets a fresh snapshot, a peer that's ahead gets a paged,
@@ -46,6 +46,25 @@ in place and unchanged in kind):
 directly with `adb shell am start -n org.forgesworn.kinjar/.MainActivity`.
 Release builds sign with `android/keystore.properties` when it's present
 (owned by the deploy owner), and fall back to debug signing when it isn't.
+
+## v0.3 — Signet mandatory for guardian onboarding (2026-09-28)
+
+Welcome now offers only "Sign in with My Signet" (fresh family) and "I
+already have a family on My Signet" (recovery), plus the child's own "Join
+your family" — the standalone recovery-phrase setup ceremony is no longer
+reachable from onboarding at all, and a Signet sign-in that doesn't finish no
+longer falls back to showing the mnemonic (it never asks a guardian to write
+anything down). Recovery words remain a fallback, but only *inside* Signet
+recovery: when "I already have a family on My Signet" ends in no backup
+found, too many candidates, or conflicting backups, the screen offers "Use
+recovery words instead" — worded as optional, since a guardian may never have
+looked at Settings' "Show recovery words". Submitting words there binds the
+restored family back to that same signed-in Signet session (same
+connect-and-seal path "Sign in with My Signet" itself uses), not to a bare
+phrase root. A family already set up on a phrase keeps working unchanged —
+this only changes onboarding. "Connect My Signet" from Settings (existing,
+`FamilyRootCard`) already lets a guardian who set up before this change add a
+Signet root afterwards, so nothing new was needed there.
 
 ## v0.2.1 — audit fixes (2026-09-27)
 
@@ -176,6 +195,10 @@ tests. The ones that mattered most:
   - Interest on loans — never, or parent-set?
   - Depends on children having a Signet identity (see Signet-side
     dependant issuance) for contacts to work on the child's side.
+- **Phone-less children.** A parent manages a young child's pots on their own
+  phone and can switch into the child's view via the child's My Signet
+  dependant (like switching persona). Depends on adopting Signet dependant
+  pairing (item 12, above).
 
 Deferred minors from the audit (logged in the session's audit notes, not
 urgent): PIN backoff lives in localStorage and can be reset by anyone with

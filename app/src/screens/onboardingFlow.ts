@@ -1,24 +1,31 @@
 // The pure step machine behind screens/Onboarding.tsx. See
-// internal plan 2026-08-11-parent-mode, Task 3: "welcome ->
-// set-up-as-parent -> mnemonic ceremony -> add first child -> home", plus a
-// restore branch ("I have recovery words" -> textarea -> validateMnemonic
-// fail-closed).
+// internal plan 2026-08-11-parent-mode, Task 3, and the v0.3 "My Signet is
+// mandatory for guardians" change: Welcome now offers only "Sign in with My
+// Signet" (fresh family) and "I already have a family on My Signet"
+// (recovery), plus the child's own "Join your family". The standalone
+// mnemonic-ceremony setup path (a phrase root with no Signet at all) is no
+// longer reachable from the UI, and a failed Signet sign-in no longer falls
+// back to showing the mnemonic — the family mnemonic is always generated (or
+// restored) silently, per Signet-side design. Recovery words remain a
+// fallback, but only INSIDE the Signet recovery path: when
+// "I already have a family on My Signet" cannot find or pick a vault, the
+// screen offers restoring from words instead — reachable only from there,
+// via `beginRestore()`.
 //
 // Deliberately knows nothing about AppState, the vault, or dispatch — every
 // transition here is a total, side-effect-free function of the CURRENT step
 // (plus whatever the caller supplies: a freshly generated mnemonic, typed
 // restore input, an injected validator). Onboarding.tsx is what turns a step
 // into actual identity — deriving keys, storing the mnemonic in the vault,
-// dispatching into the store — this module only ever decides WHICH SCREEN
-// comes next, so it is testable with no BIP-39 wordlist, no crypto, no
-// React at all.
+// dispatching into the store, sealing a root to My Signet — this module only
+// ever decides WHICH SCREEN comes next, so it is testable with no BIP-39
+// wordlist, no crypto, no React at all.
 
 export type OnboardingStep =
   /** `error` is set only by a failed My Signet sign-in bouncing back here —
    *  absent on every other path, so a plain `welcomeStep()` still equals a
    *  bare `{ kind: 'welcome' }` (v0.2 spec §1.8). */
   | { kind: 'welcome'; error?: string }
-  | { kind: 'mnemonicReveal'; mnemonic: string }
   | { kind: 'restoreEntry'; error: string | null }
   /** The My Signet picker is open. No error field: a failure here goes back
    *  to `welcome` carrying the message, because the family IS already set up
@@ -39,15 +46,14 @@ export function addChildStep(): OnboardingStep {
   return { kind: 'addChild' }
 }
 
-/** "Set up as parent" tapped on the welcome step. `mnemonic` is a freshly
- *  generated one, supplied by the caller (identity/derive.ts's
- *  `generateMnemonic()`) — this module never generates or validates a
- *  mnemonic itself, see the module header. */
-export function beginMnemonicReveal(mnemonic: string): OnboardingStep {
-  return { kind: 'mnemonicReveal', mnemonic }
-}
-
-/** "I have recovery words" tapped on the welcome step. */
+/** "Use recovery words instead" — reachable only from a `signetRecovering`
+ *  step that ended in no-vault, too-many-candidates or conflicting-vaults
+ *  (Onboarding.tsx decides which errors offer this; see its
+ *  `offersWordsFallback`). Onboarding.tsx tracks separately that a restore
+ *  reached this way must be bound back to the signed-in Signet session once
+ *  the words validate — that binding is a side effect, so it stays out of
+ *  this pure step type, the same way `familyMnemonic`/`restoreInput` already
+ *  live in the screen's own React state rather than in a step. */
 export function beginRestore(): OnboardingStep {
   return { kind: 'restoreEntry', error: null }
 }
@@ -55,15 +61,6 @@ export function beginRestore(): OnboardingStep {
 /** Any step's "start over" affordance. */
 export function backToWelcome(): OnboardingStep {
   return welcomeStep()
-}
-
-/** "I've written these down" confirmed on the mnemonic-reveal step. Only
- *  meaningful from that step — called from anywhere else it is a no-op,
- *  returning `step` unchanged (defensive; the screen should never be able
- *  to reach this button from elsewhere, but this keeps the transition table
- *  itself total rather than relying on the caller to enforce that). */
-export function confirmMnemonicWritten(step: OnboardingStep): OnboardingStep {
-  return step.kind === 'mnemonicReveal' ? addChildStep() : step
 }
 
 /** Normalises pasted/typed recovery-words input before it is ever validated
@@ -121,9 +118,11 @@ export function beginSignetRecover(): OnboardingStep {
 
 /** A My Signet step that did not get where it was going — a cancelled picker,
  *  an attestation that would not verify, no vault found. Sign-in returns to
- *  `welcome` with the message (the family is already usable with a phrase
- *  root); recovery stays put with the message (nothing is set up yet).
- *  A no-op from any other step, so the transition table stays total. */
+ *  `welcome` with the message (the family is already usable, silently backed
+ *  by its mnemonic); recovery stays put with the message (nothing is set up
+ *  yet, and some of these errors offer "use recovery words instead" —
+ *  Onboarding.tsx's call, from the error text). A no-op from any other step,
+ *  so the transition table stays total. */
 export function signetFailed(step: OnboardingStep, error: string): OnboardingStep {
   if (step.kind === 'signetConnecting') return { kind: 'welcome', error }
   if (step.kind === 'signetRecovering') return { kind: 'signetRecovering', error }
@@ -133,7 +132,7 @@ export function signetFailed(step: OnboardingStep, error: string): OnboardingSte
 /** A My Signet step that succeeded — both paths land on "add your first
  *  child". No mnemonic ceremony on either: sign-in generated the mnemonic
  *  silently and vaulted it (spec §1.2), recovery restored one that is already
- *  written down somewhere. A no-op from any other step. */
+ *  sealed to the signed-in Signet identity. A no-op from any other step. */
 export function signetSucceeded(step: OnboardingStep): OnboardingStep {
   return step.kind === 'signetConnecting' || step.kind === 'signetRecovering' ? addChildStep() : step
 }

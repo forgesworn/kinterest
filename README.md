@@ -5,11 +5,14 @@ No card, no real money, ever. Part of the KIN suite.
 
 ## Status
 
-v0.2.0 (Android versionCode 2) — the guardian's My Signet identity is now the
-family's root of recovery and authority, sync self-heals with a heartbeat and a
-paged, signature-verified resync, and the Android shell notifies the family in
-the background via a foreground relay service. ~1230 tests green. See
-`docs/ROADMAP.md` for what's built and what's next.
+v0.2.0 (Android versionCode 2) — My Signet sign-in is now mandatory for
+guardians: onboarding offers only "Sign in with My Signet" or "I already have
+a family on My Signet", never a standalone recovery-phrase setup. Recovery
+words still exist as a fallback, but only inside My Signet recovery, and stay
+viewable as an optional, advanced action from Settings. Sync self-heals with a
+heartbeat and a paged, signature-verified resync, and the Android shell
+notifies the family in the background via a foreground relay service. ~1500
+tests green. See `docs/ROADMAP.md` for what's built and what's next.
 
 Design docs and plans live in the private suite repo, not here:
 

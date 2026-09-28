@@ -1,19 +1,30 @@
 // The onboarding screen — drives screens/onboardingFlow.ts's pure step
 // machine and turns each step into real identity: deriving keys, sealing
-// the family mnemonic into the vault, dispatching into the store. See
-// internal plan 2026-08-11-parent-mode, Task 3.
+// the family mnemonic into the vault, dispatching into the store, and
+// binding a root to My Signet. See internal plan 2026-08-11-parent-mode,
+// Task 3, and the v0.3 "My Signet is mandatory for guardians" change.
 //
 // Guardian identity is committed (vault + `startAsGuardian` dispatch) the
-// MOMENT "Set up with a recovery phrase"/a valid restore is confirmed — not
-// later, when "I've written these down" is tapped. That way the mnemonic is
-// already durably in the vault before it is ever shown on screen: if the device
-// dies the instant after the words appear, nothing set up so far is lost.
-// The mnemonic-reveal step that follows is then purely a backup ceremony,
-// with nothing left to fail.
+// MOMENT a Signet sign-in/recovery starts, or a recovery-words restore is
+// confirmed — never later. The family mnemonic itself is never shown on
+// this screen: "Sign in with My Signet" generates and vaults it silently
+// (spec §1.2), and it stays viewable only as an advanced, clearly optional
+// action from Settings ("Show recovery words") — nothing here nags a
+// guardian to write anything down. The standalone mnemonic-ceremony setup
+// path is not reachable from this screen's UI at all any more — existing
+// families already set up that way keep working unchanged (this only
+// changes onboarding).
 //
-// App.tsx resumes this screen correctly after a reload that landed
-// mid-ceremony (guardian role already set, no children yet) via
-// `initialStep` — see its own routing.
+// Recovery words remain a fallback, but only INSIDE the Signet recovery
+// path: when "I already have a family on My Signet" cannot find or pick a
+// vault, the screen offers restoring from words instead, worded as
+// optional (the guardian may never have looked at Settings to save them).
+// That restore is bound back to the SAME signed-in Signet session —
+// `connectAndSealSignetRoot` below, shared with the ordinary sign-in path.
+//
+// App.tsx resumes this screen correctly after a reload that landed with the
+// guardian role already set but no children yet, via `initialStep` — see
+// its own routing.
 
 import { useEffect, useState } from 'react'
 import { Banner, Button, Card, Pill, Screen } from '../components/ui'
@@ -21,7 +32,12 @@ import { useApp } from '../store/store'
 import { generateMnemonic, guardianFromMnemonic, validateMnemonic } from '../identity/derive'
 import { addChild, startAsGuardian } from '../state/onboarding'
 import { loadFamilyMnemonic, storeFamilyMnemonic, vaultStore } from '../identity/vault'
-import { connectSignetRoot, recoverFamilyFromSignet, type SignetRoot } from '../identity/signetConnect'
+import {
+  connectSignetRoot,
+  recoverFamilyFromSignet,
+  type ConnectedRoot,
+  type SignetRoot,
+} from '../identity/signetConnect'
 import { vaultPayloadFor, vaultRosterOf } from '../identity/signetVault'
 import { buildResyncRequestPayload } from '../wire/payloads'
 import { sendResyncRequest, sendVault } from '../sync/publish'
@@ -29,11 +45,9 @@ import type { AppState } from '../state/types'
 import {
   addChildStep,
   backToWelcome,
-  beginMnemonicReveal,
   beginRestore,
   beginSignetConnect,
   beginSignetRecover,
-  confirmMnemonicWritten,
   normalizeMnemonicInput,
   signetFailed,
   signetSucceeded,
@@ -43,21 +57,36 @@ import {
 } from './onboardingFlow'
 
 const NO_FAMILY_FOUND = 'We could not find a family backed up to that My Signet account.'
-const TOO_MANY_CANDIDATES = 'We found too many backups to check in time — try again, or use your recovery words.'
+const TOO_MANY_CANDIDATES = 'We found too many backups to check in time — try again in a moment.'
 const CONFLICTING_VAULTS =
-  'We found more than one family backup for this My Signet account, so we have not restored either. Please use your recovery words instead. If you did not create a second family, contact support.'
+  'We found more than one family backup for this My Signet account, so we have not restored either. If you did not create a second family, contact support.'
 const NEEDS_FULL_SIGNER = 'That sign-in cannot open a backup. Reconnect My Signet and approve encryption access.'
 const BACKUP_DEFERRED = 'Backup to My Signet needs a connected My Signet — reconnect from Settings.'
 const BACKUP_QUEUED = 'Your backup is queued and will finish when you are back online.'
-const ROOT_NOT_REBOUND = 'Your family is back. Reconnect My Signet from Settings to show it on your children\u2019s phones.'
-const SIGNIN_FELL_BACK =
-  'My Signet sign-in didn\u2019t complete — here are your recovery words instead. You can connect My Signet later from Settings.'
-const RECOVERY_CANCELLED = 'Sign-in wasn\u2019t completed — you can try again.'
+const ROOT_NOT_REBOUND = 'Your family is back. Reconnect My Signet from Settings to show it on your children’s phones.'
+// Deliberately says nothing about recovery words: a guardian on the Signet
+// path was never asked to look at them, so a failed/incomplete sign-in must
+// not turn into a nag to go and write them down. The family is already set
+// up and vaulted by this point regardless.
+const SIGNIN_INCOMPLETE =
+  'My Signet sign-in didn’t finish, but your family is set up. Connect My Signet again anytime from Settings.'
+const RECOVERY_CANCELLED = 'Sign-in wasn’t completed — you can try again.'
+// Framed as optional, not a requirement — plenty of guardians will never
+// have looked at Settings' "Show recovery words" before hitting this.
+const WORDS_FALLBACK_HINT = 'If you saved recovery words from Settings, you can use them instead.'
 
 /** Matches store.tsx's own literal — see that module's doc comment on why
  *  it is kept as a literal rather than re-exported (store.tsx predates this
  *  screen and owns none of onboarding's concerns either). */
 const GUARDIAN_SK_NAME = 'guardian-sk'
+
+/** Whether a `signetRecovering` error is one where nothing was set up yet
+ *  but a usable-looking backup might still exist elsewhere — as opposed to
+ *  `NEEDS_FULL_SIGNER` (the session itself can't decrypt: retrying, not
+ *  recovery words, is the fix) or a cancelled picker. */
+function offersWordsFallback(error: string): boolean {
+  return error === NO_FAMILY_FOUND || error === TOO_MANY_CANDIDATES || error === CONFLICTING_VAULTS
+}
 
 export function Onboarding({
   initialStep = welcomeStep(),
@@ -83,11 +112,16 @@ export function Onboarding({
   const { state, dispatch, relay } = useApp()
   const [step, setStep] = useState<OnboardingStep>(initialStep)
   const [busy, setBusy] = useState(false)
-  const [welcomeError, setWelcomeError] = useState<string | null>(null)
   // A calm, non-blocking note after a sign-in that worked but could not seal
-  // the backup (an auth-only session — spec §1.8 step 7).
+  // the backup (an auth-only session — spec §1.8 step 7), or that did not
+  // complete at all.
   const [signetNote, setSignetNote] = useState<string | null>(null)
   const [restoreInput, setRestoreInput] = useState('')
+  // Set only by "Use recovery words instead" on a `signetRecovering`
+  // failure — marks that the words about to be submitted must be bound back
+  // to that same signed-in Signet session once they validate, rather than
+  // left on a bare phrase root. Cleared on any way back to welcome.
+  const [restoreSignetBound, setRestoreSignetBound] = useState(false)
   const [childName, setChildName] = useState('')
   // Kept only in memory (never in AppState — see Global Constraints): the
   // `addChild` step needs it to derive the new child's key. Resuming
@@ -126,53 +160,6 @@ export function Onboarding({
     return true
   }
 
-  async function handleSetUpAsParent() {
-    setBusy(true)
-    setWelcomeError(null)
-    try {
-      // Reuse an already-vaulted mnemonic rather than blindly generating a
-      // fresh one — guards against this running a second time after an
-      // interruption between `commitGuardian`'s vault write and AppState's
-      // own persistence (a crash, or `localStorage` cleared independently
-      // of IndexedDB) landing `role` back at 'unset' while the vault still
-      // holds a real family mnemonic. Without this, tapping "Set up with a
-      // recovery phrase" again would overwrite that mnemonic with an
-      // unrelated one, silently orphaning any child keys already derived
-      // from the original. Ported from the debug App.tsx this screen
-      // replaces, which had the identical guard.
-      const existing = await loadFamilyMnemonic()
-      const mnemonic = existing ?? generateMnemonic()
-      const ok = await commitGuardian(mnemonic)
-      if (!ok) {
-        setWelcomeError('Something went wrong setting up your family — please try again.')
-        return
-      }
-      setStep(beginMnemonicReveal(mnemonic))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleRestoreSubmit() {
-    const next = submitRestoreMnemonic(step, restoreInput, validateMnemonic)
-    if (next.kind === 'restoreEntry') {
-      setStep(next)
-      return
-    }
-    setBusy(true)
-    try {
-      // The SAME normalisation `submitRestoreMnemonic` just validated
-      // against — a plain `.trim()` here would leave stray
-      // capitals/line breaks/double spaces in place, deriving a DIFFERENT
-      // (and wrong) key from text that was only ever checked in its
-      // normalised form.
-      const ok = await commitGuardian(normalizeMnemonicInput(restoreInput))
-      setStep(ok ? next : { kind: 'restoreEntry', error: 'Something went wrong restoring your family — please try again.' })
-    } finally {
-      setBusy(false)
-    }
-  }
-
   /** Seals the family mnemonic to the My Signet identity and reports whether
    *  it actually left the outbox. `nowSec` is the caller's, per Global
    *  Constraints. */
@@ -197,6 +184,29 @@ export function Onboarding({
     dispatch({ type: 'updateApp', update: (app) => ({ ...app, root: root ?? { kind: 'phrase' } }) })
   }
 
+  /** Runs a My Signet login and, on success, seals `mnemonic` to it — the
+   *  exact steps "Sign in with My Signet" takes once the guardian is
+   *  committed. Shared with the recovery-words fallback so a family restored
+   *  from words after a Signet recovery miss is bound to that SAME
+   *  signed-in session, never left on a bare phrase root. Returns the
+   *  connected root, or `null` if the login itself did not complete — the
+   *  caller decides what that means for its own step (it never means
+   *  showing the mnemonic: nothing here does that). */
+  async function connectAndSealSignetRoot(mnemonic: string, guardianPk: string): Promise<ConnectedRoot | null> {
+    const connected = await connectSignetRoot({ guardianPk, relayUrls: state.app.relays })
+    if (connected === null) return null
+    if (connected.full) {
+      const nowSec = Math.floor(Date.now() / 1000)
+      const sent = await publishVault(connected.root, mnemonic, nowSec)
+      dispatchRoot(sent ? { ...connected.root, backedUpAt: nowSec } : connected.root)
+      if (!sent) setSignetNote(BACKUP_QUEUED)
+    } else {
+      dispatchRoot(connected.root)
+      setSignetNote(BACKUP_DEFERRED)
+    }
+    return connected
+  }
+
   /**
    * "Sign in with My Signet" — spec §1.8, and the step ORDER is the whole
    * point: the challenge binds the attestation to the guardian device key, so
@@ -206,7 +216,6 @@ export function Onboarding({
   async function handleSignetConnect() {
     const connecting = beginSignetConnect()
     setStep(connecting)
-    setWelcomeError(null)
     setSignetNote(null)
     setBusy(true)
     try {
@@ -219,28 +228,16 @@ export function Onboarding({
         return
       }
 
-      const connected = await connectSignetRoot({ guardianPk: pk, relayUrls: state.app.relays })
+      const connected = await connectAndSealSignetRoot(mnemonic, pk)
       if (connected === null) {
-        // The family is already set up and vaulted by this point, so bouncing
-        // back to welcome would leave it with NO backup the user knows about —
-        // and "Set up with a recovery phrase" would then re-run the ceremony
-        // over the very mnemonic just vaulted. Instead: record a phrase root
-        // and show the words. Whatever happened to the sign-in, the user ends
-        // up with a family they can actually recover.
+        // The family is already set up and vaulted by this point — silently,
+        // with no mnemonic ever shown — so there is nothing left to recover
+        // from here. Carry on to the family home; Settings offers
+        // "Connect My Signet" again whenever the guardian wants to retry.
         dispatchRoot(null)
-        setSignetNote(SIGNIN_FELL_BACK)
-        setStep(beginMnemonicReveal(mnemonic))
+        setSignetNote(SIGNIN_INCOMPLETE)
+        setStep(addChildStep())
         return
-      }
-
-      if (connected.full) {
-        const nowSec = Math.floor(Date.now() / 1000)
-        const sent = await publishVault(connected.root, mnemonic, nowSec)
-        dispatchRoot(sent ? { ...connected.root, backedUpAt: nowSec } : connected.root)
-        if (!sent) setSignetNote(BACKUP_QUEUED)
-      } else {
-        dispatchRoot(connected.root)
-        setSignetNote(BACKUP_DEFERRED)
       }
       setStep(signetSucceeded(connecting))
     } finally {
@@ -282,7 +279,7 @@ export function Onboarding({
       }
       // Authentic backups for more than one family were found.
       // One may have been planted via a phished Signet login, so nothing is
-      // restored and the user is sent to their recovery words.
+      // restored and the user is offered their recovery words instead.
       if (got === 'conflicting-vaults') {
         setStep(signetFailed(recovering, CONFLICTING_VAULTS))
         return
@@ -337,6 +334,52 @@ export function Onboarding({
     }
   }
 
+  /** "Use recovery words instead" on a `signetRecovering` failure that
+   *  offers it (see `offersWordsFallback`). Marks the restore that follows
+   *  as needing to bind back to the Signet session once the words validate
+   *  — see `handleRestoreSubmit`. */
+  function handleUseWordsInstead() {
+    setRestoreSignetBound(true)
+    setStep(beginRestore())
+  }
+
+  async function handleRestoreSubmit() {
+    const next = submitRestoreMnemonic(step, restoreInput, validateMnemonic)
+    if (next.kind === 'restoreEntry') {
+      setStep(next)
+      return
+    }
+    setBusy(true)
+    try {
+      // The SAME normalisation `submitRestoreMnemonic` just validated
+      // against — a plain `.trim()` here would leave stray
+      // capitals/line breaks/double spaces in place, deriving a DIFFERENT
+      // (and wrong) key from text that was only ever checked in its
+      // normalised form.
+      const mnemonic = normalizeMnemonicInput(restoreInput)
+      const ok = await commitGuardian(mnemonic)
+      if (!ok) {
+        setStep({ kind: 'restoreEntry', error: 'Something went wrong restoring your family — please try again.' })
+        return
+      }
+      if (restoreSignetBound) {
+        // Reached via "Use recovery words instead" from a My Signet
+        // recovery that could not find/pick a vault — recovery words are a
+        // fallback WITHIN Signet recovery, not a way around it, so bind the
+        // restored family back to that same signed-in session.
+        const { pk } = guardianFromMnemonic(mnemonic)
+        const connected = await connectAndSealSignetRoot(mnemonic, pk)
+        if (connected === null) {
+          dispatchRoot(null)
+          setSignetNote(SIGNIN_INCOMPLETE)
+        }
+      }
+      setStep(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function handleAddChildSubmit() {
     const name = childName.trim()
     if (name === '' || familyMnemonic === null) return
@@ -351,9 +394,7 @@ export function Onboarding({
   }
 
   if (step.kind === 'welcome') {
-    // `welcomeError` is this screen's own (a vault write that failed);
-    // `step.error` is a My Signet sign-in bouncing back here (spec §1.8).
-    const error = welcomeError ?? step.error ?? null
+    const error = step.error ?? null
     return (
       <Screen title="Welcome">
         <div className="onboarding-hero">
@@ -376,16 +417,6 @@ export function Onboarding({
             I already have a family on My Signet
           </Button>
           <p className="card-sub">Bring back a family you set up on another phone.</p>
-        </Card>
-        <Card>
-          <Button variant="quiet" block onClick={() => void handleSetUpAsParent()} disabled={busy}>
-            Set up with a recovery phrase
-          </Button>
-        </Card>
-        <Card>
-          <Button variant="quiet" block onClick={() => setStep(beginRestore())} disabled={busy}>
-            I have recovery words
-          </Button>
         </Card>
         {onJoinFamily && (
           <Card>
@@ -420,41 +451,31 @@ export function Onboarding({
             Try again
           </Button>
         )}
-      </Screen>
-    )
-  }
-
-  if (step.kind === 'mnemonicReveal') {
-    const words = step.mnemonic.split(' ')
-    return (
-      <Screen title="Write these down">
-        {signetNote && <Banner tone="info">{signetNote}</Banner>}
-        <Banner tone="info">
-          This is the standalone way to back up your family — no My Signet needed. These {words.length} words are
-          the only way to recover your family's account. Write them down and keep them somewhere safe — we cannot
-          show them to you again after this.
-        </Banner>
-        <Card>
-          <ol className="mnemonic-grid">
-            {words.map((word, i) => (
-              <li key={i}>
-                <span className="mnemonic-index">{i + 1}</span>
-                <span className="mnemonic-word">{word}</span>
-              </li>
-            ))}
-          </ol>
-        </Card>
-        <Button variant="primary" block onClick={() => setStep(confirmMnemonicWritten(step))}>
-          I've written these down
-        </Button>
+        {step.error && offersWordsFallback(step.error) && (
+          <>
+            <Button variant="quiet" block onClick={handleUseWordsInstead} disabled={busy}>
+              Use recovery words instead
+            </Button>
+            <p className="card-sub">{WORDS_FALLBACK_HINT}</p>
+          </>
+        )}
       </Screen>
     )
   }
 
   if (step.kind === 'restoreEntry') {
     return (
-      <Screen title="Recovery words" onBack={() => setStep(backToWelcome())}>
+      <Screen
+        title="Recovery words"
+        onBack={() => {
+          setRestoreSignetBound(false)
+          setStep(backToWelcome())
+        }}
+      >
         <p>Enter your 12 recovery words, separated by spaces.</p>
+        {restoreSignetBound && (
+          <Banner tone="info">These will be linked to the My Signet account you just signed in with.</Banner>
+        )}
         <textarea
           className="textarea-input"
           value={restoreInput}
@@ -486,10 +507,10 @@ export function Onboarding({
   return (
     <Screen title={state.app.children.length === 0 ? 'Add your first child' : 'Add a child'}>
       {/* A My Signet sign-in/recovery that succeeded but
-          couldn't seal the backup (an auth-only session, spec §1.8 step 7)
-          previously set this note and moved straight here without ever
-          showing it — this was the next step reached, not the ones the
-          note was actually rendered on. */}
+          couldn't seal the backup (an auth-only session, spec §1.8 step 7),
+          or didn't complete at all, previously set this note and moved
+          straight here without ever showing it — this was the next step
+          reached, not the one the note was actually rendered on. */}
       {signetNote && <Banner tone="info">{signetNote}</Banner>}
       <p>What's their name?</p>
       <input

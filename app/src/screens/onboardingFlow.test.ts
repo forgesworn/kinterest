@@ -2,13 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   addChildStep,
   backToWelcome,
-  beginMnemonicReveal,
   beginRestore,
   beginSignetConnect,
   beginSignetRecover,
   signetFailed,
   signetSucceeded,
-  confirmMnemonicWritten,
   normalizeMnemonicInput,
   submitRestoreMnemonic,
   welcomeStep,
@@ -23,27 +21,9 @@ describe('welcomeStep / addChildStep / backToWelcome', () => {
   })
 })
 
-describe('beginMnemonicReveal / beginRestore', () => {
-  it('carries the supplied mnemonic', () => {
-    expect(beginMnemonicReveal('one two three')).toEqual({ kind: 'mnemonicReveal', mnemonic: 'one two three' })
-  })
-
+describe('beginRestore', () => {
   it('starts restore entry with no error', () => {
     expect(beginRestore()).toEqual({ kind: 'restoreEntry', error: null })
-  })
-})
-
-describe('confirmMnemonicWritten', () => {
-  it('advances mnemonicReveal -> addChild', () => {
-    const step = beginMnemonicReveal('words here')
-    expect(confirmMnemonicWritten(step)).toEqual({ kind: 'addChild' })
-  })
-
-  it('is a no-op from any other step', () => {
-    const steps: OnboardingStep[] = [welcomeStep(), beginRestore(), addChildStep()]
-    for (const step of steps) {
-      expect(confirmMnemonicWritten(step)).toBe(step)
-    }
   })
 })
 
@@ -74,7 +54,7 @@ describe('submitRestoreMnemonic', () => {
   })
 
   it('is a no-op from any step other than restoreEntry', () => {
-    const steps: OnboardingStep[] = [welcomeStep(), beginMnemonicReveal('x'), addChildStep()]
+    const steps: OnboardingStep[] = [welcomeStep(), addChildStep()]
     for (const step of steps) {
       expect(submitRestoreMnemonic(step, 'anything', alwaysValid)).toBe(step)
     }
@@ -143,7 +123,7 @@ describe('the My Signet steps', () => {
   })
 
   it('is a no-op from any step that is not a signet step', () => {
-    const steps: OnboardingStep[] = [welcomeStep(), beginMnemonicReveal('x'), beginRestore(), addChildStep()]
+    const steps: OnboardingStep[] = [welcomeStep(), beginRestore(), addChildStep()]
     for (const step of steps) {
       expect(signetFailed(step, 'nope')).toBe(step)
       expect(signetSucceeded(step)).toBe(step)
