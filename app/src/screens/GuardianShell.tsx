@@ -25,6 +25,7 @@ import { StorageBanner } from '../components/StorageBanner'
 import { NotificationOptIn } from '../components/NotificationOptIn'
 import { Banner, Button } from '../components/ui'
 import { useApp } from '../store/store'
+import { childNeedingFirstPot } from '../state/state'
 import { addChildStep } from './onboardingFlow'
 import {
   addChildRoute,
@@ -64,7 +65,18 @@ export default function GuardianShell(): ReactElement {
 }
 
 function GuardianRoutes(): ReactElement {
-  const [route, setRoute] = useState<Route>(homeRoute())
+  const { state } = useApp()
+  // Computed once, at mount, via the lazy `useState` initializer — not on
+  // every navigation. This is deliberately the ONLY place the shell
+  // auto-redirects: it covers both a fresh page load AND the moment App.tsx
+  // swaps a brand-new family's Onboarding out for this component (its
+  // first-ever child, added a moment ago, is exactly a "needs a first pot"
+  // child — see childNeedingFirstPot's own doc comment on why the "add
+  // another child" path needs its own separate wiring instead, below).
+  const [route, setRoute] = useState<Route>(() => {
+    const needsFirstPot = childNeedingFirstPot(state.app)
+    return needsFirstPot !== null ? childSettingsRoute(needsFirstPot.pubkey) : homeRoute()
+  })
 
   switch (route.screen) {
     case 'home':
@@ -102,11 +114,14 @@ function GuardianRoutes(): ReactElement {
       // `addChildStep`) — the guardian identity and family mnemonic already
       // exist by the time this screen is reachable, so mounting it directly
       // at that step (rather than at `welcomeStep()`) skips straight to "what's
-      // their name?". `onAddChildDone` returns to Home once the new child has
-      // actually been added — Onboarding's own step machine has no way to
-      // know this route should end, since `app.children.length` is already
-      // > 0 both before and after (unlike the first-run path, which App.tsx
-      // itself swaps away from the moment the FIRST child lands).
-      return <Onboarding initialStep={addChildStep()} onAddChildDone={() => setRoute(homeRoute())} />
+      // their name?". `onAddChildDone` lands on the NEW child's own Settings
+      // once they've actually been added, not Home (v0.3) — Onboarding's
+      // own step machine has no way to know this route should end, since
+      // `app.children.length` is already > 0 both before and after (unlike
+      // the first-run path, which App.tsx itself swaps away from the
+      // moment the FIRST child lands), and a guardian who has just named a
+      // child is prompted straight away to add their first pot, rather
+      // than left on Home with a child that has nothing set up yet.
+      return <Onboarding initialStep={addChildStep()} onAddChildDone={(childPubkey) => setRoute(childSettingsRoute(childPubkey))} />
   }
 }

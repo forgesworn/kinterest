@@ -4,7 +4,7 @@ import { creditEntry, reverseEntry } from '../domain/ledger'
 import { buildGrantPayload, buildRequestPayload, type GrantPayload, type RequestPayload } from '../wire/payloads'
 import type { ChoreTick } from '../domain/chores'
 import type { AuditResult } from '../domain/audit'
-import { emptyState, addEntry, applyConfigDoc, mergeConfigDoc, upsertRequest, recordRequestDecision, requestAlreadyDecided, recordGrantResult, recordTick, recordAudit, retainInnerEvents, activeChildren, archiveChild, markChildPaired, configRecipients, selfRevokedAt, MAX_RETAINED_CHILD_SIG } from './state'
+import { emptyState, addEntry, applyConfigDoc, mergeConfigDoc, upsertRequest, recordRequestDecision, requestAlreadyDecided, recordGrantResult, recordTick, recordAudit, retainInnerEvents, activeChildren, archiveChild, childNeedingFirstPot, markChildPaired, configRecipients, selfRevokedAt, MAX_RETAINED_CHILD_SIG } from './state'
 
 const entry = (id: string, overrides: Partial<Entry> = {}): Entry => ({
   v: 1,
@@ -479,6 +479,53 @@ describe('archiveChild', () => {
   it('is a no-op — same reference back — for an already-archived child', () => {
     const s = archiveChild(roster(), PK, 500)
     expect(archiveChild(s, PK, 999)).toBe(s)
+  })
+})
+
+describe('childNeedingFirstPot', () => {
+  const A = 'a'.repeat(64)
+  const B = 'b'.repeat(64)
+  const account = (child: string) => ({ id: `acc-${child}`, child, name: 'Pocket money', currency: 'GBP', custody: 'ledger' as const })
+
+  it('is null for a family with no children', () => {
+    expect(childNeedingFirstPot(emptyState())).toBeNull()
+  })
+
+  it('is the one child with no accounts yet', () => {
+    const s = {
+      ...emptyState(),
+      children: [{ pubkey: A, name: 'Alex', index: 0 }],
+    }
+    expect(childNeedingFirstPot(s)?.pubkey).toBe(A)
+  })
+
+  it('is null once that child has at least one account', () => {
+    const s = {
+      ...emptyState(),
+      children: [{ pubkey: A, name: 'Alex', index: 0 }],
+      docs: { ...emptyState().docs, accounts: { v: 1 as const, issuedAt: 1, accounts: [account(A)] } },
+    }
+    expect(childNeedingFirstPot(s)).toBeNull()
+  })
+
+  it('skips an archived child even with no accounts', () => {
+    const s = {
+      ...emptyState(),
+      children: [{ pubkey: A, name: 'Alex', index: 0, archived: 500 }],
+    }
+    expect(childNeedingFirstPot(s)).toBeNull()
+  })
+
+  it('finds the second child when the first already has a pot', () => {
+    const s = {
+      ...emptyState(),
+      children: [
+        { pubkey: A, name: 'Alex', index: 0 },
+        { pubkey: B, name: 'Bo', index: 1 },
+      ],
+      docs: { ...emptyState().docs, accounts: { v: 1 as const, issuedAt: 1, accounts: [account(A)] } },
+    }
+    expect(childNeedingFirstPot(s)?.pubkey).toBe(B)
   })
 })
 

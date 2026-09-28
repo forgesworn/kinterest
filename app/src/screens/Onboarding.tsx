@@ -26,7 +26,7 @@
 // guardian role already set but no children yet, via `initialStep` — see
 // its own routing.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Banner, Button, Card, Pill, Screen } from '../components/ui'
 import { useApp } from '../store/store'
 import { generateMnemonic, guardianFromMnemonic, validateMnemonic } from '../identity/derive'
@@ -99,15 +99,20 @@ export function Onboarding({
    *  screens/ChildOnboarding.tsx, Plan 4 Task 2). Optional so this component
    *  stays mountable/testable without it; App.tsx always supplies it. */
   onJoinFamily?: () => void
-  /** Fired after a successful `addChild` submit, but ONLY meaningful when
-   *  this component was mounted at `addChildStep()` with children ALREADY
-   *  on the roster (GuardianShell.tsx's own 'addChild' route: "Add a child" from the family home screen, reusing this exact
-   *  ceremony at a fresh derivation index). The genuine first-run path
-   *  (App.tsx's `children.length === 0` gate) needs no callback of its own —
-   *  once that dispatch lands, App.tsx's next render already swaps this
-   *  whole component out for GuardianShell (see this module's own header) —
-   *  so App.tsx passes nothing here and this stays a no-op for that path. */
-  onAddChildDone?: () => void
+  /** Fired with the new child's pubkey after a successful `addChild`
+   *  submit, but ONLY meaningful when this component was mounted at
+   *  `addChildStep()` with children ALREADY on the roster (GuardianShell.tsx's
+   *  own 'addChild' route: "Add a child" from the family home screen,
+   *  reusing this exact ceremony at a fresh derivation index) — wired to
+   *  land the guardian straight on that child's Settings (v0.3), so they
+   *  are prompted to add a first pot rather than left on Home. The genuine
+   *  first-run path (App.tsx's `children.length === 0` gate) needs no
+   *  callback of its own — once that dispatch lands, App.tsx's next render
+   *  already swaps this whole component out for GuardianShell, whose own
+   *  initial route makes the same "prompt for a first pot" call itself
+   *  (see GuardianShell.tsx) — so App.tsx passes nothing here and this
+   *  stays a no-op for that path. */
+  onAddChildDone?: (childPubkey: string) => void
 }) {
   const { state, dispatch, relay } = useApp()
   const [step, setStep] = useState<OnboardingStep>(initialStep)
@@ -380,18 +385,45 @@ export function Onboarding({
     }
   }
 
+  // Captured inside the dispatched updater — `addChild` derives the new
+  // child's pubkey from `nextFreeChildIndex(app.children)` (state/onboarding.ts),
+  // which must read the REDUCER's own current roster, not a stale
+  // render-time snapshot (the same reasoning store.tsx#stampConfigDoc's own
+  // CAUTION spells out for `issuedAt`) — so the pubkey `onAddChildDone`
+  // needs is only known once that updater has actually run. Drained by the
+  // effect below once the commit has landed.
+  const pendingAddedChildRef = useRef<string | null>(null)
+
   async function handleAddChildSubmit() {
     const name = childName.trim()
     if (name === '' || familyMnemonic === null) return
     setBusy(true)
     try {
-      dispatch({ type: 'updateApp', update: (app) => addChild(app, familyMnemonic, name).state })
+      dispatch({
+        type: 'updateApp',
+        update: (app) => {
+          const result = addChild(app, familyMnemonic, name)
+          pendingAddedChildRef.current = result.child.pubkey
+          return result.state
+        },
+      })
       setChildName('')
-      onAddChildDone?.()
     } finally {
       setBusy(false)
     }
   }
+
+  // v0.3: prompts the guardian to add the new child's first pot (account)
+  // straight away, rather than landing back on a child with nothing set up
+  // — see `onAddChildDone`'s own doc comment on why this only fires for the
+  // "add another child" path.
+  useEffect(() => {
+    const pubkey = pendingAddedChildRef.current
+    if (pubkey === null) return
+    pendingAddedChildRef.current = null
+    onAddChildDone?.(pubkey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.app])
 
   if (step.kind === 'welcome') {
     const error = step.error ?? null

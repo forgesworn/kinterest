@@ -88,6 +88,21 @@ export function activeChildren(app: AppState): ChildProfile[] {
   return app.children.filter((c) => c.archived === undefined && (revoked === undefined || revoked[c.pubkey] === undefined))
 }
 
+/** The active child most in need of a first pot (account) right now, or
+ *  `null` when every active child already has at least one, or there are no
+ *  active children at all (v0.3: prompting the guardian to add a first pot
+ *  rather than leaving a freshly-paired child on ChildHome's own "on its
+ *  way" empty state). GuardianShell.tsx's own initial route uses this to
+ *  decide whether to open Home or straight onto that child's Settings — the
+ *  case Onboarding.tsx's own "add another child" done-callback does not
+ *  itself cover, since App.tsx swaps straight to a fresh GuardianShell mount
+ *  the moment a family's FIRST child lands, well before that callback would
+ *  ever fire. An archived child (`state.ts#archiveChild`) is skipped —
+ *  there is nothing left to prompt for once a child has been removed. Pure. */
+export function childNeedingFirstPot(app: AppState): ChildProfile | null {
+  return app.children.find((c) => c.archived === undefined && !app.docs.accounts.accounts.some((a) => a.child === c.pubkey)) ?? null
+}
+
 /** Archives a child (v0.3's "Remove child" — never a deletion, since money
  *  must always add up): hides them from Home and the other family lists
  *  while keeping their `ChildProfile` and every ledger entry untouched.
