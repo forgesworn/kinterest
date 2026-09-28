@@ -32,4 +32,23 @@ describe('parent unlock visibility boundary',()=>{
     expect(screen.queryByText('Choose your parent PIN')).toBeNull()
     expect(mocks.set).not.toHaveBeenCalled()
   })
+  it('resumes a confirmed external handoff only after a visible user gesture, and clears it on another hide', async () => {
+    let resolve!: (result: boolean) => void
+    mocks.confirm.mockReturnValue(new Promise(r => { resolve = r }))
+    render(<ParentLock onUnlocked={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Forgot parent PIN? Reset with My Signet' }))
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledOnce())
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); fireEvent(document, new Event('visibilitychange'))
+    await act(async () => resolve(true))
+    const resume = screen.getByRole('button', { name: 'Continue after My Signet approval' })
+    fireEvent.click(resume)
+    expect(screen.queryByText('Choose your parent PIN')).toBeNull()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' }); fireEvent(document, new Event('visibilitychange'))
+    fireEvent.click(resume)
+    expect(screen.getByText('Choose your parent PIN')).toBeTruthy()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); fireEvent(document, new Event('visibilitychange'))
+    expect(screen.queryByText('Choose your parent PIN')).toBeNull()
+    expect(mocks.set).not.toHaveBeenCalled()
+  })
+
 })

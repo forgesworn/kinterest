@@ -8,6 +8,10 @@ export function ParentLock({ onUnlocked }: { onUnlocked: () => void }) {
   const { state } = useApp()
   const [hasPin, setHasPin] = useState<boolean | null>(null)
   const [authorised, setAuthorised] = useState(false)
+  const [confirmedUntil, setConfirmedUntil] = useState(0)
+  const confirmedBinding = useRef<{ familyPk: string; rootPk: string } | null>(null)
+  const latest = useRef(state.app)
+  latest.current = state.app
   const authorisedUntil = useRef(0)
   const operation = useRef(false)
   const epoch = useRef(0), mounted = useRef(true)
@@ -21,20 +25,33 @@ export function ParentLock({ onUnlocked }: { onUnlocked: () => void }) {
   useEffect(() => { void parentPinIsSet().then(setHasPin).catch(e => { setHasPin(true); setError(String(e)) }) }, [])
   useEffect(() => { const id = window.setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000); return () => clearInterval(id) }, [])
   useEffect(() => {
-    const clear = () => { if (document.visibilityState === 'hidden') { epoch.current++; if (authorisedUntil.current) { authorisedUntil.current = 0; setAuthorised(false); setFirst(null); setPin('') } } }
+    const clear = () => { if (document.visibilityState === 'hidden') { epoch.current++; setConfirmedUntil(0); confirmedBinding.current = null; if (authorisedUntil.current) { authorisedUntil.current = 0; setAuthorised(false); setFirst(null); setPin('') } } }
     document.addEventListener('visibilitychange', clear)
     return () => document.removeEventListener('visibilitychange', clear)
   }, [])
   async function authenticate() {
     if (operation.current || state.app.root?.kind !== 'signet' || !state.app.guardianPubkey) return
-    operation.current = true; setBusy(true); setError(null); setPin(''); setFirst(null)
+    operation.current = true; setBusy(true); setError(null); setPin(''); setFirst(null); setConfirmedUntil(0)
+    const binding = { familyPk: state.app.guardianPubkey, rootPk: state.app.root.pubkey }
     try {
       const { confirmParentPresence } = await import('../identity/signetLogin')
       if (!await confirmParentPresence(state.app.guardianPubkey, state.app.root.pubkey, state.app.relays)) throw new Error('Approve this parent-lock reset in My Signet to continue.')
-      if (!mounted.current || document.visibilityState === 'hidden') return
-      authorisedUntil.current = Math.floor(Date.now() / 1000) + 300; setLockedUntil(0); setAuthorised(true)
+      if (!mounted.current || latest.current.guardianPubkey !== binding.familyPk || latest.current.root?.kind !== 'signet' || latest.current.root.pubkey !== binding.rootPk) return
+      // A completed external approval may arrive while My Signet is still
+      // foregrounded. Hold it briefly, then require a visible user gesture.
+      confirmedBinding.current = binding
+      setConfirmedUntil(Math.floor(Date.now() / 1000) + 300)
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not confirm My Signet.') }
     finally { operation.current = false; setBusy(false) }
+  }
+  function continueConfirmation() {
+    const binding = confirmedBinding.current
+    if (document.visibilityState === 'hidden' || !binding) return
+    if (confirmedUntil <= Math.floor(Date.now() / 1000) || latest.current.guardianPubkey !== binding.familyPk || latest.current.root?.kind !== 'signet' || latest.current.root.pubkey !== binding.rootPk) {
+      setConfirmedUntil(0); confirmedBinding.current = null; setError('Confirm My Signet again to choose a parent PIN.'); return
+    }
+    authorisedUntil.current = confirmedUntil
+    setConfirmedUntil(0); confirmedBinding.current = null; setLockedUntil(0); setAuthorised(true)
   }
   async function submit() {
     if (operation.current || !isValidPinFormat(pin) || nowSec < lockedUntil) return
@@ -58,7 +75,10 @@ export function ParentLock({ onUnlocked }: { onUnlocked: () => void }) {
   return <Screen title={authorised ? first === null ? 'Choose your parent PIN' : 'Confirm your parent PIN' : 'Parent mode'}>
     <p>This PIN protects parent approvals and settings when you hand the phone to a child. It is separate from your My Signet PIN.</p>
     {error && <Banner tone="bad">{error}</Banner>}
-    {hasPin === null ? <p>Checking your parent lock…</p> : !hasPin && !authorised ? <>
+    {hasPin === null ? <p>Checking your parent lock…</p> : confirmedUntil > 0 ? <>
+      <p>My Signet confirmed your presence. Continue here to choose your separate parent PIN.</p>
+      <Button variant="primary" block onClick={continueConfirmation}>Continue after My Signet approval</Button>
+    </> : !hasPin && !authorised ? <>
       <p>Confirm My Signet once to set up your parent lock.</p>
       <Button variant="primary" block disabled={busy} onClick={() => void authenticate()}>Confirm with My Signet</Button>
     </> : <>
