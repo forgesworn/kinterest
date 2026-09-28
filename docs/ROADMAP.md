@@ -47,11 +47,11 @@ builds cannot complete those ceremonies.
 ## Validation still required
 
 The previous build passed the live ask-notification check: tapping a background
-notification opened Approvals, and dismissing it did not move money. The new
-first-release build needs its own device round for My Signet approvals, parent
-lock and child mode, pairing/replacement, correction sync and full recovery.
-The device round is underway. Dedicated family and parent-presence approvals
-have passed on-device, including returning from My Signet to parent PIN setup.
+notification opened Approvals, and dismissing it did not move money. The first-release device round has passed dedicated My Signet approvals,
+parent PIN setup, legacy child linking, confirmed phone replacement, correction
+sync and shared-phone child actions. A real ask-notification tap cannot escape
+child mode. The latest profile repair, phone-less child flow and full recovery
+still need their remaining live checks.
 The six-hour Android service test is deferred.
 
 Build locally with `android/scripts/build-apk.sh`. The debug APK is at
