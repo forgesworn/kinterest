@@ -61,9 +61,8 @@ export function approvalsRoute(): Route {
  *  ChildSettings -> that same child's ChildDetail; PairDevice -> that same
  *  child's ChildSettings (the only route that ever opens it, per
  *  `pairDeviceRoute`'s own doc comment); Approvals -> Home. `home` has no
- *  predecessor of its own — a no-op, the same defensive-total shape
- *  onboardingFlow.ts's `confirmMnemonicWritten` uses for a step nothing
- *  should be able to call it from. */
+ *  predecessor of its own — a no-op, a defensive total function for a step
+ *  nothing should be able to call it from. */
 export function goBack(route: Route): Route {
   switch (route.screen) {
     case 'home':

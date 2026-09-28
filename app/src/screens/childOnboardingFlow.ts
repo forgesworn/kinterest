@@ -53,9 +53,8 @@ export function submitScannedText(text: string): ChildOnboardingStep {
 }
 
 /** The guardian's PAIR_OFFER arrived and was accepted — only meaningful from
- *  'waiting'; a no-op (returns `step` unchanged) from anywhere else, the
- *  same defensive-total convention onboardingFlow.ts's own
- *  `confirmMnemonicWritten` uses. */
+ *  'waiting'; a no-op (returns `step` unchanged) from anywhere else — a
+ *  defensive total function. */
 export function offerAccepted(step: ChildOnboardingStep): ChildOnboardingStep {
   return step.kind === 'waiting' ? { kind: 'setPin' } : step
 }
