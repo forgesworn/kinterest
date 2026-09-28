@@ -1,3 +1,4 @@
+import { openNativeSignet } from '../platform/signetHandoff'
 import { bytesToHex } from 'nostr-tools/utils'
 import { authorityRequest, parentPresenceRequest, verifyParentPresence, verifyFamilyAuthority, verifyChildConsent, type ChildConsent } from './familyAuthority'
 // The ONLY module in this app that imports `signet-login` (v0.2 spec §1.7).
@@ -80,6 +81,7 @@ export async function signetLogin(o: SignetLoginOpts): Promise<SignetLoginResult
       advancedMethods: [],
       relayUrls: o.relayUrls,
       nostrConnectPerms: ['sign_event', 'nip44_encrypt', 'nip44_decrypt'],
+      onNostrConnectStatus: openNativeSignet,
       theme: 'auto',
       timeout: 180_000,
     })

@@ -18,7 +18,7 @@
     "qrcode-generator": "^2.0.4",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "signet-login": "^0.14.3",
+    "signet-login": "git+https://github.com/forgesworn/signet-login.git#c40dd52b972d32e04c527d26abd19fbfb29a3e6c",
     "signet-protocol": "^1.10.0"
   },
   "devDependencies": {
