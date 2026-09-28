@@ -61,7 +61,7 @@ const guardianState: AppState = {
   guardianPubkey: guardian.pk,
   self: { pubkey: guardian.pk, childIndex: null },
   children: [{ pubkey: child.pk, name: 'Alex', index: 0 }],
-  // Audit P1/P8: an ENTRY binds to a known account, a tick to a known chore.
+  // An ENTRY binds to a known account, a tick to a known chore.
   docs: {
     ...emptyState().docs,
     accounts: { v: 1, issuedAt: 1, accounts: [account] },
@@ -123,7 +123,7 @@ describe('compareStatus', () => {
     expect(compareStatus(local, st(5, 'e5', { chores: 10, allowance: 1 })).kind).toBe('request-resync')
   })
 
-  // Audit P2: a dropped CONFIG used to leave the child on stale policy for
+  // A dropped CONFIG used to leave the child on stale policy for
   // ever, every heartbeat answered 'ok'.
   it('snapshot when the peer is BEHIND on a config doc, entries agreeing', () => {
     const g = { entryCount: 3, lastEntryId: 'e3', docHighWater: { accounts: 2000, chores: 1500 } }
@@ -514,7 +514,7 @@ describe('ingestResyncEvents — a child refuses an entry that is not its own', 
     expect(r.accepted).toBe(1)
   })
 
-  // Audit P1 on the REPLAY path: ENTRY is guardian-only, so a child-signed
+  // On the REPLAY path: ENTRY is guardian-only, so a child-signed
   // one fails the AUTHOR rule — refused before it is stored, since a corpus
   // must not keep (and later hand on) an event no device may fold.
   it('refuses a child-authored ENTRY naming a sibling at the author rule, and does not store it', () => {
@@ -528,7 +528,7 @@ describe('ingestResyncEvents — a child refuses an entry that is not its own', 
     expect(r.state.innerEvents).toEqual({})
   })
 
-  it('refuses a child-signed credit to itself labelled author guardian — no minting on replay (audit P1)', () => {
+  it('refuses a child-signed credit to itself labelled author guardian — no minting on replay', () => {
     const forged = { ...entryFixture, id: 'forged-replay', legs: [{ account: account.id, currency: 'GBP', amountMinor: 1_000_000 }] }
     const r = ingestResyncEvents(guardianState, [mkInner(child.sk, KIND_ENTRY, buildEntryPayload(forged))], {
       peerPk: child.pk,
@@ -539,7 +539,7 @@ describe('ingestResyncEvents — a child refuses an entry that is not its own', 
   })
 })
 
-describe('ingestResyncEvents — deferral (audit P1/P3)', () => {
+describe('ingestResyncEvents — deferral', () => {
   it('defers a guardian ENTRY on an account whose doc has not arrived: not stored, not seen, folded on a later replay', () => {
     const fresh: AppState = { ...childState, docs: emptyState().docs }
     const ev = mkInner(guardian.sk, KIND_ENTRY, buildEntryPayload(entryFixture))
@@ -693,7 +693,7 @@ describe('catchUpDue (v0.3 child catch-up)', () => {
   })
 })
 
-describe('compareStatus settles entries before docs (review R6)', () => {
+describe('compareStatus settles entries before docs', () => {
   it('asks for a resync when the peer has more entries, even though it is behind on a doc', () => {
     const local = { entryCount: 1, lastEntryId: 'e1', docHighWater: { chores: 900 } }
     expect(compareStatus(local, st(3, 'e3', { chores: 100 }))).toEqual({ kind: 'request-resync' })

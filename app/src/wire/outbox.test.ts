@@ -317,7 +317,7 @@ describe('clearOutbox', () => {
   })
 })
 
-describe('outbox: overlapping flushes publish each item once (audit P10)', () => {
+describe('outbox: overlapping flushes publish each item once', () => {
   it('serialises concurrent flushes of one queue, and still sends what was queued meanwhile', async () => {
     const storage = makeFakeStorage()
     const a = makeEvent('a')

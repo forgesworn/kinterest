@@ -67,7 +67,7 @@ export function confirmMnemonicWritten(step: OnboardingStep): OnboardingStep {
 }
 
 /** Normalises pasted/typed recovery-words input before it is ever validated
- *  or used to derive a key (U10, UI audit): a phone keyboard capitalises
+ *  or used to derive a key: a phone keyboard capitalises
  *  the first word, autocorrect/newlines can leave stray capitals or split
  *  words across lines, and a fat-fingered double space is easy to miss.
  *  None of that changes what the words ARE, but `@scure/bip39`'s wordlist

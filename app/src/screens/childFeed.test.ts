@@ -91,7 +91,7 @@ describe('buildChildFeed — every entry kind', () => {
 })
 
 describe('buildChildFeed — category precedence and copy', () => {
-  it('a deposit match reads as the parent matching what the child put in (audit S1)', () => {
+  it('a deposit match reads as the parent matching what the child put in', () => {
     const e = creditEntry(meta('m1'), savings, 250, 'match')
     expect(firstRow([e]).title).toBe('Your parent matched the money you put in')
   })
@@ -173,7 +173,7 @@ describe('buildChildFeed — grouping (shared day-labelling convention with the 
   })
 })
 
-describe('buildChildFeed — a catch-up shows each payout on its own due day (audit D11)', () => {
+describe('buildChildFeed — a catch-up shows each payout on its own due day', () => {
   it('groups scheduler payouts by the due day they pay for, newest day first', () => {
     const now = Date.UTC(2026, 7, 21, 12) / 1000
     const cfg: AllowanceConfig = { child: CHILD, account: spending.id, amountMinor: 500, cadence: 'weekly', day: 5, tz: 'UTC', startDay: '2026-08-01' }

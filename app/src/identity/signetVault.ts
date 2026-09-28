@@ -117,7 +117,7 @@ export type FamilyVaultPick =
   | { kind: 'none' }
 
 /**
- * Which family to recover, refusing to guess (review R3).
+ * Which family to recover, refusing to guess.
  *
  * `pickNewestVault`'s attestation gate proves a vault was vouched for by
  * this Signet identity, but a kind-21236 attestation is a generic Signet
@@ -150,7 +150,7 @@ export function pickFamilyVault(
 
 // --- publishing a vault ------------------------------------------------------
 
-/** Just the two `AppState` fields a vault carries beyond the mnemonic (R1) —
+/** Just the two `AppState` fields a vault carries beyond the mnemonic —
  *  taken as a narrow structural type so this module never depends on the
  *  whole of `AppState`. */
 export interface VaultRoster {
@@ -221,7 +221,7 @@ export function vaultPayloadFor(
 /**
  * A cheap, stable string that changes exactly when a published vault would
  * become out of date: a child added, renamed, re-indexed or revoked, or the
- * relay list edited (ruling R1 — the guardian re-publishes on any of those,
+ * relay list edited (the guardian re-publishes on any of those,
  * not only at first backup). Pure.
  *
  * Deliberately NOT a hash: it is compared against the last-published value
@@ -335,7 +335,7 @@ export interface VaultHunt {
   candidates: VaultCandidate[]
   /** Wraps were offered that were never opened — over `maxWraps`, or still
    *  queued or in flight at the deadline. With no usable candidate that is
-   *  "the inbox was too full to search", not "there is no vault" (audit P7). */
+   *  "the inbox was too full to search", not "there is no vault". */
   truncated: boolean
 }
 
@@ -354,7 +354,7 @@ export const VAULT_UNWRAP_CONCURRENCY = 8
  * public key, so without a ceiling a recovery screen could be held open
  * forever by a relay dribbling junk at it.
  *
- * Audit P7 shaped the rest:
+ * The inbox is public, so a flood of junk wraps shaped the rest:
  *  - Wraps are QUEUED and opened `concurrency` at a time, never all at once.
  *  - Once the bound is reached the hunt WAITS for every queued and in-flight
  *    unwrap (up to the deadline) before resolving. It used to resolve when

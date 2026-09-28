@@ -266,7 +266,7 @@ function AccountsSection({
   allAccounts: Account[]
   /** The accounts doc's own `revoked` map, as it stands right now
    *  (`app.docs.accounts.revoked`) — carried through on EVERY save this
-   *  section makes (U1, UI audit): the doc is full-state replaceable
+   *  section makes: the doc is full-state replaceable
    *  (`ConfigDocs['accounts']`'s own doc comment), and this section built
    *  its save body as `{ accounts }` alone, so any rename/add/archive here
    *  silently dropped every earlier device revocation the next time it
@@ -383,7 +383,7 @@ function AllowanceSection({
   const activeAccounts = accounts.filter((a) => a.archived !== true)
   const [accountId, setAccountId] = useState(cfg?.account ?? activeAccounts[0]?.id ?? '')
   // Falls back to the first active account whenever `accountId` doesn't (or
-  // no longer) match one — not just when it's the initial '' (U2, UI audit).
+  // no longer) match one — not just when it's the initial ''.
   // `accountId` is seeded once at mount; for a child with no accounts yet
   // it starts as '' and NEVER gets a chance to update on its own once the
   // guardian adds their first account further up this same screen (this
@@ -530,7 +530,7 @@ function InterestSection({
   const disabled = submitting || !keyReady
   const activeAccounts = accounts.filter((a) => a.archived !== true)
   const [accountId, setAccountId] = useState(cfg?.account ?? activeAccounts[0]?.id ?? '')
-  // See AllowanceSection's own doc comment on this same fallback (U2, UI audit).
+  // See AllowanceSection's own doc comment on this same fallback.
   const account = activeAccounts.find((a) => a.id === accountId) ?? activeAccounts[0]
   const [rateRaw, setRateRaw] = useState(() => (cfg !== undefined ? (cfg.rateBps / 100).toString() : ''))
   const [cadence, setCadence] = useState<'weekly' | 'monthly'>(cfg?.cadence ?? 'monthly')
@@ -629,7 +629,7 @@ function InterestSection({
           </select>
         </>
       )}
-      {/* Per payment, not per year (audit U21): the rate is applied once per period. */}
+      {/* Per payment, not per year: the rate is applied once per period. */}
       <label className="field-label" htmlFor="interest-rate">Interest per payment (%)</label>
       <input
         id="interest-rate"
@@ -841,8 +841,7 @@ function RecoveryWordsCard(): ReactElement {
   const [error, setError] = useState<string | null>(null)
 
   async function reveal(): Promise<void> {
-    // A vault that cannot be read must say so, not leave the card hanging
-    // (audit U15).
+    // A vault that cannot be read must say so, not leave the card hanging.
     const m = await loadFamilyMnemonic().catch(() => null)
     if (m === null) {
       setError("Couldn't find your recovery words on this device.")
@@ -960,7 +959,7 @@ function FamilyRootCard(): ReactElement {
       setRoot(sent ? { ...connected.root, backedUpAt: nowSec } : connected.root)
       if (!sent) setNote('Your backup is queued and will finish when you are back online.')
     } catch {
-      // A vault read or a module load that failed (audit U15).
+      // A vault read or a module load that failed.
       setError('Something went wrong connecting My Signet — please try again.')
     } finally {
       setBusy(false)
@@ -1019,7 +1018,7 @@ function FamilyRootCard(): ReactElement {
       await signetLogout()
     } catch {
       // The root is already dropped locally; only the sign-out of the stored
-      // session failed to load (audit U15).
+      // session failed to load.
       setNote('Disconnected here. If My Signet still lists this app, remove it there.')
     } finally {
       setBusy(false)
@@ -1259,7 +1258,7 @@ export function ChildSettings({
           </Button>
         </Card>
       ) : (
-        // U5 (UI audit): re-pairing here would reuse THIS child's own
+        // Re-pairing here would reuse THIS child's own
         // derivation index, which is already in `docs.accounts.revoked` —
         // the new phone would inherit the same key and be dropped/self-wipe
         // on its very first sync. A genuine replacement device needs a NEW

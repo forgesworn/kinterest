@@ -20,7 +20,7 @@ import org.forgesworn.kinjar.R
  */
 object Notifier {
     private const val CH_SERVICE = "jar.service"
-    /** v2 (fix round 3, A1): channel settings are immutable once created,
+    /** v2: channel settings are immutable once created,
      *  so the lock-screen override needs a fresh id; the old ones are deleted. */
     private const val CH_FAMILY = "family.v3"
     private val CH_FAMILY_LEGACY = listOf("family", "family.v2")
@@ -35,7 +35,7 @@ object Notifier {
                 NotificationManager.IMPORTANCE_MIN,
             ),
         )
-        // LOCK SCREEN (fix round 3, A1). Family updates stay OFF the lock
+        // LOCK SCREEN. Family updates stay OFF the lock
         // screen entirely: VISIBILITY_SECRET on the channel (which SystemUI
         // enforces whatever the "show sensitive content" setting says) and
         // on each notification. A per-notification PRIVATE was only honoured
@@ -67,7 +67,7 @@ object Notifier {
      *  seeds the content intent's request code, so distinct updates each get
      *  their own row rather than clobbering each other's [PendingIntent].
      *
-     *  LOCK SCREEN (fix round 3, A1). A family update names a child and
+     *  LOCK SCREEN. A family update names a child and
      *  usually carries an amount — "Alex asked for £4.50" — and a phone on a
      *  kitchen table shows its lock screen to whoever walks past. So it is
      *  [Notification.VISIBILITY_SECRET]: not shown on the lock screen at all,

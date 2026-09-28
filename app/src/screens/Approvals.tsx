@@ -158,7 +158,7 @@ function RequestCard({ stored, app, busy, disabled, onApprove, onDeny, onDismiss
   const allowanceAccount = cfg !== undefined ? app.docs.accounts.accounts.find((a) => a.id === cfg.account && !a.archived) : undefined
 
   const askedMinor = spendParams?.amountMinor ?? 0
-  // U6 (UI audit): a spend.request's own `currency` is only wire-checked for
+  // A spend.request's own `currency` is only wire-checked for
   // being a non-empty string (wire/payloads.ts), never that it names a real
   // currency OR that it matches the account it claims to debit from. Both
   // gaps need catching here, not just at render time — see `isKnownCurrency`'s
@@ -203,7 +203,7 @@ function RequestCard({ stored, app, busy, disabled, onApprove, onDeny, onDismiss
       {isSpend && spendParams && (
         <>
           <p>
-            {/* U6 (UI audit): the amount is always shown in the REQUEST's own
+            {/* The amount is always shown in the REQUEST's own
                 currency (never silently substituted for the account's), but
                 only when that currency is one this app actually recognises —
                 otherwise `<Money>` would throw straight out of this render. */}

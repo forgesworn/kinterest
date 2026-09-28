@@ -253,7 +253,7 @@ describe('storeFamilyMnemonic / loadFamilyMnemonic', () => {
   })
 })
 
-// Audit P15: a second tab on the same cold vault must not replace the wrap key
+// A second tab on the same cold vault must not replace the wrap key
 // the first tab has already sealed secrets under.
 describe('wrap key creation across two tabs', () => {
   it('keeps the key another tab wrote first, so its sealed secret still opens', async () => {

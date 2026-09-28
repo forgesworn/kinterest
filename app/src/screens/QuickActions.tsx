@@ -157,7 +157,7 @@ export function pickCounterpartId(
  *  Falls back to `accounts[0]` itself only when NO account in the whole
  *  list has a partner at all (there is nothing better to default to then —
  *  the sheet shows its "add a second account" banner instead of a picker in
- *  that case). Fixes U4 (UI audit): `accounts[0]` alone could be, say, the
+ *  that case). `accounts[0]` alone could be, say, the
  *  only EUR account among otherwise-GBP accounts, dead-ending the sheet on
  *  first open even though a valid transfer exists between two OTHER
  *  accounts. `accounts` is assumed non-empty — every caller already guards
@@ -312,7 +312,7 @@ function TransferSheet({
   const compatible = (a: Account, from: Account): boolean => a.currency === from.currency
   // True once ANY two accounts in the whole list could transfer between
   // each other — the sheet has genuinely nothing to offer only when this is
-  // false (U4: a lone odd-currency-out account must not dead-end the whole
+  // false (a lone odd-currency-out account must not dead-end the whole
   // sheet just because it happens to be `accounts[0]` or gets selected).
   const anyPartnerExists = accounts.some((from) => accounts.some((a) => a.id !== from.id && compatible(a, from)))
 
@@ -349,7 +349,7 @@ function TransferSheet({
   }
 
   // Only the genuinely-hopeless case (no pair anywhere in the list) replaces
-  // the whole sheet — U4's second failure mode was this SAME banner showing
+  // the whole sheet — a second failure mode was this SAME banner showing
   // (with no way back) the moment the guardian picked a from-account that
   // itself had no partner, even though other accounts did. That case is now
   // handled inline below, with the from-picker still on screen.
@@ -532,7 +532,7 @@ function SettleUpSheet({
 
   // { allowZero: true }: Settle up is the one flow that asks for the
   // ACTUAL counted amount, not a positive movement — a pot spent all the
-  // way down must still be settle-able to £0 (U3, UI audit). Every other
+  // way down must still be settle-able to £0. Every other
   // MoneyInput/parseAmount call in this app keeps the strict default.
   const minor = parseAmount(raw, account.currency, { allowZero: true })
 

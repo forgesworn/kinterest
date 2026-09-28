@@ -158,7 +158,7 @@ export function ChildOnboarding({ onCancel }: { onCancel: () => void }) {
    *  'child') and unlocks the freshly-sealed sk. Kept as its own function
    *  (rather than inline in `handleConfirmPinSubmit`) because it now has TWO
    *  callers — the ordinary path, and the "Continue" button on the
-   *  `rootRejected` interstitial below (U7, UI audit). */
+   *  `rootRejected` interstitial below. */
   function completePairing(pending: PendingOffer): void {
     const nowSec = Math.floor(Date.now() / 1000)
     dispatch({
@@ -314,7 +314,7 @@ export function ChildOnboarding({ onCancel }: { onCancel: () => void }) {
     )
   }
 
-  // step.kind === 'rootRejected' (U7, UI audit)
+  // step.kind === 'rootRejected'
   return (
     <Screen title="Before you join">
       <Banner tone="bad">Could not verify the family root.</Banner>

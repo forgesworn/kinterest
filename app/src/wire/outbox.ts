@@ -154,7 +154,7 @@ function removeById(id: string, storage: StorageLike): void {
   )
 }
 
-/** One queue's flushes, serialised (audit P10): the flush running now, and
+/** One queue's flushes, serialised: the flush running now, and
  *  at most one more waiting behind it. */
 interface FlushLane {
   /** The latest flush started or queued; null when the lane is idle. */
@@ -168,7 +168,7 @@ const flushLanes = new WeakMap<StorageLike, FlushLane>()
  *  An item leaves the queue only on 'accepted' — 'rejected' leaves it queued
  *  for the caller's next flush() call. Re-entrant-safe: see module doc.
  *
- *  Serialised per queue (audit P10). The periodic timer, the `online`
+ *  Serialised per queue. The periodic timer, the `online`
  *  listener, every send and the engines' post-batch flushes used to run side
  *  by side, each over its own snapshot of the queue, so one item could be
  *  published two or three times. Now a flush called while one is running

@@ -55,7 +55,7 @@ describe('clampGrant', () => {
   })
 })
 
-// U6 (UI audit): a spend.request's `currency` is only wire-checked as a
+// A spend.request's `currency` is only wire-checked as a
 // non-empty string, so the Approvals inbox must be able to tell a real
 // currency from junk before ever handing it to <Money>/formatMinor.
 describe('isKnownCurrency', () => {

@@ -46,7 +46,7 @@ function AskRow({ stored, nowSec }: { stored: StoredRequest; nowSec: number }): 
         : spendParams.amountMinor
       : undefined
 
-  // U6 (UI audit): belt and braces — this list is this child's own
+  // Belt and braces — this list is this child's own
   // requests, which THIS screen always sends with the account's own
   // currency, but a resynced/foreign request could in principle carry
   // anything (wire/payloads.ts only checks `isNonEmptyString`). Never let

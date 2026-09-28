@@ -200,7 +200,7 @@ export function buildRequestPayload(fields: Omit<RequestPayload, 'v'>): RequestP
 function isSpendRequestParams(p: unknown): boolean {
   return (
     isPlainObject(p) &&
-    // Strictly positive (audit P16): an ask for nothing, or for less than
+    // Strictly positive: an ask for nothing, or for less than
     // nothing, is not an ask, and `debitEntry` would throw on it downstream.
     isSafeInt(p.amountMinor) &&
     (p.amountMinor as number) > 0 &&
@@ -552,7 +552,7 @@ export function parsePairOfferPayload(json: unknown): PairOfferPayload | null {
  * from a lost device, gift-wrapped to the family's My Signet root identity
  * (v0.2 spec §1.6).
  *
- * Orchestrator ruling R1: the vault carries the family ROSTER as well as the
+ * The vault carries the family ROSTER as well as the
  * mnemonic — `children` and `relays` — so a recovered guardian can reach every
  * child immediately (`resync.request`) rather than waiting for each child's
  * hourly heartbeat to find it. Both are additive: a vault written by a
@@ -584,9 +584,9 @@ export interface VaultPayload {
    *  carried verbatim. Shape-checked here, signature-checked at recovery by
    *  `identity/signetVault.ts#pickNewestVault` (item C1). */
   authEvent: NostrEvent
-  /** The family roster at publish time (R1). Defaults to `[]` when absent. */
+  /** The family roster at publish time. Defaults to `[]` when absent. */
   children: ChildProfile[]
-  /** The relays the family syncs over at publish time (R1). Defaults to `[]`. */
+  /** The relays the family syncs over at publish time. Defaults to `[]`. */
   relays: string[]
   /** unix SECONDS. */
   createdAt: number

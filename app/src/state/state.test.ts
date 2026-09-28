@@ -520,7 +520,7 @@ describe('selfRevokedAt', () => {
   })
 })
 
-describe('recordGrantResult synthetic rows take their op from the GRANT (audit D9)', () => {
+describe('recordGrantResult synthetic rows take their op from the GRANT', () => {
   const g = (reqId: string, overrides: Partial<GrantPayload> = {}): GrantPayload =>
     buildGrantPayload({ reqId, nonce: `n-${reqId}`, decision: 'allow', ts: 2000, params: {}, ...overrides })
 

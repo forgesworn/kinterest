@@ -171,7 +171,7 @@ export function answerPairClaim(opts: AnswerPairClaimOpts): AnsweredPairClaim | 
 
   const { sk: childSk } = deriveDependantKey(mnemonic, childIndex)
   const childSkHex = bytesToHex(childSk)
-  // The raw bytes are not needed past this point (audit P17). The hex string
+  // The raw bytes are not needed past this point. The hex string
   // cannot be wiped — JS strings are immutable — but the offer must carry it.
   childSk.fill(0)
   const offer = buildPairOfferPayload({

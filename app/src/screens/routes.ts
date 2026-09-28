@@ -22,7 +22,7 @@ export function homeRoute(): Route {
   return { screen: 'home' }
 }
 
-/** Home's "Add a child" entry point (U5, UI audit) — reuses the SAME
+/** Home's "Add a child" entry point — reuses the SAME
  *  add-child step Onboarding.tsx's own first-run ceremony uses
  *  (screens/onboardingFlow.ts's `addChildStep`), just reached from inside
  *  the guardian shell instead of from App.tsx's own `children.length === 0`

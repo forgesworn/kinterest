@@ -62,7 +62,7 @@ export function project(
   let balance = balanceMinor
   for (let i = 0; i < periods; i++) {
     balance += depositPerPeriodMinor
-    assertMinor(balance) // audit D12: the running balance, not just each input
+    assertMinor(balance) // The running balance, not just each input
     balance += interestMinor(balance, rateBps)
     assertMinor(balance)
     out.push(balance)
@@ -88,7 +88,7 @@ export function projectBalance(balanceMinor: number, rateBps: number, periods: n
 /**
  * The due days `cfg` still owes, oldest first (`nowSec` is unix SECONDS).
  *
- * The scan is bounded (review R1): it starts at the later of `startDay`
+ * The scan is bounded: it starts at the later of `startDay`
  * and the end of the period of the most recent (unreversed) interest
  * payout on `cfg.account` under `cfg`'s cadence. A period that paid 0
  * (a zero rate or a non-positive balance) mints no entry, so without this
@@ -131,7 +131,7 @@ export function effectiveDay(e: Entry, tz: string): string {
 }
 
 /**
- * The balance of `accountId` as of the END of `day` in `tz` (audit D2):
+ * The balance of `accountId` as of the END of `day` in `tz`:
  * the fold of every leg on that account from entries whose `effectiveDay`
  * is on or before `day`. A deposit made after a due day never counts
  * towards that period's interest, so re-evaluating an old zero-balance

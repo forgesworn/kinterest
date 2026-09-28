@@ -137,7 +137,7 @@ describe('periodDaysFor', () => {
   })
 })
 
-describe('dayKey is locale-proof (audit O2)', () => {
+describe('dayKey is locale-proof', () => {
   it('builds YYYY-MM-DD from date parts, across timezones and years', () => {
     expect(dayKey(Date.UTC(2026, 0, 1, 0, 30) / 1000, 'America/New_York')).toBe('2025-12-31')
     expect(dayKey(Date.UTC(2026, 11, 31, 12) / 1000, 'Pacific/Auckland')).toBe('2027-01-01')

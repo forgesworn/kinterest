@@ -114,7 +114,7 @@ describe('parseAmount: unknown currency', () => {
   })
 })
 
-// U3 (UI audit): "Settle up" must be able to record a pot at £0 — every
+// "Settle up" must be able to record a pot at £0 — every
 // other flow keeps rejecting 0.
 describe('parseAmount: { allowZero: true }', () => {
   it('accepts exactly 0 for fiat when allowZero is set', () => {

@@ -183,7 +183,7 @@ export function reMintPairingSession(session: PairingSessionState, nowSec: numbe
  *  time, so a claim landing near the end of the token's 600s TTL still hands
  *  the device an up-to-date ledger.
  *
- *  Scoped to `childPk` (audit P6): that child's profile, entries and config
+ *  Scoped to `childPk`: that child's profile, entries and config
  *  rows only — never a sibling's. See `sync/snapshot.ts`. It also carries
  *  that child's decided asks as GRANTs, so a GRANT a relay dropped heals. */
 export function snapshotOf(app: AppState, childPk: string): SnapshotPayload {
@@ -264,7 +264,7 @@ export interface StoreState {
   pairing: PairingSessionState | null
   /** A one-off message for the guardian shell to show once, dismissably —
    *  for a screen that has something to say at the very moment it unmounts
-   *  (U8: Onboarding's My Signet recovery note is lost when the restored
+   *  (Onboarding's My Signet recovery note is lost when the restored
    *  roster swaps the app to GuardianShell). In memory only, never
    *  persisted: it only has to survive that swap. */
   notice: string | null
@@ -409,11 +409,11 @@ export function stampConfigDoc<K extends ConfigDocKind>(
  *  the single save path — `stampConfigDoc` above, used by `publishConfigDoc`
  *  and by every screen's in-updater save):
  *
- *  - allowance/interest (audit D1/D3/D4): each config is re-anchored
+ *  - allowance/interest: each config is re-anchored
  *    against its predecessor in the CURRENT doc (`domain/reanchor.ts`), so
  *    switching account or cadence, toggling `paused` or turning a gate off
  *    never reopens history.
- *  - accounts (audit U1): `revoked` is carried over from the current doc
+ *  - accounts: `revoked` is carried over from the current doc
  *    unless the caller supplies it explicitly, so a rename/add/archive can
  *    never silently re-admit a removed device. */
 function guardConfigBody<K extends ConfigDocKind>(
@@ -433,7 +433,7 @@ function guardConfigBody<K extends ConfigDocKind>(
   if (docKind === 'accounts') {
     const body = docBody as Omit<ConfigDocs['accounts'], 'v' | 'issuedAt'>
     const current = app.docs.accounts.revoked
-    // A UNION with the fresh map (review R9), never the caller's alone: a
+    // A UNION with the fresh map, never the caller's alone: a
     // screen passes the `revoked` it rendered with, and a revocation landing
     // between that render and this save would otherwise be dropped,
     // re-admitting the device. Revocations are never removed, so a union is
@@ -730,7 +730,7 @@ export function buildGrantDecision(app: AppState, input: GrantDecisionInput, now
   // the top-level `if (input.decision === 'deny') return denyOnly()`
   // above, which short-circuits before any op-specific validation).
   // A claim pending since before a re-anchoring edit stays grantable
-  // (review R2) — see state.ts#claimPeriodGrantable.
+  // — see state.ts#claimPeriodGrantable.
   if (!claimPeriodGrantable(app, request, cfg, nowSec)) return null
 
   const grant = buildGrantPayload({ reqId: request.reqId, nonce: request.nonce, decision: 'allow', ts: nowSec, params: { periodKey: params.periodKey } })
@@ -907,7 +907,7 @@ export function childSessionReducer(session: ChildSession, action: ChildSessionA
 export interface AppContextValue {
   state: StoreState
   /** True while the last attempt to persist `state.app` failed (storage
-   *  full or blocked — audit D7). Non-fatal: the app keeps running on its
+   *  full or blocked). Non-fatal: the app keeps running on its
    *  in-memory state; the UI should warn that recent changes are not yet
    *  saved on this device. */
   storageError: boolean
@@ -1058,7 +1058,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
 
   // Persist after every reducer step. `state.pairing` is deliberately never
   // written here (see PairingSessionState's doc comment) — only `app`.
-  // `saveState` never throws (audit D7); a failed write only raises the
+  // `saveState` never throws; a failed write only raises the
   // non-fatal `storageError` flag, which clears on the next good save.
   const [storageError, setStorageError] = useState(false)
   useEffect(() => {
@@ -1443,7 +1443,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
         const session = pairingRef.current
         if (session === null || session.status === 'burned') return null
         const pairingApp = stateRef.current.app
-        // Scoped to the child being paired (audit P6). A roster entry that has
+        // Scoped to the child being paired. A roster entry that has
         // vanished mid-ceremony gets an empty scope rather than the family's.
         const pairingPk = pairingChildPk(pairingApp, session.childIndex) ?? ''
         return {
@@ -1736,7 +1736,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     duePayoutsRef.current.clear()
     const storage: StorageLike = window.localStorage
     const nowSec = Math.floor(Date.now() / 1000)
-    // Never seal a payout to a removed device (audit D6) — the scheduler
+    // Never seal a payout to a removed device — the scheduler
     // already skips revoked children; this also covers a payout stashed
     // just before the revocation landed.
     const revoked = state.app.docs.accounts.revoked ?? {}
@@ -1746,7 +1746,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     }
   }, [state.app, guardianSk, relay])
 
-  // Child-side chores gate (U9): auto-raise the allowance.claim for any
+  // Child-side chores gate: auto-raise the allowance.claim for any
   // chores-gated period that is due AND complete, whenever this device holds
   // its key — no longer only while the Chores screen happens to be mounted.
   // Same shape as the guardian scheduler above: the pure step

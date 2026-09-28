@@ -127,7 +127,7 @@ function isNonNegSafeInt(x: unknown): x is number {
   return Number.isSafeInteger(x) && (x as number) >= 0
 }
 
-// Per-row guards (audit D13): additive fields must be sanitised row by row,
+// Per-row guards: additive fields must be sanitised row by row,
 // not just checked for an `id`. A child without an `index` broke
 // nextFreeChildIndex; a tick without a `day` or an audit without amounts
 // breaks every consumer that reads them.
@@ -248,7 +248,7 @@ function isRequestStatus(x: unknown): x is StoredRequest['status'] {
 // there is no separate shape authority for RequestPayload, and this on-disk
 // blob is exactly as untrusted as anything arriving over the wire. Invalid
 // rows are dropped rather than failing the whole `requests` array.
-/** The lenient shape a `synthetic` row's request is held to (audit D9): the
+/** The lenient shape a `synthetic` row's request is held to: the
  *  envelope fields and a known op, but params need only be an object. */
 function parseSyntheticRequest(x: unknown): StoredRequest['request'] | null {
   if (!isPlainObject(x) || x.v !== 1) return null
@@ -384,7 +384,7 @@ export function loadState(storage: StorageLike = defaultStorage()): AppState {
   }
 }
 
-// Entries that fail `assertEntry` on load are not silently lost (review R8):
+// Entries that fail `assertEntry` on load are not silently lost:
 // the next saveState would otherwise erase them for good. They are kept,
 // raw, under their own key, so they can be counted, shown and inspected.
 // Never folded into balances. Bounded; the newest rows win.
@@ -413,13 +413,13 @@ function quarantine(rows: unknown[], storage: StorageLike): void {
   }
 }
 
-/** The ledger rows set aside on load because they failed validation
- *  (review R8), raw. Total; never throws. */
+/** The ledger rows set aside on load because they failed validation,
+ *  raw. Total; never throws. */
 export function quarantinedEntries(storage: StorageLike = defaultStorage()): unknown[] {
   return readQuarantine(storage)
 }
 
-/** Never throws (audit D7): a full or blocked storage (QuotaExceededError,
+/** Never throws: a full or blocked storage (QuotaExceededError,
  *  private mode) must not take the app down through the effect that calls
  *  this on every state change. Returns `true` when the write succeeded and
  *  `false` otherwise, so the caller can surface a non-fatal warning; the

@@ -160,9 +160,9 @@ describe('makePool: subscribe', () => {
   })
 })
 
-// Audit P4: with nostr-tools' defaults a dropped socket ended the
+// With nostr-tools' defaults a dropped socket ended the
 // subscription for good — the device silently stopped receiving.
-describe('makePool: reconnect after a drop (audit P4)', () => {
+describe('makePool: reconnect after a drop', () => {
   type Params = { onevent?: (ev: NostrEvent) => void; onclose?: (r: unknown) => void; oneose?: () => void }
   function captureSubs() {
     const subs: { relays: string[]; filter: unknown; params: Params }[] = []
@@ -209,7 +209,7 @@ describe('makePool: reconnect after a drop (audit P4)', () => {
     expect(received).toEqual([ev])
   })
 
-  // Review R4: nostr-tools fires `oneose` BEFORE `onclose` on every close,
+  // Nostr-tools fires `oneose` BEFORE `onclose` on every close,
   // so EOSE must never reset the backoff.
   it('a relay that closes straight after EOSE gets exponentially growing delays, capped at 60 s', async () => {
     vi.useFakeTimers()

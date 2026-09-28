@@ -6,7 +6,7 @@
 // after" shape QuickActions.tsx's `submitEntry` established. Auto-raising
 // the gate's allowance.claim lives in store.tsx's child-side loop, so it
 // fires whenever the device holds its key, not only while this screen is
-// mounted (U9).
+// mounted.
 //
 // Both dailies and weeklies render the same row/tick affordance — "ticked
 // today, or not" — a deliberate simplification over the full "any day in

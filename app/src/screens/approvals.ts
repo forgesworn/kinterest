@@ -13,7 +13,7 @@ import { periodDaysFor } from '../domain/period'
 import type { AppState, StoredRequest } from '../state/types'
 
 // ============================================================================
-// isKnownCurrency — U6 (UI audit): a spend.request's `currency` is only
+// isKnownCurrency — a spend.request's `currency` is only
 // checked by the wire parser for `isNonEmptyString` (wire/payloads.ts), never
 // against the app's own currency table, so a modified/buggy child client can
 // send anything. `Money`/`formatMinor` both resolve a currency code via

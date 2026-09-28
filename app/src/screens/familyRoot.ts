@@ -58,8 +58,8 @@ export function rootCardModel(root: RootRecord | null, formatDate: (unixSec: num
     subtitle: `Signed in as ${name}`,
     backupLine: backedUp ? `Backed up to My Signet ✓ ${formatDate(root.backedUpAt as number)}` : null,
     // ALWAYS offered, alongside the date line rather than instead of it. The
-    // guardian re-publishes the vault on its own whenever the roster changes
-    // (R1), but that publish can fail quietly — offline, no relay reachable —
+    // guardian re-publishes the vault on its own whenever the roster changes,
+    // but that publish can fail quietly — offline, no relay reachable —
     // and hiding this button once a family had ever backed up left that
     // failure with no remedy anywhere in the app.
     showBackupButton: true,

@@ -44,7 +44,7 @@ export interface RelayLike {
 export const RESUBSCRIBE_BACKOFF_MS: readonly number[] = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000, 60_000]
 
 /** How long a subscription must stay open, in ms, before its backoff is
- *  reset (review R4). EOSE proves nothing: nostr-tools fires `oneose` on
+ *  reset. EOSE proves nothing: nostr-tools fires `oneose` on
  *  every close, BEFORE `onclose`, so a relay that refuses or drops at once
  *  would otherwise be retried every second for ever. A new live event
  *  (after EOSE) also counts as healthy. */
@@ -80,7 +80,7 @@ export function makePool(urls: string[], onlineTarget: OnlineTarget | undefined 
   // `since = lastEmitted + 1`, and a NIP-59 gift wrap's `created_at` is
   // deliberately backdated by up to two days, so that `since` would silently
   // skip every wrap published during the outage. `subscribe` below does its
-  // own resubscribing, with the original filter (audit P4).
+  // own resubscribing, with the original filter.
   const pool = new SimplePool({ enablePing: true })
 
   return {
@@ -127,7 +127,7 @@ export function makePool(urls: string[], onlineTarget: OnlineTarget | undefined 
       })
     },
     // One subscription PER RELAY, each re-established on its own when it
-    // drops (audit P4): a pool-wide subscription only reports a close once
+    // drops: a pool-wide subscription only reports a close once
     // EVERY relay has closed, so one dead relay of two would stay dead. A
     // drop is retried with backoff, and at once when the browser comes back
     // `online`. The filter is re-sent unchanged (no `since`, see above):
@@ -178,7 +178,7 @@ export function makePool(urls: string[], onlineTarget: OnlineTarget | undefined 
               deliver(ev)
             },
             oneose: () => {
-              // NOT a health signal (review R4): also fired on every close.
+              // NOT a health signal: also fired on every close.
               if (generation === link.generation) eosed = true
             },
             onclose: () => {

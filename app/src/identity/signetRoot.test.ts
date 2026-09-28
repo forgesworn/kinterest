@@ -63,7 +63,7 @@ describe('verifyRootAttestation', () => {
   })
 })
 
-// Review R3: the origin tag is written by the requesting site, so checking it
+// The origin tag is written by the requesting site, so checking it
 // defends nothing and breaks recovery across origins (PWA vs Android shell).
 describe('verifyRootAttestation ignores the origin tag', () => {
   it('verifies an attestation whatever origin it was signed from', () => {

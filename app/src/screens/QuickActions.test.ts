@@ -79,7 +79,7 @@ describe('pickCounterpartId', () => {
   })
 })
 
-// U4 (UI audit): Transfer must not default to (or get stuck on) a "from"
+// Transfer must not default to (or get stuck on) a "from"
 // account whose currency has no same-currency partner, when a compatible
 // pair exists elsewhere in the list.
 describe('firstAccountWithPartner', () => {

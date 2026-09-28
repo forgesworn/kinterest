@@ -12,8 +12,8 @@ export function dayKey(unixSec: number, tz: string): string {
     f = new Intl.DateTimeFormat('en-US', { timeZone: tz, calendar: 'gregory', numberingSystem: 'latn', year: 'numeric', month: '2-digit', day: '2-digit' })
     formatters.set(tz, f)
   }
-  // Assembled from formatToParts rather than trusting a locale's pattern
-  // (audit O2): `en-CA` happening to format as YYYY-MM-DD is an ICU detail
+  // Assembled from formatToParts rather than trusting a locale's pattern:
+  // `en-CA` happening to format as YYYY-MM-DD is an ICU detail
   // that has changed before, and every day-key consumer would throw if it
   // did. The Gregorian calendar and Latin digits are pinned explicitly.
   let y = ''

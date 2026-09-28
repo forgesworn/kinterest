@@ -139,7 +139,7 @@ describe('startRelayService / stopRelayService / notify — spec §3.2', () => {
     expect(() => notify({ title: 't', body: 'b', tag: 'g' })).not.toThrow()
   })
 
-  // Fix round 3 (A5): notify() runs from a hidden page with no user
+  // notify() runs from a hidden page with no user
   // activation, where a permission request can never succeed — so it must
   // never ask. Asking is requestNotificationPermission()'s job, from a gesture.
   it('notify never requests permission, and shows nothing, while permission is still default', () => {
@@ -214,7 +214,7 @@ describe('startRelayService / stopRelayService / notify — spec §3.2', () => {
   })
 })
 
-describe('requestNotificationPermission — gesture-only (A5)', () => {
+describe('requestNotificationPermission — gesture-only', () => {
   it('asks the browser once when permission is still default', async () => {
     const requestPermission = vi.fn().mockResolvedValue('granted')
     vi.stubGlobal('window', {})

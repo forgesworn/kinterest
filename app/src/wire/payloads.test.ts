@@ -349,7 +349,7 @@ describe('vault payload', () => {
     authEvent,
     createdAt: 1756800000,
   }
-  // Orchestrator ruling R1: the vault carries the family roster, so `children`
+  // The vault carries the family roster, so `children`
   // and `relays` are part of the payload. They are ADDITIVE — absent on an
   // older producer's vault — and default to `[]` on parse, which is why the
   // parsed shape below is `good` plus the two empty lists rather than `good`.
@@ -390,7 +390,7 @@ describe('vault payload', () => {
     expect(parseVaultPayload({ ...good, authEvent: { ...authEvent, pubkey: 'zz' } })).toBeNull()
   })
 
-  it('keeps a well-formed roster and relay list (R1)', () => {
+  it('keeps a well-formed roster and relay list', () => {
     const withRoster = {
       ...good,
       children: [{ pubkey: 'b'.repeat(64), name: 'Alex', index: 0 }],
@@ -618,7 +618,7 @@ describe('snapshot grants and catch-up status (v0.3)', () => {
   })
 })
 
-describe('spend.request amount (audit P16)', () => {
+describe('spend.request amount', () => {
   const ask = (amountMinor: number) =>
     buildRequestPayload({ op: 'spend.request', reqId: 'r', nonce: 'n', child: 'c', ts: 1, params: { amountMinor, currency: 'GBP', account: 'a' } })
   it('refuses a zero or negative ask, and keeps a positive one', () => {

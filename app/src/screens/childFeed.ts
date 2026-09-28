@@ -175,7 +175,7 @@ export function buildChildFeed(entries: Entry[], accounts: Account[], tz: string
   const yesterdayKey = dayKey(nowSec - 86400, tz)
 
   // A scheduler payout is shown on the due day it pays for, not the day a
-  // catch-up happened to run (audit D11) — so days are ordered by key, not
+  // catch-up happened to run — so days are ordered by key, not
   // by first appearance.
   const rowsByDay = new Map<string, ChildFeedRow[]>()
   for (const entry of [...sortForDisplay(entries)].reverse()) {

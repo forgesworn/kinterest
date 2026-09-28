@@ -89,7 +89,7 @@ class RelayService : Service() {
         // makes a re-acquire just reset the timeout rather than stack.
         wakeLock?.acquire(FGS_CAP_MS)
         running = true
-        // NOT sticky (fix round 3, A3): a sticky restart after a process kill
+        // NOT sticky: a sticky restart after a process kill
         // brings the service back with no Activity and no WebView, so no JS
         // to keep in touch — just a wake lock and a misleading row.
         return START_NOT_STICKY
@@ -111,7 +111,7 @@ class RelayService : Service() {
         stopSelf()
     }
 
-    /** Swiped from recents (fix round 3, A3): the Activity and its WebView
+    /** Swiped from recents: the Activity and its WebView
      *  are gone and React's cleanup never ran, so nothing would ever stop
      *  this. Stop here and forget the web side's request — a relaunch
      *  loads the page afresh and it asks again once a role is set. */
@@ -144,8 +144,7 @@ class RelayService : Service() {
          *  [stop] may be called from any thread via the JS bridge. */
         @Volatile private var running = false
 
-        /** Whether the web side currently wants the service (fix round 3,
-         *  A2): set by [start], cleared by [stop]. Unlike [running] it
+        /** Whether the web side currently wants the service: set by [start], cleared by [stop]. Unlike [running] it
          *  survives Android 15's dataSync [onTimeout], so
          *  [restartIfWanted] can bring the service back when the Activity
          *  returns to the foreground. */

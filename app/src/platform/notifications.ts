@@ -1,5 +1,5 @@
 // platform/notifications.ts — pure copy helper for the local/foreground
-// notifications D3 introduces (v0.2 spec §3.1). Deliberately knows nothing
+// notifications (v0.2 spec §3.1). Deliberately knows nothing
 // about `document`, `Notification`, or the shell bridge (shell.ts#notify is
 // the impure edge that actually fires one) — this module only ever answers
 // "what would this notification say, if anything", so it can be unit

@@ -249,7 +249,7 @@ export function ChildDetail({
         </Card>
       ) : (
         <Card>
-          {/* U5 (UI audit): "Pair a device" in Settings can't actually
+          {/* "Pair a device" in Settings can't actually
               re-pair this child — it would reuse the same (now revoked)
               derivation index. A genuine replacement device needs a fresh
               "Add a child" on the family home screen instead. */}

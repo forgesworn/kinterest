@@ -26,7 +26,7 @@ import type { RelayLike, SubscribeFilter } from '../wire/relayClient'
 
 const AT = 1_700_000_000
 
-/** A guardian state holding a chores doc — audit P8 binds a CHILD_SIG tick to
+/** A guardian state holding a chores doc — a CHILD_SIG tick binds to
  *  a known chore of the child that signed it. */
 function withChores(state: AppState, chores: { id: string; child: string }[]): AppState {
   return {
@@ -140,7 +140,7 @@ describe('sync/multi.ts: startGuardianSync', () => {
       nowSec: () => AT,
     })
 
-    // A tick, not an ENTRY: since audit P1 the guardian folds no
+    // A tick, not an ENTRY: the guardian folds no
     // child-authored ENTRY at all (see the auto-ack test below).
     const tick: ChoreTick = { id: 'tick-member', chore: 'chore-1', day: '2026-08-10', at: AT }
     await sendTick(tick, { selfSk: child.sk, peerPk: guardian.pk, relay, storage: childStorage, nowSec: AT })
@@ -186,7 +186,7 @@ describe('sync/multi.ts: startGuardianSync', () => {
     stop()
   })
 
-  // Audit P1: ENTRY is guardian-authored only. A member's own ENTRY is
+  // ENTRY is guardian-authored only. A member's own ENTRY is
   // refused outright — not folded, and (so the sender is not told it was)
   // not acked either.
   it('refuses a child-authored ENTRY from a member: no fold, and no ack to anyone', async () => {
@@ -636,7 +636,7 @@ describe('sync/multi.ts: startGuardianSync', () => {
       nowSec: () => AT,
     })
 
-    // Ticks rather than ENTRYs since audit P1 (no child authors an ENTRY).
+    // Ticks rather than ENTRYs (no child authors an ENTRY).
     const tickA: ChoreTick = { id: 'tick-a', chore: 'chore-a', day: '2026-08-10', at: AT }
     const tickB: ChoreTick = { id: 'tick-b', chore: 'chore-b', day: '2026-08-10', at: AT }
 

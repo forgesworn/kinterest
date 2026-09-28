@@ -35,7 +35,7 @@ describe('periodComplete', () => {
   })
 })
 
-describe('a chore added mid-period (audit S6)', () => {
+describe('a chore added mid-period', () => {
   // Added Wednesday 2026-08-12 10:00 London = 09:00 UTC.
   const addedMs = Date.UTC(2026, 7, 12, 9)
   const dishes: Chore = { id: newId(addedMs), child: 'sam', name: 'Dishes', cadence: 'daily' }

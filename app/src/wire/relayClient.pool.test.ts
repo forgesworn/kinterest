@@ -1,4 +1,4 @@
-// Review R4, against the REAL nostr-tools SimplePool (relayClient.test.ts
+// Against the REAL nostr-tools SimplePool (relayClient.test.ts
 // replaces it with a stub). In nostr-tools the pool fires `oneose` BEFORE
 // `onclose` on every failure, so a backoff reset on EOSE retried a dead
 // relay about once a second for ever.

@@ -60,7 +60,7 @@ function schedulerClaimId(cfg: AllowanceConfig, periodKey: string): string {
   return `scheduler:${cfg.child}:${cfg.account}:${periodKey}`
 }
 
-/** Periods the guardian explicitly refused (audit D4): a scheduler claim
+/** Periods the guardian explicitly refused: a scheduler claim
  *  for that (child, account, period) that was denied or dismissed. Such a
  *  period is never paid by the scheduler, even after the gate is switched
  *  off — belt-and-braces behind the re-anchor on the config save path. */
@@ -127,7 +127,7 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
   // the offending config keeps every OTHER child's allowance/interest
   // working normally; the bad one is retried (and can succeed once fixed,
   // or keep failing harmlessly) on the next tick.
-  // Revoked children (v0.2 §4.5, audit D6) accrue nothing and are sent
+  // Revoked children (v0.2 §4.5) accrue nothing and are sent
   // nothing: their device was removed, and a re-paired device is a new key.
   const revoked = state.docs.accounts.revoked ?? {}
 
@@ -179,8 +179,8 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
           if (match !== null) entries.push(match)
         }
         if (!interestDays.has(dueDay)) continue
-        // Interest is computed on the balance AS OF this period's due day
-        // (audit D2), not today's: a deposit made later never earns
+        // Interest is computed on the balance AS OF this period's due day,
+        // not today's: a deposit made later never earns
         // back-interest, and a missed-weeks catch-up compounds in due-day
         // order. `entries` includes everything this pass already queued —
         // allowance payouts, matches and earlier interest periods — each
@@ -207,7 +207,7 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
  *  `newId()` (domain/id.ts): that mints fresh randomness every call, which
  *  is correct for anything a human action originates but wrong for a
  *  scheduler expected to be idempotent by construction. This is why these
- *  ids are not ULIDs, as v1 otherwise asks (audit S5) — see Entry.id in
+ *  ids are not ULIDs, as v1 otherwise asks — see Entry.id in
  *  domain/types.ts. */
 function schedulerEntryId(child: string, account: string, dueDay: string, kind: 'allowance' | 'interest' | 'match'): string {
   return `sched:${kind}:${child}:${account}:${dueDay}`

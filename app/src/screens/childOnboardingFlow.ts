@@ -23,8 +23,8 @@ export type ChildOnboardingStep =
   | { kind: 'pinMismatch' }
   /** The PIN is set and the offer accepted, but its family-root attestation
    *  would not verify (v0.2 spec §1.5) — a warning-and-confirm interstitial,
-   *  reached ONLY once, right before this device actually joins the family
-   *  (U7, UI audit). Deliberately BEFORE the `startAsChildFromOffer` dispatch
+   *  reached ONLY once, right before this device actually joins the family.
+   *  Deliberately BEFORE the `startAsChildFromOffer` dispatch
    *  that flips `role` to 'child': App.tsx's own role-derived routing swaps
    *  this whole screen out for ChildShell the instant that lands, so any
    *  warning shown only AFTER dispatching would never actually be seen. */

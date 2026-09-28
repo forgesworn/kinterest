@@ -327,7 +327,7 @@ describe('unwrapWithSigner', () => {
   })
 })
 
-describe('wrap jitter (audit P17)', () => {
+describe('wrap jitter', () => {
   it('draws the backdating from the CSPRNG and stays within the NIP-59 bound', () => {
     const spy = vi.spyOn(crypto, 'getRandomValues')
     const wrap = wrapFor({ innerKind: KIND_ENTRY, payload: { v: 1 }, authorSk: generateSecretKey(), recipientPk: getPublicKey(generateSecretKey()), nowSec: 10_000_000 })

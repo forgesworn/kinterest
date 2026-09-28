@@ -96,7 +96,7 @@ function GuardianRoutes(): ReactElement {
     case 'approvals':
       return <Approvals onBack={() => setRoute(goBack(route))} />
     case 'addChild':
-      // U5 (UI audit): "Add a child" reuses the SAME add-child ceremony
+      // "Add a child" reuses the SAME add-child ceremony
       // Onboarding.tsx's first-run flow uses (onboardingFlow.ts's
       // `addChildStep`) — the guardian identity and family mnemonic already
       // exist by the time this screen is reachable, so mounting it directly

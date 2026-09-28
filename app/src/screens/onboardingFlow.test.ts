@@ -86,7 +86,7 @@ describe('submitRestoreMnemonic', () => {
     expect(retried).toEqual({ kind: 'addChild' })
   })
 
-  // U10 (UI audit): a phone keyboard capitalising the first word, or a
+  // A phone keyboard capitalising the first word, or a
   // pasted phrase split across lines, must not make an otherwise-correct
   // mnemonic fail validation.
   it('normalises case and line breaks before validating', () => {

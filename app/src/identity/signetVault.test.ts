@@ -73,7 +73,7 @@ describe('pickNewestVault', () => {
     expect(got?.mnemonic).toBe('good')
   })
 
-  it('carries the roster the vault was published with (R1)', () => {
+  it('carries the roster the vault was published with', () => {
     const roster = { pubkey: 'c'.repeat(64), name: 'Alex', index: 0 }
     const got = pickNewestVault(
       [
@@ -196,7 +196,7 @@ describe('pickNewestVault', () => {
 
 // --- the bounded relay hunt (spec §1.6, recovery step 2-3) --------------------
 
-// Review R3: an attestation is a generic Signet login, so a phishing site can
+// An attestation is a generic Signet login, so a phishing site can
 // obtain one over an attacker's guardian key (writing our origin tag itself).
 // Two families among the AUTHENTIC vaults is refused, never resolved by
 // recency.
@@ -333,7 +333,7 @@ describe('collectVaultCandidates', () => {
     expect(got.candidates).toEqual([])
   })
 
-  // Audit P7: the bound used to resolve when the LAST wrap's unwrap settled,
+  // The bound used to resolve when the LAST wrap's unwrap settled,
   // discarding an earlier, slower one still in flight — possibly the vault.
   it('waits for every in-flight unwrap once the bound is reached', async () => {
     const relay = makeFakeRelay()
@@ -400,7 +400,7 @@ describe('vaultPayloadFor', () => {
   const roster = [{ pubkey: 'd'.repeat(64), name: 'Alex', index: 0 }]
   const auth = attest(rootSk, 'a'.repeat(64), 1756800000)
 
-  it('carries the family roster and relays at publish time (R1)', () => {
+  it('carries the family roster and relays at publish time', () => {
     const payload = vaultPayloadFor(
       { children: roster, relays: ['wss://relay.example', 'nonsense'], revoked: undefined },
       'abandon about',
@@ -456,7 +456,7 @@ describe('vaultPayloadFor', () => {
 })
 
 // The roster signature is what tells the guardian shell that a vault is now
-// out of date — a child added or revoked, a relay edited (R1).
+// out of date — a child added or revoked, a relay edited.
 describe('vaultRosterSignature', () => {
   it('changes when the roster or the relay list changes, and not otherwise', async () => {
     const { vaultRosterSignature } = await import('./signetVault')
@@ -471,7 +471,7 @@ describe('vaultRosterSignature', () => {
 
   // A revoke (v0.2 spec §4.5) changes the ACCOUNTS doc, never `children` —
   // without `revoked` in the signature the vault would never be re-published
-  // for one, and R1 says it must be.
+  // for one, and it must be: the vault carries the roster.
   it('changes when a child is revoked', async () => {
     const { vaultRosterSignature } = await import('./signetVault')
     const base = { children: [{ pubkey: 'd'.repeat(64), name: 'Alex', index: 0 }], relays: ['wss://a'], revoked: undefined }
@@ -488,7 +488,7 @@ describe('vaultRosterSignature', () => {
   })
 })
 
-// The guardian shell re-publishes the vault when the roster changes (R1). The
+// The guardian shell re-publishes the vault when the roster changes. The
 // decision is pulled out of the effect so the cases that actually bite — a
 // second change landing while the first publish is still in flight, a publish
 // that failed and must be retried — are testable without React.

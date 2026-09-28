@@ -55,7 +55,7 @@ function isValidGrouping(digits: string): boolean {
  *  `allowZero` (default false): QuickActions.tsx's "Settle up" is the one
  *  flow that asks for an ACTUAL counted amount, not a positive movement —
  *  a pot that has genuinely been spent down to nothing must still be
- *  settle-able to £0 (v0.2 spec — this was U3 in the UI audit). Every other
+ *  settle-able to £0 (v0.2 spec). Every other
  *  caller (Add/Take/Transfer/Exchange, ChildSettings' allowance/interest/
  *  match-cap fields) keeps the strict positive-only default. */
 export function parseAmount(text: string, currencyCode: string, opts?: { allowZero?: boolean }): number | null {

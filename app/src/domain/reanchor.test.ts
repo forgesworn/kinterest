@@ -23,10 +23,10 @@ function paidHistory(cfg: AllowanceConfig): Entry[] {
   )
 }
 
-describe('reanchorConfig (D1/D3/D4: an edit never reopens history)', () => {
+describe('reanchorConfig (an edit never reopens history)', () => {
   const history = paidHistory(base)
 
-  it('reproduces D1 without re-anchoring: switching account re-pays every period', () => {
+  it('without re-anchoring, switching account re-pays every period', () => {
     expect(allowanceDue({ ...base, account: 'B' }, history, now).length).toBe(history.length)
   })
 
@@ -50,7 +50,7 @@ describe('reanchorConfig (D1/D3/D4: an edit never reopens history)', () => {
     expect(allowanceDue(next, history, Date.UTC(2026, 9, 1, 12) / 1000)).toEqual(['2026-10-01'])
   })
 
-  it('un-pausing pays none of the paused periods (D3)', () => {
+  it('un-pausing pays none of the paused periods', () => {
     const paused = { ...base, paused: true }
     const onlyEarly = history.slice(0, 2) // paid twice, then paused
     expect(allowanceDue({ ...base }, onlyEarly, now).length).toBe(history.length - 2) // the bug
@@ -70,7 +70,7 @@ describe('reanchorConfig (D1/D3/D4: an edit never reopens history)', () => {
     expect(allowanceDue(next, [], now)).toEqual(['2026-09-23'])
   })
 
-  it('turning a gate off pays none of the refused periods (D4)', () => {
+  it('turning a gate off pays none of the refused periods', () => {
     const gated = { ...base, choresGate: true }
     const next = reanchorConfig(gated, { ...base, choresGate: false }, today)
     expect(allowanceDue(next, [], now)).toEqual([])
@@ -115,7 +115,7 @@ describe('reanchorConfigs', () => {
   })
 })
 
-describe('R1: an interest amount-term edit re-anchors', () => {
+describe('an interest amount-term edit re-anchors', () => {
   const i0: InterestConfig = { child: 'sam', account: 'A', rateBps: 0, cadence: 'weekly', day: 2, tz: 'UTC', startDay: '2026-06-30' }
   it('needsReanchor is true for a rate change, and for a match change', () => {
     expect(needsReanchor(i0, { ...i0, rateBps: 500 })).toBe(true)
@@ -140,7 +140,7 @@ describe('R1: an interest amount-term edit re-anchors', () => {
   })
 })
 
-describe('documented edge cases (review R10)', () => {
+describe('documented edge cases', () => {
   const weekly: AllowanceConfig = { child: 'sam', account: 'A', amountMinor: 500, cadence: 'weekly', day: 5, tz: 'Europe/London', startDay: '2026-08-01' }
   it('an account switch ON the due day, before the tick, forfeits that period (no double pay)', () => {
     const next = reanchorConfig(weekly, { ...weekly, account: 'B' }, '2026-08-21')

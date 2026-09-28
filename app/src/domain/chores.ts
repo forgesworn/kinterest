@@ -21,7 +21,7 @@ export function tickedDays(chore: Chore, ticks: ChoreTick[]): Set<string> {
 }
 
 /**
- * The first day a chore can be expected to be done (audit S6): the day it
+ * The first day a chore can be expected to be done: the day it
  * was added, read from its ULID id (chores are created with `newId`). With
  * `tz`, that is the local day in `tz`; without one (or with an unusable
  * one), the day after its UTC
@@ -47,7 +47,7 @@ export function choreRequiredFrom(chore: Pick<Chore, 'id'>, tz?: string): string
  * True when every active chore was done in `periodDays`: each daily chore on
  * every day of the period since it was added, each weekly chore at least
  * once in the period. A chore added mid-period is only required from the
- * day it was added (audit S6) — before, a daily chore added on a Thursday
+ * day it was added — before, a daily chore added on a Thursday
  * could never complete that week, so the chores gate never opened. A chore
  * added after the period ended is not part of it. False when no chore is
  * required at all. `tz` is the timezone tick days are kept in; see

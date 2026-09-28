@@ -88,12 +88,12 @@ describe('interestDue', () => {
   it('paused pays nothing', () => {
     expect(interestDue({ ...cfg, paused: true }, [], now)).toEqual([])
   })
-  it('R1: never reopens a period before the latest payout, even one that paid nothing', () => {
+  it('never reopens a period before the latest payout, even one that paid nothing', () => {
     // 08-07 paid 0 (no entry); 08-14 paid. 08-07 is closed by the watermark.
     const paid = interestEntry(cfg, acct, '2026-08-14', 10000, { id: 'e2', child: 'sam', createdAt: 1, author: 'guardian' })!
     expect(interestDue(cfg, [paid], now)).toEqual(['2026-08-21'])
   })
-  it('R1: a payout on another account does not move the watermark', () => {
+  it('a payout on another account does not move the watermark', () => {
     const other: Account = { ...acct, id: 'other' }
     const paid = interestEntry({ ...cfg, account: 'other' }, other, '2026-08-14', 10000, { id: 'e3', child: 'sam', createdAt: 1, author: 'guardian' })!
     expect(interestDue(cfg, [paid], now)).toEqual(['2026-08-07', '2026-08-14', '2026-08-21'])
@@ -137,7 +137,7 @@ describe('interestEntry', () => {
   })
 })
 
-describe('balanceAsOf / effectiveDay (audit D2)', () => {
+describe('balanceAsOf / effectiveDay', () => {
   const leg = (amountMinor: number) => [{ account: 'acc', currency: 'GBP', amountMinor }]
   const at = Date.UTC(2026, 8, 20, 23, 30) / 1000 // 20 Sep 23:30 UTC = 21 Sep 00:30 London
   it('counts ordinary entries by createdAt in the config timezone', () => {
@@ -154,7 +154,7 @@ describe('balanceAsOf / effectiveDay (audit D2)', () => {
   })
 })
 
-describe('deposit match (audit S1)', () => {
+describe('deposit match', () => {
   const acct: Account = { id: 'L', child: 'kid', name: 'With Mum & Dad', currency: 'GBP', custody: 'ledger' }
   const box: Account = { id: 'B', child: 'kid', name: 'Money box', currency: 'GBP', custody: 'physical' }
   const cfg: InterestConfig = {
@@ -245,7 +245,7 @@ describe('projectBalance', () => {
   })
 })
 
-describe('project overflow guard (audit D12)', () => {
+describe('project overflow guard', () => {
   it('throws when the running balance plus deposits leaves safe integers', () => {
     expect(() => project(Number.MAX_SAFE_INTEGER - 1, 0, 2, 1)).toThrow(RangeError)
   })

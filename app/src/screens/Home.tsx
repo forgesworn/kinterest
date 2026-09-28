@@ -257,7 +257,7 @@ function HomeActions({
 }: {
   pendingTotal: number
   onApprovals: () => void
-  /** "Add a child" (U5, UI audit) — the only way to reach the add-child
+  /** "Add a child" — the only way to reach the add-child
    *  ceremony once at least one child already exists; App.tsx's own
    *  `children.length === 0` gate only ever shows it before that. Also the
    *  correct way to set up a replacement for a device the guardian removed

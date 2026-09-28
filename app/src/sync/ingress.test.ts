@@ -41,11 +41,11 @@ const sibling = makeKeypair()
 
 const account: Account = { id: 'a-ledger', child: child.pk, name: 'Pocket money', currency: 'GBP', custody: 'ledger' }
 const siblingAccount: Account = { id: 'a-sibling', child: sibling.pk, name: 'Pocket money', currency: 'GBP', custody: 'ledger' }
-/** A guardian-authored entry: since audit P1 the only kind any device folds. */
+/** A guardian-authored entry: the only kind any device folds. */
 const entryFixture = creditEntry({ id: 'e-ingress-1', child: child.pk, createdAt: AT, author: 'guardian' }, account, 500)
 
 // Both ends hold the family's accounts doc (and the guardian a chores doc):
-// audit P1/P8 bind every ENTRY leg and CHILD_SIG to a known account/chore.
+// Every ENTRY leg and CHILD_SIG binds to a known account/chore.
 const familyDocs = {
   ...emptyState().docs,
   accounts: { v: 1 as const, issuedAt: 1, accounts: [account, siblingAccount] },
@@ -132,7 +132,7 @@ describe('handleWrap records the raw inner event (spec §2.3)', () => {
 })
 
 describe('retainsInnerEvent (spec §2.3 + the direction guard)', () => {
-  it('retains a guardian ENTRY and a child CHILD_SIG, and refuses a child-authored ENTRY (audit P1)', () => {
+  it('retains a guardian ENTRY and a child CHILD_SIG, and refuses a child-authored ENTRY', () => {
     expect(retainsInnerEvent(childBase, KIND_ENTRY, guardian.pk)).toBe(true)
     expect(retainsInnerEvent(guardianBase, KIND_CHILD_SIG, child.pk)).toBe(true)
     expect(retainsInnerEvent(guardianBase, KIND_ENTRY, child.pk)).toBe(false)
@@ -277,7 +277,7 @@ describe('dispatchInner keeps handleWrap`s guards (spec §2.4)', () => {
     expect(result.state).toBe(childBase)
     expect(result.effects).toEqual([])
     expect(result.state.docHighWater.chores).toBeUndefined()
-    // Deferred, not dropped (audit P3): the refusal is about our clock.
+    // Deferred, not dropped: the refusal is about our clock.
     expect(result.deferred).toBe(true)
   })
 
@@ -409,7 +409,7 @@ describe('dispatchInner: KIND_STATUS (spec §2.2)', () => {
 })
 
 // Review fix (round 1): a CHILD_SIG we already hold must not re-fire its
-// effect. Phase D3 hangs notifications off these, and a resync replay of an
+// effect. Notifications hang off these, and a resync replay of an
 // aged-out tick would otherwise buzz a guardian's phone about a chore ticked
 // last week. Same rule the ENTRY case already applies to its `entry` effect:
 // the fold is idempotent, so the effect must be too.
@@ -443,7 +443,7 @@ describe('dispatchInner: CHILD_SIG is idempotent in its effects too', () => {
 })
 
 // ============================================================================
-// ENTRY provenance (audit P1, superseding fix round 2's item I2).
+// ENTRY provenance.
 //
 // I2 folded an ENTRY when its author was the child it names. That still let a
 // child mint a `credit` to itself (labelled `author: 'guardian'`), or name
@@ -454,7 +454,7 @@ describe('dispatchInner: CHILD_SIG is idempotent in its effects too', () => {
 // no effects — and the resync path counts it as a rejection.
 // ============================================================================
 
-describe('ENTRY provenance (audit P1)', () => {
+describe('ENTRY provenance', () => {
   const siblingEntry = creditEntry({ id: 'e-ingress-sibling', child: sibling.pk, createdAt: AT, author: 'guardian' }, siblingAccount, 500)
 
   it('refuses a child-signed credit to itself, even labelled author guardian — no minting', () => {
@@ -534,10 +534,10 @@ describe('ENTRY provenance (audit P1)', () => {
 })
 
 // ============================================================================
-// CHILD_SIG binding (audit P8): a child signs for itself only.
+// CHILD_SIG binding: a child signs for itself only.
 // ============================================================================
 
-describe('CHILD_SIG binding (audit P8)', () => {
+describe('CHILD_SIG binding', () => {
   it('refuses a tick on a sibling s chore', () => {
     const tick = { id: 't-sib', chore: 'c-sibling', day: '2026-09-02', at: AT }
     const r = dispatchInner(guardianBase, KIND_CHILD_SIG, buildChildTickPayload(tick), child.pk, AT)
@@ -564,11 +564,11 @@ describe('CHILD_SIG binding (audit P8)', () => {
 })
 
 // ============================================================================
-// Clock-skew deferral (audit P3): a CONFIG refused by the issuedAt clamp must
+// Clock-skew deferral: a CONFIG refused by the issuedAt clamp must
 // stay deliverable — the refusal is about the receiver's clock, not the doc.
 // ============================================================================
 
-describe('a CONFIG beyond the skew clamp is deferred, not lost (audit P3)', () => {
+describe('a CONFIG beyond the skew clamp is deferred, not lost', () => {
   it('is not marked seen, and the same wrap applies once the clock has caught up', () => {
     const guardianNow = 10 * MAX_ISSUED_AT_SKEW_SECS
     const childNow = guardianNow - MAX_ISSUED_AT_SKEW_SECS - 600 // child clock slow beyond the window
@@ -587,10 +587,10 @@ describe('a CONFIG beyond the skew clamp is deferred, not lost (audit P3)', () =
 })
 
 // ============================================================================
-// Snapshot scoping on the child (audit P6): a child keeps its own ledger only.
+// Snapshot scoping on the child: a child keeps its own ledger only.
 // ============================================================================
 
-describe('applySnapshot on a child keeps its own ledger only (audit P6)', () => {
+describe('applySnapshot on a child keeps its own ledger only', () => {
   const siblingEntry = creditEntry({ id: 'e-sibling', child: sibling.pk, createdAt: AT, author: 'guardian' }, siblingAccount, 900)
   const familySnapshot = buildSnapshotPayload({
     children: [
@@ -656,10 +656,10 @@ describe('snapshot GRANTs and the child gap signal (v0.3)', () => {
 })
 
 // ============================================================================
-// Review R5: only an UNKNOWN account defers; a mismatch is refused for good.
+// Only an UNKNOWN account defers; a mismatch is refused for good.
 // ============================================================================
 
-describe('ENTRY deferral is only for an unknown account (review R5)', () => {
+describe('ENTRY deferral is only for an unknown account', () => {
   it('refuses, not defers, a leg on a sibling s account or in the wrong currency', () => {
     const crossChild = { ...entryFixture, id: 'x-r5', legs: [{ account: siblingAccount.id, currency: 'GBP', amountMinor: 500 }] }
     const wrap = wrapFor({ innerKind: KIND_ENTRY, payload: buildEntryPayload(crossChild), authorSk: guardian.sk, recipientPk: child.pk, nowSec: AT })

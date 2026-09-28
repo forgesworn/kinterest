@@ -58,25 +58,25 @@ export interface LocalStatusView {
  *  2. The peer has MORE entries than us: we ask for a resync.
  *  3. Same count, different last entry id (a relay withheld one of ours and
  *     delivered one of theirs): we send a snapshot.
- *  4. The peer is behind on any config doc kind we hold (audit P2): we send
+ *  4. The peer is behind on any config doc kind we hold: we send
  *     a snapshot.
  *  5. We are behind on any config doc kind (including one we have never
  *     seen at all): we ask for a resync.
  *  6. Otherwise the two views agree.
  *
- * Entries are settled before docs (review R6): a doc lag the peer cannot
+ * Entries are settled before docs: a doc lag the peer cannot
  * close must not hide an entry gap on either side. A divergence that is
  * behind on both counts is settled one heartbeat at a time.
  */
 export function compareStatus(local: LocalStatusView, remote: StatusPayload): LagVerdict {
   if (remote.entryCount < local.entryCount) return { kind: 'send-snapshot' }
-  // Entries before docs (review R6): a peer we can never bring up to our
+  // Entries before docs: a peer we can never bring up to our
   // doc high-water (a clock more than a day slow, a doc its build cannot
   // parse) must not starve our own entry catch-up behind a snapshot that
   // changes nothing, heartbeat after heartbeat.
   if (remote.entryCount > local.entryCount) return { kind: 'request-resync' }
   if (remote.lastEntryId !== local.lastEntryId) return { kind: 'send-snapshot' }
-  // Behind on a config doc (audit P2): a relay that dropped one CONFIG left
+  // Behind on a config doc: a relay that dropped one CONFIG left
   // the peer on stale policy, and without this every heartbeat said 'ok'.
   // A snapshot carries every doc; LWW makes the ones it already has no-ops.
   for (const [docKind, highWater] of Object.entries(local.docHighWater)) {
@@ -186,7 +186,7 @@ function inScope(state: AppState, ev: NostrEvent): boolean {
  *  - CHILD_SIG: the AUTHENTICATED peer, and never the guardian. A child may
  *    replay its own ticks and audits, not another child's, and a guardian has
  *    no business signing one at all.
- *  - ENTRY: the guardian and nobody else (audit P1). No child flow authors
+ *  - ENTRY: the guardian and nobody else. No child flow authors
  *    an entry — a child's spend is a REQUEST answered by the guardian's own
  *    ENTRY — so a child-signed one is a forgery attempt by definition.
  */
@@ -303,7 +303,7 @@ export function ingestResyncEvents(state: AppState, events: unknown[], opts: Ing
     const dispatched = parsedOk ? dispatchInner(base, ev.kind, payload, ev.pubkey, opts.nowSec) : null
     // A deferred refusal (a doc beyond the clock-skew window, an entry on an
     // account whose doc has not arrived) is about WHEN, not WHAT: leave the
-    // event un-seen and un-stored so the next replay can fold it (audit P3).
+    // event un-seen and un-stored so the next replay can fold it.
     if (dispatched !== null && dispatched.deferred === true) {
       rejected.push({ id: ev.id, reason: 'deferred' })
       continue
@@ -448,7 +448,7 @@ function servesTo(app: AppState, ev: NostrEvent, forChildPk: string | null): boo
 }
 
 /** The child a GRANT answered, by the guardian's own record of the ask it
- *  decides (audit P14) — a GRANT payload does not name a child. `null` for an
+ *  decides — a GRANT payload does not name a child. `null` for an
  *  unreadable GRANT or an ask the guardian has no record of: withheld, since
  *  guessing would be a leak. Pure and total. */
 function grantChildOf(app: AppState, ev: NostrEvent): string | null {

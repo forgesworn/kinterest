@@ -56,7 +56,7 @@ import { startSync } from './engine'
 
 const AT = 1_700_000_000
 
-/** `state` holding `accounts`/`chores` docs — audit P1/P8 bind a received
+/** `state` holding `accounts`/`chores` docs, which bind a received
  *  ENTRY to known accounts and a CHILD_SIG tick to a known chore. */
 function withDocs(state: AppState, docs: { accounts?: Account[]; chores?: { id: string; child: string }[] }): AppState {
   let next = state
@@ -161,7 +161,7 @@ describe('publish.ts', () => {
     expect(pTagOf(relay.events[0]!)).toBe(child.pk)
   })
 
-  it('publishes directly when storage is full, rather than losing the send (audit P11)', async () => {
+  it('publishes directly when storage is full, rather than losing the send', async () => {
     const guardian = newKeypair()
     const child = newKeypair()
     const relay = makeFakeRelay()
@@ -231,7 +231,7 @@ describe('ingress.ts: handleWrap', () => {
    *  guardian key has to actually be known — a bare `emptyState()` has
    *  `guardianPubkey: null` and pins nobody, which no real device ever is by
    *  the time wire traffic reaches it. */
-  //  Audit P1: a guardian ENTRY must also bind to a known account of the
+  //  A guardian ENTRY must also bind to a known account of the
   //  child it names, so the pinned device holds the accounts doc too.
   const pinned = (): AppState => {
     const base = emptyState()
@@ -359,7 +359,7 @@ describe('ingress.ts: handleWrap', () => {
       nowSec: AT,
     })
 
-    // Audit P9: the guardian takes an ack only for an entry it sent THIS child.
+    // The guardian takes an ack only for an entry it sent THIS child.
     const sent = creditEntry({ id: 'entry-1', child: child.pk, createdAt: AT, author: 'guardian' }, { ...account, child: child.pk }, 100)
     const guardianState: AppState = { ...emptyState(), role: 'guardian', guardianPubkey: guardian.pk, entries: [sent] }
     const { state } = handleWrap(guardianState, wrap, guardian.sk, child.pk, AT)
@@ -367,7 +367,7 @@ describe('ingress.ts: handleWrap', () => {
     expect(state.acks['entry-1']).toBe(AT)
   })
 
-  it('ACK for an entry that is not the acking child s own is refused (audit P9)', () => {
+  it('ACK for an entry that is not the acking child s own is refused', () => {
     const wrap = wrapFor({ innerKind: KIND_ACK, payload: buildAckPayload('entry-sib', AT), authorSk: child.sk, recipientPk: guardian.pk, nowSec: AT })
     const sibling = creditEntry({ id: 'entry-sib', child: 'b'.repeat(64), createdAt: AT, author: 'guardian' }, { ...account, child: 'b'.repeat(64) }, 100)
     const guardianState: AppState = { ...emptyState(), role: 'guardian', guardianPubkey: guardian.pk, entries: [sibling] }
@@ -701,7 +701,7 @@ describe('ingress.ts: handlePairClaimWrap — carried security obligation from T
     expect(tokenStore.get()).toEqual(minted) // untouched — the gate never ran for a non-claim
   })
 
-  it('a claim whose devicePk is not its seal author does not burn the token (audit P13)', () => {
+  it('a claim whose devicePk is not its seal author does not burn the token', () => {
     const mnemonic = generateMnemonic()
     const guardian = guardianFromMnemonic(mnemonic)
     const device = newKeypair()

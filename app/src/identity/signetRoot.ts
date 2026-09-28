@@ -62,8 +62,8 @@ export function rootChallenge(guardianPk: string): string {
  *   would break pairing across environments, and it buys nothing: the
  *   challenge already binds the attestation to this specific guardian key, so
  *   the same attestation replayed from another origin proves the same fact.
- *   Nor would it defend anything (review R3, reverting audit P5's
- *   allowlist): the requesting site writes the `origin` tag itself and the
+ *   Nor would it defend anything (an origin allowlist was tried and
+ *   reverted): the requesting site writes the `origin` tag itself and the
  *   signer signs it as given, so a phishing site can simply write ours. A
  *   phished attestation over an attacker's guardian key is instead surfaced
  *   at recovery time — see signetVault.ts's 'conflicting-vaults' outcome.

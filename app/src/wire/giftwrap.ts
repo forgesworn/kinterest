@@ -49,7 +49,7 @@ export const MAX_WRAP_JITTER_SECS = 2 * 24 * 60 * 60
 /** A `created_at` for the seal/wrap layers: `nowSec` minus a random amount up
  *  to {@link MAX_WRAP_JITTER_SECS} (never in the future — NIP-59 only backdates). */
 function jitteredCreatedAt(nowSec: number): number {
-  // From the CSPRNG, not `Math.random` (audit P17): the jitter is what hides
+  // From the CSPRNG, not `Math.random`: the jitter is what hides
   // when a wrap was really sent, so it should not be predictable.
   const [r] = crypto.getRandomValues(new Uint32Array(1))
   return nowSec - ((r ?? 0) % MAX_WRAP_JITTER_SECS)

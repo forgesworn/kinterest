@@ -122,7 +122,7 @@ export function selfRevokedAt(app: AppState): number | null {
 // "assertEntry on ingress" rule). Dedupes by id: a repeat returns the exact
 // same state reference so callers can cheaply detect a no-op with `===`.
 //
-// Reversals (review R7): a reversal arriving after the entry it names must
+// Reversals: a reversal arriving after the entry it names must
 // be that entry's exact mirror, or it is refused. One whose original has not
 // arrived yet cannot be checked and is accepted — refusing the original
 // later instead would let a bad reversal block a genuine entry. Only the
@@ -299,7 +299,7 @@ function claimLegitimateNow(s: AppState, request: RequestPayload, nowSec: number
 
 /**
  * Whether an allowance.claim for `request.params.periodKey` may be granted
- * under `cfg` at `nowSec` (unix SECONDS; review R2).
+ * under `cfg` at `nowSec` (unix SECONDS).
  *
  * Normally the periodKey must be one `cfg` could have produced
  * (`legitimatePeriodKeys`). A re-anchoring edit moves `cfg.startDay`
@@ -432,7 +432,7 @@ export function recordGrantResult(s: AppState, grant: GrantPayload, selfPk: stri
   // faithfully copied whatever periodKey the GRANT actually carried.
   const periodKey = typeof grant.params.periodKey === 'string' && grant.params.periodKey.length > 0 ? grant.params.periodKey : undefined
   const amountMinor = grant.params.amountMinor
-  // The op comes from the GRANT itself (audit D9): a periodKey, or the
+  // The op comes from the GRANT itself: a periodKey, or the
   // scheduler's own reqId convention, marks a pocket-money claim; anything
   // else is a spend (e.g. this device lost its state and a spend's GRANT
   // arrived afterwards), carrying the granted amount when there is one.

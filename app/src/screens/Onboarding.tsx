@@ -72,8 +72,7 @@ export function Onboarding({
   onJoinFamily?: () => void
   /** Fired after a successful `addChild` submit, but ONLY meaningful when
    *  this component was mounted at `addChildStep()` with children ALREADY
-   *  on the roster (GuardianShell.tsx's own 'addChild' route — U5, UI
-   *  audit: "Add a child" from the family home screen, reusing this exact
+   *  on the roster (GuardianShell.tsx's own 'addChild' route: "Add a child" from the family home screen, reusing this exact
    *  ceremony at a fresh derivation index). The genuine first-run path
    *  (App.tsx's `children.length === 0` gate) needs no callback of its own —
    *  once that dispatch lands, App.tsx's next render already swaps this
@@ -163,7 +162,7 @@ export function Onboarding({
     setBusy(true)
     try {
       // The SAME normalisation `submitRestoreMnemonic` just validated
-      // against (U10, UI audit) — a plain `.trim()` here would leave stray
+      // against — a plain `.trim()` here would leave stray
       // capitals/line breaks/double spaces in place, deriving a DIFFERENT
       // (and wrong) key from text that was only ever checked in its
       // normalised form.
@@ -251,7 +250,7 @@ export function Onboarding({
 
   /** "I already have a family on My Signet" — spec §1.6's recovery flow. The
    *  mnemonic is vaulted (`commitGuardian`) before anything else, and the
-   *  vault's own roster is restored with it (ruling R1) so this device can
+   *  vault's own roster is restored with it so this device can
    *  reach every child immediately rather than waiting for a heartbeat. */
   async function handleSignetRecover() {
     const recovering = beginSignetRecover()
@@ -281,7 +280,7 @@ export function Onboarding({
         setStep(signetFailed(recovering, TOO_MANY_CANDIDATES))
         return
       }
-      // Review R3: authentic backups for more than one family were found.
+      // Authentic backups for more than one family were found.
       // One may have been planted via a phished Signet login, so nothing is
       // restored and the user is sent to their recovery words.
       if (got === 'conflicting-vaults') {
@@ -298,7 +297,7 @@ export function Onboarding({
         type: 'updateApp',
         update: (app): AppState => ({
           ...app,
-          // R1: the roster travels in the vault, so a recovered guardian can
+          // The roster travels in the vault, so a recovered guardian can
           // ask every child to resync at once instead of waiting an hour for
           // each of them to call in.
           children: got.vault.children.length > 0 ? got.vault.children : app.children,
@@ -306,7 +305,7 @@ export function Onboarding({
           root: got.root ?? { kind: 'phrase' },
         }),
       })
-      // R1, the other half: the roster is back, so ask every child for a
+      // The roster is back, so ask every child for a
       // full replay NOW (`since: null` — a recovered device holds no ledger
       // at all) instead of waiting up to an hour for each child's own
       // heartbeat to reveal the gap. Swallowed failures are queued, not
@@ -324,7 +323,7 @@ export function Onboarding({
         }).catch(() => {})
       }
 
-      // U8: a restored roster (children.length > 0) swaps the app straight
+      // A restored roster (children.length > 0) swaps the app straight
       // to GuardianShell, unmounting this screen and its local `signetNote`
       // with it — so hand the note to the store as a one-off notice too,
       // which GuardianShell shows once, dismissably.
@@ -482,11 +481,11 @@ export function Onboarding({
 
   // step.kind === 'addChild' — title/copy differ between the genuine
   // first-run ceremony and "Add a child" reached later from GuardianShell's
-  // own route (U5, UI audit), which mounts this same step against a roster
+  // own route, which mounts this same step against a roster
   // that already has children on it.
   return (
     <Screen title={state.app.children.length === 0 ? 'Add your first child' : 'Add a child'}>
-      {/* U8 (UI audit): a My Signet sign-in/recovery that succeeded but
+      {/* A My Signet sign-in/recovery that succeeded but
           couldn't seal the backup (an auth-only session, spec §1.8 step 7)
           previously set this note and moved straight here without ever
           showing it — this was the next step reached, not the ones the

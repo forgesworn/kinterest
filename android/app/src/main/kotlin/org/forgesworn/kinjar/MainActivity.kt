@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // FLAG_SECURE (fix round 3, A6): the recents snapshot is taken at
+        // FLAG_SECURE: the recents snapshot is taken at
         // pause/stop, before the web lock screen has painted, so without it
         // the app switcher shows the last unlocked screen (balance, jar,
         // guardian dashboard) to anyone who opens recents. Also blocks
@@ -203,14 +203,14 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         maybeRequestNotificationsPermission()
-        // Fix round 3 (A2): Android 15 stops the dataSync service after 6 h
+        // Android 15 stops the dataSync service after 6 h
         // (RelayService.onTimeout); bring it back now that we're foreground,
         // if the web side had asked for it.
         RelayService.restartIfWanted(this)
     }
 
-    /** Fix round 3 (A3): the service exists only to keep this WebView's JS
-     *  running, so it must not outlive it. With configChanges declared (A4)
+    /** The service exists only to keep this WebView's JS
+     *  running, so it must not outlive it. With configChanges declared,
      *  onDestroy means the Activity is really going, not being recreated. */
     override fun onDestroy() {
         RelayService.stop(this)

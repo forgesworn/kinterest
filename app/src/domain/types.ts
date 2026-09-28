@@ -6,8 +6,8 @@ export interface Account {
   custody: 'ledger' | 'physical' | 'external'
   archived?: boolean
   /** How often a guardian is reminded to physically audit this account
-   *  against the ledger (Plan 3, Task 6) — the audit *ceremony* itself is
-   *  child-side (Plan 4); this is only the reminder cadence a guardian sets
+   *  against the ledger — the audit *ceremony* itself is
+   *  child-side; this is only the reminder cadence a guardian sets
    *  per account. Additive/optional: wire/payloads.ts's `isAccountShape`
    *  never enumerated a closed field set, so an older snapshot/device that
    *  predates this field parses this account exactly as before (field
@@ -28,7 +28,7 @@ export interface Entry {
   v: 1
   /** A ULID (domain/id.ts#newId) for anything a person does. Two kinds of
    *  entry deliberately use a deterministic id instead, contrary to v1's
-   *  "entryId is a ULID" (audit S5): scheduler payouts
+   *  "entryId is a ULID": scheduler payouts
    *  (`sched:<kind>:<child>:<account>:<due day>`, store/scheduler.ts) and
    *  approved requests (`grant:<reqId>`, store/store.tsx). The same payout
    *  must get the same id however many times, or on however many devices,
@@ -48,7 +48,7 @@ export interface Entry {
   reverses?: string
   /** `adjustment` only: the audit this adjustment resolves (v1 §Entries:
    *  "requires the audit reference"). Optional on the type so entries stored
-   *  or sent before it was set by every builder still parse (audit S3). */
+   *  or sent before it was set by every builder still parse. */
   auditId?: string
   /** `adjustment` only: the counted total, minor units (v1 §Entries: an
    *  adjustment "carries the counted total and the delta"; the delta is the

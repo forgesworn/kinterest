@@ -157,7 +157,7 @@ describe('sortForDisplay', () => {
   })
 })
 
-describe('assertEntry ledger invariants (audit D5)', () => {
+describe('assertEntry ledger invariants', () => {
   const meta = { id: 'e', child: 'sam', createdAt: 1, author: 'guardian' as const }
   const leg = (account: string, amountMinor: number, currency = 'GBP') => ({ account, currency, amountMinor })
   const entry = (kind: Entry['kind'], legs: Entry['legs'], extra: Partial<Entry> = {}): Entry => ({ v: 1, kind, legs, ...meta, ...extra })
@@ -190,7 +190,7 @@ describe('assertEntry ledger invariants (audit D5)', () => {
   })
 })
 
-describe('assertEntryAgainst (audit D5)', () => {
+describe('assertEntryAgainst', () => {
   const accounts: Account[] = [
     { id: 'sam-gbp', child: 'sam', name: 'Spending', currency: 'GBP', custody: 'ledger' },
     { id: 'ella-gbp', child: 'ella', name: 'Spending', currency: 'GBP', custody: 'ledger' },
@@ -206,7 +206,7 @@ describe('assertEntryAgainst (audit D5)', () => {
   })
 })
 
-describe('adjustment fields (audit S3)', () => {
+describe('adjustment fields', () => {
   const adj: Entry = {
     v: 1, id: 'adj', child: sam, kind: 'adjustment', createdAt: 1, author: 'child',
     legs: [{ account: 'a-box', currency: 'GBP', amountMinor: -67 }],
@@ -227,7 +227,7 @@ describe('adjustment fields (audit S3)', () => {
   })
 })
 
-describe('sortForDisplay orders a catch-up by due day (audit D11)', () => {
+describe('sortForDisplay orders a catch-up by due day', () => {
   it('interleaves same-second scheduler payouts by due day: allowance, match, interest', () => {
     const at = 5000
     const mk = (kind: string, day: string): Entry => ({
@@ -240,7 +240,7 @@ describe('sortForDisplay orders a catch-up by due day (audit D11)', () => {
   })
 })
 
-describe('balances overflow guard (audit D12)', () => {
+describe('balances overflow guard', () => {
   it('throws rather than return an unsafe sum', () => {
     const big = Number.MAX_SAFE_INTEGER
     const a = creditEntry({ id: 'a', child: sam, createdAt: 1, author: 'guardian' }, ledgerAcct, big)
@@ -250,7 +250,7 @@ describe('balances overflow guard (audit D12)', () => {
   })
 })
 
-describe('assertReversalOf (review R7)', () => {
+describe('assertReversalOf', () => {
   const orig = creditEntry({ id: 'o', child: sam, createdAt: 1, author: 'guardian' }, ledgerAcct, 500)
   const m = { id: 'r', child: sam, createdAt: 2, author: 'guardian' as const }
   it('accepts an exact mirror', () => {

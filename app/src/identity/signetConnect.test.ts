@@ -20,7 +20,7 @@ describe('classifyRecoveryLogin', () => {
   })
 })
 
-// Audit P7: a flooded public inbox is not the same as no backup at all.
+// A flooded public inbox is not the same as no backup at all.
 describe('recoveryMiss', () => {
   it('says too-many-candidates when wraps went unopened, no-vault otherwise', () => {
     expect(recoveryMiss(true)).toBe('too-many-candidates')

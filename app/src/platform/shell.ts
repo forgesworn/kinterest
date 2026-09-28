@@ -113,7 +113,7 @@ export function stopRelayService(): void {
 }
 
 /** Shell -> `KinjarShell.notify` when present. Otherwise the browser path,
- *  which only ever SHOWS — it never asks for permission (fix round 3, A5):
+ *  which only ever SHOWS — it never asks for permission:
  *  this is called from a hidden page with no user activation, where
  *  `Notification.requestPermission()` is ignored or auto-denied, so asking
  *  from here could never have worked. Permission is asked for only through

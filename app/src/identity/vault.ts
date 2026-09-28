@@ -63,7 +63,7 @@ function idbPut(db: IDBDatabase, store: string, key: string, value: unknown): Pr
   })
 }
 
-/** Writes `value` under `key` only if nothing is there yet (audit P15).
+/** Writes `value` under `key` only if nothing is there yet.
  *  Resolves 'exists', without writing, when another writer got there first —
  *  a second tab on the same cold vault, which the in-module mutex below
  *  cannot see. */
@@ -135,7 +135,7 @@ async function ensureWrapKey(): Promise<CryptoKey> {
           'encrypt',
           'decrypt',
         ])
-        // `add`, never `put` (audit P15): if another tab created the key
+        // `add`, never `put`: if another tab created the key
         // since the read above, ITS key stands and this fresh one is thrown
         // away, instead of silently replacing a key that tab has already
         // sealed secrets under.

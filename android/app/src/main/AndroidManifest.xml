@@ -28,7 +28,7 @@
             android:launchMode="singleTask"
             android:screenOrientation="portrait"
             android:configChanges="uiMode|orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|density|fontScale|locale|layoutDirection">
-            <!-- configChanges (fix round 3, A4): the WebView reflows itself;
+            <!-- configChanges: the WebView reflows itself;
                  letting the system recreate the Activity instead would reload
                  the page and drop the in-memory child key (e.g. when scheduled
                  dark mode switches at sunset). -->

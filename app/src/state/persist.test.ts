@@ -70,7 +70,7 @@ describe('loadState sanitisation of a corrupt-but-v1-shaped blob', () => {
     expect(loaded.entries).toEqual([valid])
   })
 
-  it('D5: drops a stored entry that breaks a ledger invariant (unbalanced transfer) instead of crashing', () => {
+  it('drops a stored entry that breaks a ledger invariant (unbalanced transfer) instead of crashing', () => {
     const storage = makeFakeStorage()
     const valid: Entry = creditEntry({ id: 'e1', child: 'sam', createdAt: 1000, author: 'guardian' }, ledgerAcct, 500)
     const minted = { ...valid, id: 'bad', kind: 'transfer', legs: [
@@ -367,7 +367,7 @@ describe('save/load round-trip', () => {
     expect(loadState(storage)).toEqual(s)
   })
 
-  it('R2: round-trips periodLegitimateAtReceipt on a pending claim', () => {
+  it('round-trips periodLegitimateAtReceipt on a pending claim', () => {
     const storage = makeFakeStorage()
     const s = { ...upsertRequest(emptyState(), req('r1'), 'sam', 1000) }
     s.requests = [{ ...s.requests[0]!, periodLegitimateAtReceipt: true }]
@@ -381,7 +381,7 @@ describe('save/load round-trip', () => {
     expect(storage.getItem('kinjar.state.v1')).not.toBeNull()
   })
 
-  it('D7: never throws when storage is full, and reports the failure', () => {
+  it('never throws when storage is full, and reports the failure', () => {
     const full: StorageLike = {
       getItem: () => null,
       setItem: () => {
@@ -520,7 +520,7 @@ describe('clearState', () => {
   })
 })
 
-describe('synthetic request rows survive a reload (audit D9)', () => {
+describe('synthetic request rows survive a reload', () => {
   it('keeps a synthetic row that parseRequestPayload would reject, and still drops a non-synthetic one', () => {
     let s = recordGrantResult(emptyState(), buildGrantPayload({ reqId: 'scheduler:sam:a:2026-W32', nonce: 'n', decision: 'deny', ts: 1, params: {} }), 'sam', 10)
     s = recordGrantResult(s, buildGrantPayload({ reqId: '01JSPEND', nonce: 'n2', decision: 'allow', ts: 1, params: { amountMinor: 250 } }), 'sam', 11)
@@ -534,7 +534,7 @@ describe('synthetic request rows survive a reload (audit D9)', () => {
   })
 })
 
-describe('sanitiseState per-row guards (audit D13)', () => {
+describe('sanitiseState per-row guards', () => {
   it('drops malformed children, relays, ticks and audits row by row, keeping the good ones', () => {
     const mem = makeFakeStorage()
     const goodChild = { pubkey: 'a'.repeat(64), name: 'Sam', index: 0 }
@@ -555,7 +555,7 @@ describe('sanitiseState per-row guards (audit D13)', () => {
   })
 })
 
-describe('invalid entries are quarantined, not silently lost (review R8)', () => {
+describe('invalid entries are quarantined, not silently lost', () => {
   it('sets a failing entry aside under its own key, once, and keeps it out of state', () => {
     const mem = makeFakeStorage()
     const good = creditEntry({ id: 'ok', child: 'sam', createdAt: 1, author: 'guardian' }, ledgerAcct, 100)

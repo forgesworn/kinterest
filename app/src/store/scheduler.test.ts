@@ -311,7 +311,7 @@ describe('runSchedulers: allowance + interest on the same account, same pass', (
   })
 })
 
-describe('runSchedulers: refused gated periods (audit D4)', () => {
+describe('runSchedulers: refused gated periods', () => {
   it('never auto-pays a period whose scheduler claim was denied or dismissed, even with the gate off', () => {
     const decided = (periodKey: string, status: 'denied' | 'dismissed') => ({
       request: { v: 1 as const, op: 'allowance.claim' as const, reqId: `scheduler:${CHILD}:${ACCOUNT_ID}:${periodKey}`, nonce: 'n', child: CHILD, ts: 1, params: { periodKey } },
@@ -329,7 +329,7 @@ describe('runSchedulers: refused gated periods (audit D4)', () => {
   })
 })
 
-describe('runSchedulers: interest on the balance as of each due day (audit D2)', () => {
+describe('runSchedulers: interest on the balance as of each due day', () => {
   const cfg: InterestConfig = { child: CHILD, account: ACCOUNT_ID, rateBps: 100, cadence: 'weekly', day: 5, tz: 'UTC', startDay: '2026-03-01' }
   const deposit = (id: string, amountMinor: number, createdAt: number) => ({
     v: 1 as const, id, child: CHILD, kind: 'credit' as const, createdAt, author: 'guardian' as const,
@@ -371,7 +371,7 @@ describe('runSchedulers: interest on the balance as of each due day (audit D2)',
   })
 })
 
-describe('runSchedulers: revoked children (audit D6)', () => {
+describe('runSchedulers: revoked children', () => {
   it('accrues nothing — allowance, interest or claims — for a revoked child', () => {
     const base = baseState()
     const state = baseState({
@@ -387,7 +387,7 @@ describe('runSchedulers: revoked children (audit D6)', () => {
   })
 })
 
-describe('R1: an interest rate moved off 0 never back-pays past periods', () => {
+describe('an interest rate moved off 0 never back-pays past periods', () => {
   const account = { id: ACCOUNT_ID, child: CHILD, name: 'Pocket money', currency: 'GBP', custody: 'ledger' as const }
   const t = (y: number, m: number, d: number, h = 8) => Date.UTC(y, m - 1, d, h) / 1000
   it('£100 at 0 % from 07-31, edited to 5 %/week on 08-22: nothing is paid for past Fridays', () => {
@@ -404,7 +404,7 @@ describe('R1: an interest rate moved off 0 never back-pays past periods', () => 
   })
 })
 
-describe('runSchedulers: deposit match (audit S1)', () => {
+describe('runSchedulers: deposit match', () => {
   const account = { id: ACCOUNT_ID, child: CHILD, name: 'Pocket money', currency: 'GBP', custody: 'ledger' as const }
   const box = { id: 'a-box', child: CHILD, name: 'Money box', currency: 'GBP', custody: 'physical' as const }
   const t = (y: number, m: number, d: number, h = 8) => Date.UTC(y, m - 1, d, h) / 1000
@@ -568,7 +568,7 @@ describe('runSchedulers: a deposit match window is [previous due day, due day)',
   })
 })
 
-describe('scheduler ids are deterministic, not ULIDs (audit S5)', () => {
+describe('scheduler ids are deterministic, not ULIDs', () => {
   it('two independent runs over the same state mint identical ids', () => {
     const state = baseState({ docs: { ...baseState().docs, allowance: { v: 1, issuedAt: 1, configs: [allowanceCfg] } } })
     const a = runSchedulers(state, NOW).entries.map((e) => e.id)

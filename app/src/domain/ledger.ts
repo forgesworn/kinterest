@@ -70,7 +70,7 @@ export function exchangeEntry(
 
 // The sync layer must call this on every entry received from a paired
 // device before folding it in — balances() does no validation of its own
-// beyond refusing an unsafe running total (audit D12).
+// beyond refusing an unsafe running total.
 export function assertEntry(e: Entry): void {
   if (e.v !== 1) throw new RangeError(`unsupported entry version: ${e.v}`)
   if (typeof e.id !== 'string' || e.id === '') throw new RangeError('entry id must be a non-empty string')
@@ -94,7 +94,7 @@ export function assertEntry(e: Entry): void {
     throw new RangeError(`${e.kind} entries need exactly 1 leg, got ${e.legs.length}`)
   if (e.reverses !== undefined && (typeof e.reverses !== 'string' || e.reverses === ''))
     throw new RangeError('reverses must be a non-empty string when present')
-  // Adjustment fields (audit S3): optional, so an entry without them — any
+  // Adjustment fields: optional, so an entry without them — any
   // stored or on-the-wire adjustment from before they were set — still
   // parses; when present they must be well-formed and on an adjustment.
   if (e.auditId !== undefined && (typeof e.auditId !== 'string' || e.auditId === ''))
@@ -107,7 +107,7 @@ export function assertEntry(e: Entry): void {
   assertLedgerInvariants(e)
 }
 
-// The money rules of each kind (audit D5). A reversal (`reverses` set —
+// The money rules of each kind. A reversal (`reverses` set —
 // see reverseEntry) carries the original's kind with every leg negated, so
 // the one-leg sign rules flip for it; the two-leg rules are symmetric.
 function assertLedgerInvariants(e: Entry): void {
@@ -145,7 +145,7 @@ function assertLedgerInvariants(e: Entry): void {
 
 /**
  * Context-aware check of an entry against the family's accounts
- * (`docs.accounts.accounts`) — audit D5. Every leg's account must exist,
+ * (`docs.accounts.accounts`). Every leg's account must exist,
  * belong to `entry.child`, and be in the leg's currency. Throws RangeError
  * otherwise. Pure. Call it alongside `assertEntry` wherever an entry from
  * another device is accepted.
@@ -162,7 +162,7 @@ export function assertEntryAgainst(accounts: readonly Account[], entry: Entry): 
 }
 
 /** Per-account balance fold. Each leg is a safe integer (assertEntry), but
- *  their running sum need not be (audit D12): it throws RangeError rather
+ *  their running sum need not be: it throws RangeError rather
  *  than return an unsafe total. */
 export function balances(entries: Iterable<Entry>): Map<string, number> {
   const out = new Map<string, number>()
@@ -176,7 +176,7 @@ export function balances(entries: Iterable<Entry>): Map<string, number> {
 }
 
 /**
- * Context check for a reversal against the entry it names (review R7).
+ * Context check for a reversal against the entry it names.
  * `assertEntry` flips the one-leg sign rules for any entry carrying
  * `reverses`, and a reversed payout reopens its period, so a reversal must
  * really be the original's mirror: `reverses` names `original`, same child
@@ -231,7 +231,7 @@ function scheduledRank(e: Entry): number {
 /**
  * Chronological display order: `createdAt`, then — for entries stamped at
  * the same second — scheduler payouts by the due day they pay for (audit
- * D11: a catch-up stamps every payout with the run's own time, and ordering
+ * A catch-up stamps every payout with the run's own time, and ordering
  * those by id alone put every allowance before every interest payment,
  * whatever their due days), then by id.
  */

@@ -103,7 +103,7 @@ const DOC_KINDS = ['accounts', 'allowance', 'interest', 'chores'] as const
  *  it (`applyConfigDoc`'s anti-rollback check is `doc.issuedAt <= highWater`,
  *  so nothing "newer" than MAX_SAFE_INTEGER can ever pass again).
  *
- *  Why a day and not five minutes (audit P3): the clamp exists to BOUND that
+ *  Why a day and not five minutes: the clamp exists to BOUND that
  *  poisoning, not to judge freshness, and a bound of a day caps the damage of
  *  a bad guardian clock at a day of frozen policy. Five minutes, meanwhile,
  *  refused every config doc on a child whose clock ran more than five minutes
@@ -121,7 +121,7 @@ export const RETAINED_INNER_KINDS: readonly number[] = [KIND_ENTRY, KIND_CONFIG,
 
 /** The guardian -> child only inner kinds — the same set `dispatchInner`'s
  *  direction guard refuses from any other author (see `handleWrap`'s header).
- *  ENTRY joined it with audit P1: no child flow authors one. */
+ *  ENTRY is among them: no child flow authors one. */
 const GUARDIAN_ONLY_INNER_KINDS: readonly number[] = [KIND_CONFIG, KIND_SNAPSHOT, KIND_GRANT, KIND_ENTRY]
 
 /**
@@ -193,7 +193,7 @@ export function applySnapshot(state: AppState, snapshot: PairingSnapshotPayload,
 }
 
 /**
- * `applySnapshot` for a live SNAPSHOT arriving on a CHILD device (audit P6):
+ * `applySnapshot` for a live SNAPSHOT arriving on a CHILD device:
  * a sibling's entries and roster rows in the snapshot are not folded, and any
  * this device already holds are dropped (`dropSiblingData`). An older
  * guardian build still sends the whole family; a newer one sends a scoped
@@ -216,7 +216,7 @@ export function applyLiveSnapshot(state: AppState, snapshot: PairingSnapshotPayl
 
 /**
  * Drops what a child device holds about its SIBLINGS: their entries and
- * their roster rows (audit P6). Pure; `state` by reference when there is
+ * their roster rows. Pure; `state` by reference when there is
  * nothing to drop.
  *
  * Safe on a child, which is why it runs on every snapshot a child applies:
@@ -427,14 +427,14 @@ export function handleWrap(
  *  the receiver's clock skew window, or an ENTRY/CHILD_SIG naming an account
  *  or chore whose policy doc has not arrived yet. The caller must then leave
  *  the carrying event un-seen and un-retained, so a later redelivery or
- *  replay can still fold it (audit P3). `state` is the input, by reference. */
+ *  replay can still fold it. `state` is the input, by reference. */
 export interface DispatchResult {
   state: AppState
   effects: Effect[]
   deferred?: true
 }
 
-/** Whether `authorPk` may ack `entryId` (audit P9). Pure. */
+/** Whether `authorPk` may ack `entryId`. Pure. */
 function ackAuthorised(state: AppState, entryId: string, authorPk: string): boolean {
   if (state.role === 'guardian') {
     const entry = state.entries.find((e) => e.id === entryId)
@@ -443,7 +443,7 @@ function ackAuthorised(state: AppState, entryId: string, authorPk: string): bool
   return state.guardianPubkey !== null && authorPk === state.guardianPubkey
 }
 
-/** Whether a CHILD_SIG is the signer's own to make (audit P8). Pure. */
+/** Whether a CHILD_SIG is the signer's own to make. Pure. */
 function childSigBinding(
   state: AppState,
   parsed: NonNullable<ReturnType<typeof parseChildSigPayload>>,
@@ -497,7 +497,7 @@ export function dispatchInner(
   switch (innerKind) {
     case KIND_ENTRY: {
       const parsed = parseEntryPayload(payload)
-      // Provenance guard (audit P1, superseding fix round 2's I2). ENTRY is
+      // Provenance guard. ENTRY is
       // guardian-authored ONLY. No production flow has a child author one —
       // a child's spend travels as a REQUEST and comes back as the guardian's
       // own ENTRY — and the old "author IS the child it names" rule still let
@@ -520,7 +520,7 @@ export function dispatchInner(
       // marked seen, and a later redelivery or replay folds it once the doc
       // has arrived.
       //
-      // Only an UNKNOWN account defers (review R5). A leg on a known account
+      // Only an UNKNOWN account defers. A leg on a known account
       // that belongs to another child, or in the wrong currency, is wrong
       // whenever it arrives, and deferring it meant decrypting and refusing
       // the same wrap on every reconnect for ever: it is refused outright.
@@ -556,8 +556,7 @@ export function dispatchInner(
       if (parsed !== null) {
         const doc = parsed.doc as { issuedAt: number }
         // issuedAt clamp — see handleWrap's header comment.
-        // Beyond the clamp the doc is DEFERRED rather than dropped (audit
-        // P3): the refusal is about the receiver's clock, not the doc, so the
+        // Beyond the clamp the doc is DEFERRED rather than dropped: the refusal is about the receiver's clock, not the doc, so the
         // carrying wrap must stay un-seen and deliverable once the clock has
         // caught up.
         if (doc.issuedAt > nowSec + MAX_ISSUED_AT_SKEW_SECS) return { state, effects: [], deferred: true }
@@ -615,7 +614,7 @@ export function dispatchInner(
     }
     case KIND_ACK: {
       const parsed = parseAckPayload(payload)
-      // Bound to the entry's own peer (audit P9): on the guardian, only the
+      // Bound to the entry's own peer: on the guardian, only the
       // child an entry was sent to may ack it, so one child cannot mark a
       // sibling's entries delivered; on a child, only its guardian.
       if (parsed !== null && ackAuthorised(state, parsed.entryId, authorPk)) {
@@ -641,7 +640,7 @@ export function dispatchInner(
         // last week. Unlike ENTRY there is no separate ack to keep sending,
         // so there is nothing left that needs the ungated version.
         //
-        // Binding (audit P8): a child signs for ITSELF only. A tick must be
+        // Binding: a child signs for ITSELF only. A tick must be
         // on a chore the chores doc gives to the signer; an audit
         // must name the signer as its child and author 'child', on an account
         // the signer owns. Otherwise one child could tick a sibling's chores
@@ -773,7 +772,7 @@ export function handlePairClaimWrap(opts: HandlePairClaimWrapOpts): AnsweredPair
   const params = claim.params as { token?: unknown; devicePk?: unknown }
   const presented = typeof params.token === 'string' ? params.token : ''
 
-  // The identity check `answerPairClaim` makes, made FIRST (audit P13): a
+  // The identity check `answerPairClaim` makes, made FIRST: a
   // claim whose `devicePk` is not its own seal author is refused without
   // burning the ceremony's token. Pure and synchronous, so the atomicity
   // argument below is unchanged.

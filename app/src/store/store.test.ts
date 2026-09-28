@@ -147,7 +147,7 @@ describe('storeReducer', () => {
   })
 })
 
-describe('storeReducer — one-off notice (U8)', () => {
+describe('storeReducer — one-off notice', () => {
   it('setNotice holds the message; clearNotice drops it and is a no-op when already clear', () => {
     const start = initialStoreState(emptyState())
     expect(start.notice).toBeNull()
@@ -210,7 +210,7 @@ describe('snapshotOf', () => {
     expect(snap.state.docs).toEqual(app.docs)
   })
 
-  // Audit P6: the snapshot sent to one child carries nothing of a sibling's.
+  // The snapshot sent to one child carries nothing of a sibling's.
   it('scopes to the addressed child: no sibling profile, entry, account, config or chore', () => {
     const samAcc: Account = { id: 'acc-sam', child: 'sam', name: 'Pocket money', currency: 'GBP', custody: 'ledger' }
     const alexAcc: Account = { id: 'acc-alex', child: 'alex', name: 'Savings', currency: 'GBP', custody: 'ledger' }
@@ -330,7 +330,7 @@ describe('stampConfigDoc', () => {
     expect(doc.issuedAt).toBe(AT + 101)
   })
 
-  it('U1: revoke -> rename an account -> activeChildren still excludes the device', () => {
+  it('revoke -> rename an account -> activeChildren still excludes the device', () => {
     const acct: Account = { id: 'acc1', child: 'kid1', name: 'Spending', currency: 'GBP', custody: 'ledger' }
     const kids: ChildProfile[] = [
       { pubkey: 'kid1', name: 'Sam', index: 0 },
@@ -346,7 +346,7 @@ describe('stampConfigDoc', () => {
     expect(app.docs.accounts.revoked).toEqual({ kid1: AT })
   })
 
-  it('R9: a save carrying a STALE revoked map cannot drop a revocation that landed since', () => {
+  it('a save carrying a STALE revoked map cannot drop a revocation that landed since', () => {
     const acct: Account = { id: 'acc1', child: 'kid1', name: 'Spending', currency: 'GBP', custody: 'ledger' }
     let app: AppState = { ...emptyState(), children: [{ pubkey: 'kid1', name: 'Sam', index: 0 }, { pubkey: 'kid2', name: 'Ella', index: 1 }] }
     app = applyConfigDoc(app, 'accounts', stampConfigDoc(app, 'accounts', { accounts: [acct], revoked: { kid1: AT } }, AT))
@@ -358,7 +358,7 @@ describe('stampConfigDoc', () => {
     expect(app.docs.accounts.revoked).toEqual({ kid1: AT, kid2: AT + 1 })
   })
 
-  it('D1: an allowance save that switches account re-anchors startDay (history is not reopened)', () => {
+  it('an allowance save that switches account re-anchors startDay (history is not reopened)', () => {
     const cfg: AllowanceConfig = { child: 'kid1', account: 'acc1', amountMinor: 500, cadence: 'weekly', day: 2, tz: 'UTC', startDay: '2026-06-30' }
     let app: AppState = { ...emptyState() }
     app = applyConfigDoc(app, 'allowance', stampConfigDoc(app, 'allowance', { configs: [cfg] }, AT))
@@ -745,7 +745,7 @@ describe('buildGrantDecision: allowance.claim', () => {
     expect(next.requests[0]!.status).toBe('approved')
   })
 
-  describe('R2: a re-anchoring edit does not strand a pending claim', () => {
+  describe('a re-anchoring edit does not strand a pending claim', () => {
     const SAT = Date.UTC(2026, 7, 22, 9, 0) / 1000
     /** W34 claimed on its due day, then the gate is switched off on Saturday. */
     function reanchored(extra: (a: AppState) => AppState = (a) => a): AppState {

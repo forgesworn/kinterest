@@ -24,7 +24,7 @@ export type SignetRoot = Extract<RootRecord, { kind: 'signet' }>
 
 /** Spec §1.6: the recovery subscription is bounded both ways — it reads a
  *  public inbox that anyone at all can address. */
-// Audit P7: the inbox is public, so a flood of junk wraps must not hide the
+// The inbox is public, so a flood of junk wraps must not hide the
 // vault. Opened 8 at a time (each is two signer round trips), a minute buys
 // several hundred attempts rather than the old first 200 all fired at once.
 export const RECOVERY_TIMEOUT_MS = 60_000
@@ -103,10 +103,10 @@ export interface RecoverOpts {
 
 /** `too-many-candidates`: no usable vault among the wraps that were opened,
  *  but the bound or the deadline left others unopened — the inbox may be
- *  flooded (audit P7). Distinct from `no-vault`, which means every wrap on
+ *  flooded. Distinct from `no-vault`, which means every wrap on
  *  offer was tried. */
 /** `conflicting-vaults`: authentic vaults for more than one family (guardian
- *  key) were found, so none is picked — one may be planted (review R3). */
+ *  key) were found, so none is picked — one may be planted. */
 export type RecoverFailure = 'cancelled' | 'needs-full-signer' | 'no-vault' | 'too-many-candidates' | 'conflicting-vaults'
 
 export interface RecoveredFamily {
@@ -183,7 +183,7 @@ export async function recoverFamilyFromSignet(o: RecoverOpts): Promise<Recovered
   // only question worth asking is whether it is this one.
   //
   // More than one family among the authentic vaults is refused rather than
-  // resolved by recency (review R3): see `pickFamilyVault`.
+  // resolved by recency: see `pickFamilyVault`.
   const picked = pickFamilyVault(hunt.candidates, session.pubkey, validateMnemonic, (m) => guardianFromMnemonic(m).pk)
   if (picked.kind === 'conflicting-vaults') return 'conflicting-vaults'
   if (picked.kind === 'none') return recoveryMiss(hunt.truncated)
