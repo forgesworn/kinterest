@@ -66,6 +66,24 @@ this only changes onboarding. "Connect My Signet" from Settings (existing,
 `FamilyRootCard`) already lets a guardian who set up before this change add a
 Signet root afterwards, so nothing new was needed there.
 
+Also in v0.3 (all on `main`, tested on two real phones):
+
+- **Renamed** to Kinterest everywhere users see it (package id and sync tag
+  unchanged for now).
+- **Privacy:** snapshots *and* settings sent to a child carry only that
+  child's own data.
+- **Sync:** children can ask for a catch-up themselves; snapshots carry the
+  child's GRANTs; superseded settings records are pruned.
+- **Backup:** the My Signet vault re-seals when children or relays change and
+  republishes weekly, without ever touching the signer.
+- **Money:** deposit match is paid; "leave it 4 more weeks and it's £X"
+  projection; pay-day and timezone edits never skip or double-pay.
+- **Parent UX:** remove (archive) a child, "Pair their phone" on the child's
+  page, first-pot prompt after adding a child, ask notifications open
+  Approvals.
+- **Web:** optional browser notifications; PIN lockout harder to reset.
+- `SECURITY.md` describes the threat model and known limits.
+
 ## v0.2.1 — audit fixes (2026-09-27)
 
 A full-code audit (domain, protocol, UI, Android shell) found 5 critical and
@@ -111,53 +129,24 @@ tests. The ones that mattered most:
 5. Service timeout (if `adb shell cmd activity service-timeout-now` exists) →
    background, reopen → "Keeping in touch" notification returns.
 
-## Next (v0.3) — in priority order
+## Next — in priority order
 
-1. **Replace a lost phone without losing the child's money.** Re-pairing now
-   correctly uses a new index (new key), but the child's accounts stay keyed to
-   the old pubkey. Needs a guardian-authored "move child" config op that
-   re-homes accounts, chores and history to the new device key. *Design
-   question — decide before building.*
-2. **Snapshot scoping.** Snapshots still carry every sibling's ledger to every
-   child device. Scope per child.
-3. **Pairing-QR race.** Anyone who photographs the offer QR within its 600 s
-   window can claim first and receive the child's key. Bind the claim to the
-   SAS confirmation before the key is released, or shorten + single-use.
-4. **Deposit match.** Configurable in settings but never paid — implement per
-   v1 §Interest, or hide the setting until it is.
-5. **Vault freshness.** The My Signet vault is a one-shot snapshot; re-seal it
-   when children or relays change. Relays may expire kind-1059 — republish
-   periodically, and consider a non-public locator so an inbox flood can't
-   hide it (today it degrades to "too many candidates").
-6. **Root attestation that a generic login can't produce.** Today the
-   attestation is an ordinary Signet login event over a public challenge, so
-   any site the guardian logs into with Signet could obtain one (the `origin`
-   tag is written by the requesting site, so it proves nothing). Needs a
-   Signet-side change: a dedicated, displayed "authorise this family root"
-   signature. Conflicting-backup detection is the stopgap. Fold into the
-   Signet-side brief.
-7. **Root retraction on children.** A guardian who changes/disconnects Signet
-   leaves the old root pinned on every child.
-8. **Corrections.** `reverseEntry` has no UI; reversed scheduled payouts are
-   never re-paid (latent), and a reversed older interest period stays closed
-   once a later payout exists. Decide semantics, add a guardian "correct this"
-   path.
-9. **Browser notifications.** Web path is now safe but unused: needs a
-   Settings toggle calling `requestNotificationPermission()` and a registered
-   service worker. (Android uses the native path.)
-10. **Child resync + GRANTs in snapshots.** Children never initiate a resync,
-   and snapshots carry no GRANTs.
-11. **Child interest projection.** "Leave it 4 more weeks and it's £X" (v1
-    spec) — ChildHome shows one period only.
-12. **Adopt Signet dependant pairing (was "Signet-side issuance").** The
+**Direction:** children become My Signet dependants from day one. The main
+experience is *acting as the child* on the parent's phone (building the habit
+together); when a child gets their own phone it pairs to their existing
+identity, with nothing to migrate. Lock policy to be revisited (biometrics,
+parent as "bank manager" for a lost PIN).
+
+
+1. **Adopt Signet dependant pairing (was "Signet-side issuance").** The
     Signet side now exists: signet-app `main` ships "Pair an app as this
     dependant" (`bunker://…?dependant=` QR), and the sibling app
     Kindependence already uses it — the child phone scans, connects over
     NIP-46, makes a local device-only phone key, and has the guardian's
     Signet sign a device statement; the child's real key never leaves
     Signet. Adopting it would retire the app-generated family mnemonic,
-    and also fix lost-phone re-homing (item 1), the pairing-QR race
-    (item 3), and give children the Signet identity the IOU idea needs.
+    and also fix lost-phone re-homing (the lost-phone item), the pairing-QR race
+    (the pairing-QR race), and give children the Signet identity the IOU idea needs.
     **Open design question (Fable session): shared kit or not.**
     Recommendation to start from:
     - Signet half (scan, NIP-46 dependant session, phone key, device
@@ -174,7 +163,28 @@ tests. The ones that mattered most:
       heartbeat must work on the phone key alone.
     - Consumers: Kindependence now, Kinterest next, likely Kinclude and
       Kintrinsic.
-13. **Storage.** CONFIG corpus pruning (superseded `issuedAt`), then move
+2. **Replace a lost phone without losing the child's money.** Re-pairing now
+   correctly uses a new index (new key), but the child's accounts stay keyed to
+   the old pubkey. Needs a guardian-authored "move child" config op that
+   re-homes accounts, chores and history to the new device key. *Design
+   question — decide before building.*
+3. **Pairing-QR race.** Anyone who photographs the offer QR within its 600 s
+   window can claim first and receive the child's key. Bind the claim to the
+   SAS confirmation before the key is released, or shorten + single-use.
+4. **Root attestation that a generic login can't produce.** Today the
+   attestation is an ordinary Signet login event over a public challenge, so
+   any site the guardian logs into with Signet could obtain one (the `origin`
+   tag is written by the requesting site, so it proves nothing). Needs a
+   Signet-side change: a dedicated, displayed "authorise this family root"
+   signature. Conflicting-backup detection is the stopgap. Fold into the
+   Signet-side brief.
+5. **Root retraction on children.** A guardian who changes/disconnects Signet
+   leaves the old root pinned on every child.
+6. **Corrections.** `reverseEntry` has no UI; reversed scheduled payouts are
+   never re-paid (latent), and a reversed older interest period stays closed
+   once a later payout exists. Decide semantics, add a guardian "correct this"
+   path.
+7. **Storage.** Settings-record pruning is done; next, move
     from whole-state localStorage writes to IndexedDB. A save failure now
     shows a banner rather than crashing.
 
