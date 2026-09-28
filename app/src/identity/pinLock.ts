@@ -282,6 +282,12 @@ export async function unlockWithPin(pin: string, opts?: UnlockWithPinOpts): Prom
     consecutiveFailures: parsed.failures,
     lockedUntilSec: parsed.lockedUntilSec,
   })
+  const clamped = clampLockedUntil(merged.lockedUntilSec, nowSec)
+  if (clamped !== merged.lockedUntilSec) {
+    merged.lockedUntilSec = clamped
+    saveBackoffState(storage, merged)
+    await rewriteEmbeddedBackoff(parsed, merged.consecutiveFailures, clamped)
+  }
   if (!canAttempt(merged.lockedUntilSec, nowSec)) return null
 
   try {
@@ -435,6 +441,19 @@ export function backoffSecs(consecutiveFailures: number): number {
  *  failure) and the current clock. */
 export function nextLockedUntil(consecutiveFailures: number, nowSec: number): number {
   return nowSec + backoffSecs(consecutiveFailures)
+}
+
+/** The longest any lockout can legitimately run, in seconds. */
+export const MAX_BACKOFF_SECS = BACKOFF_SECS[BACKOFF_SECS.length - 1]!
+
+/** `lockedUntilSec` capped at `nowSec + MAX_BACKOFF_SECS`. A lockout further
+ *  ahead than that was recorded while the clock was wrong (set far ahead,
+ *  then corrected); capping it, and persisting the cap, means it ends like
+ *  any other lockout instead of lasting until the clock catches up. A clock
+ *  moved back still waits out a full maximum backoff. */
+export function clampLockedUntil(lockedUntilSec: number, nowSec: number): number {
+  if (!Number.isFinite(lockedUntilSec)) return lockedUntilSec
+  return Math.min(lockedUntilSec, nowSec + MAX_BACKOFF_SECS)
 }
 
 /** True once `nowSec` has reached a previously-recorded `lockedUntilSec` —

@@ -17,6 +17,8 @@ import {
   setPin,
   unlockWithPin,
   type StorageLike,
+  clampLockedUntil,
+  MAX_BACKOFF_SECS,
 } from './pinLock'
 import { resetVaultCacheForTests, vaultLoad, vaultStore } from './vault'
 
@@ -418,5 +420,22 @@ describe('clearPin', () => {
     await vaultStore('child-sk', SK)
     await clearPin()
     expect(await vaultLoad('child-sk')).toBeNull()
+  })
+})
+
+describe('a lockout recorded under a clock set far ahead', () => {
+  it('clampLockedUntil caps a lockout at the longest real backoff', () => {
+    expect(clampLockedUntil(4_000_000_000, 1_000)).toBe(1_000 + MAX_BACKOFF_SECS)
+    expect(clampLockedUntil(1_030, 1_000)).toBe(1_030)
+  })
+
+  it('ends one maximum backoff after the clock is corrected, not when it catches up', async () => {
+    await setPin('123456', SK)
+    const storage = makeFakeStorage()
+    const future = 4_000_000_000 // a failure while the clock read the far future
+    for (let i = 0; i < 5; i += 1) await unlockWithPin('000000', { storage, nowSec: future })
+    storage.removeItem('kin-jar-child-backoff') // only the embedded counter remains
+    expect(await unlockWithPin('123456', { storage, nowSec: 1_000 })).toBeNull()
+    expect(await unlockWithPin('123456', { storage, nowSec: 1_000 + MAX_BACKOFF_SECS })).toEqual(SK)
   })
 })

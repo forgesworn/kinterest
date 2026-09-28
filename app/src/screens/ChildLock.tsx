@@ -22,6 +22,7 @@ import { Banner, Button, Card, EmptyState, PinPad, Screen } from '../components/
 import { useApp } from '../store/store'
 import {
   canAttempt,
+  clampLockedUntil,
   clearBackoffState,
   loadBackoffState,
   nextLockedUntil,
@@ -42,7 +43,14 @@ export function ChildLock() {
   // Seeded synchronously from localStorage (not an effect — `getItem` is
   // synchronous) so a reload mid-lockout doesn't render one "unlocked" frame
   // before catching up. See this module's header.
-  const [backoff, setBackoff] = useState(() => loadBackoffState(window.localStorage))
+  const [backoff, setBackoff] = useState(() => {
+    const loaded = loadBackoffState(window.localStorage)
+    const lockedUntilSec = clampLockedUntil(loaded.lockedUntilSec, Math.floor(Date.now() / 1000))
+    if (lockedUntilSec === loaded.lockedUntilSec) return loaded
+    const clamped = { ...loaded, lockedUntilSec }
+    saveBackoffState(window.localStorage, clamped)
+    return clamped
+  })
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000))
 
   useEffect(() => {
