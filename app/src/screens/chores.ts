@@ -107,7 +107,7 @@ export function choreGateProgress(
   // Ground truth — the exact same check choreGateReadyClaims uses to decide
   // whether to actually raise the claim; neither branch below computes its
   // own notion of "complete".
-  const complete = periodComplete(chores, ticks, periodDays)
+  const complete = periodComplete(chores, ticks, periodDays, cfg.tz)
 
   const dailies = active.filter((c) => c.cadence === 'daily')
   if (dailies.length > 0) {
@@ -189,7 +189,7 @@ export function choreGateReadyClaims(
   for (const dueDay of due) {
     const periodKey = periodKeyOf(cfg, dueDay)
     if (alreadyClaimed(existingRequests, periodKey)) continue
-    if (periodComplete(chores, ticks, periodDaysEndingAt(cfg, dueDay))) out.push({ dueDay, periodKey })
+    if (periodComplete(chores, ticks, periodDaysEndingAt(cfg, dueDay), cfg.tz)) out.push({ dueDay, periodKey })
   }
   return out
 }

@@ -133,11 +133,13 @@ export function claimPeriodComplete(app: AppState, stored: StoredRequest): boole
   // additionally requires the cadence to be one the claimed key's SHAPE can
   // belong to — a 'YYYY-Www' key means nothing under a monthly schedule.
   let periodDays: string[] | null = null
+  let tz: string | undefined
   for (const cfg of app.docs.allowance.configs) {
     if (cfg.child !== request.child || cfg.choresGate !== true) continue
     const days = periodDaysFor(periodKey, cfg.cadence)
     if (days !== null) {
       periodDays = days
+      tz = cfg.tz
       break
     }
   }
@@ -149,5 +151,5 @@ export function claimPeriodComplete(app: AppState, stored: StoredRequest): boole
   if (chores.length === 0) return null
   const choreIds = new Set(chores.map((c) => c.id))
   const ticks = app.ticks.filter((t) => choreIds.has(t.chore))
-  return periodComplete(chores, ticks, periodDays)
+  return periodComplete(chores, ticks, periodDays, tz)
 }

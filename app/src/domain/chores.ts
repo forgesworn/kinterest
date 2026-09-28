@@ -23,7 +23,8 @@ export function tickedDays(chore: Chore, ticks: ChoreTick[]): Set<string> {
 /**
  * The first day a chore can be expected to be done (audit S6): the day it
  * was added, read from its ULID id (chores are created with `newId`). With
- * `tz`, that is the local day in `tz`; without one, the day after its UTC
+ * `tz`, that is the local day in `tz`; without one (or with an unusable
+ * one), the day after its UTC
  * day, which can only ever be lenient (never earlier than the true local
  * day anywhere). Null for a chore whose id carries no time (an older or
  * hand-written id) — such a chore counts as always having existed.
@@ -32,7 +33,14 @@ export function choreRequiredFrom(chore: Pick<Chore, 'id'>, tz?: string): string
   const ms = ulidTimeMs(chore.id)
   if (ms === null) return null
   const sec = Math.floor(ms / 1000)
-  return tz !== undefined ? dayKey(sec, tz) : addDays(dayKey(sec, 'UTC'), 1)
+  if (tz !== undefined) {
+    try {
+      return dayKey(sec, tz)
+    } catch {
+      // An unusable timezone: fall back to the lenient day below.
+    }
+  }
+  return addDays(dayKey(sec, 'UTC'), 1)
 }
 
 /**

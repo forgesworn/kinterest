@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { addDays, dayKey } from '../domain/period'
+import { newId } from '../domain/id'
 import type { Chore, ChoreTick } from '../domain/chores'
 import type { AllowanceConfig } from '../domain/allowance'
 import type { Entry } from '../domain/types'
@@ -214,6 +215,13 @@ describe('choreGateReadyClaims', () => {
     expect(claims).toHaveLength(1)
     expect(claims[0]!.dueDay).toBe(dueDay)
     expect(claims[0]!.periodKey).toBe('2026-W31')
+  })
+
+  it('a chore added on the period s last day is required from that local day, in the config s timezone', () => {
+    const gated: AllowanceConfig = { ...weeklyCfg, choresGate: true }
+    const lateChore: Chore = { ...teeth, id: newId(Date.UTC(2026, 6, 31, 10), (n) => new Uint8Array(n)) }
+    const claims = choreGateReadyClaims(gated, [lateChore], [tick(lateChore.id, '2026-07-31')], [], [], nowAt('2026-08-01'))
+    expect(claims.map((c) => c.periodKey)).toEqual(['2026-W31'])
   })
 
   it('gated + due but NOT complete -> nothing raised', () => {
