@@ -49,9 +49,9 @@ import { creditEntry, debitEntry } from '../domain/ledger'
 import type { Entry } from '../domain/types'
 import { mintToken, type MintedToken } from '../pairing/tokens'
 import { loadFamilyMnemonic, vaultLoad } from '../identity/vault'
-import { sendAck, sendConfig, sendEntry, sendRequest, sendResyncReply, sendResyncRequest, sendSnapshot, sendStatus, sendVault } from '../sync/publish'
-import { vaultPayloadFor, vaultPublishDue, vaultRosterOf, vaultRosterSignature } from '../identity/signetVault'
-import { guardianFromMnemonic } from '../identity/derive'
+import { sendAck, sendConfig, sendEntry, sendRequest, sendResyncReply, sendResyncRequest, sendSnapshot, sendStatus } from '../sync/publish'
+import { vaultRosterOf, vaultRosterSignature } from '../identity/signetVault'
+import { republishVaultIfDue } from './vaultRepublish'
 import { clearPin } from '../identity/pinLock'
 import { startGuardianSync, type PairingSession as MultiPairingSession } from '../sync/multi'
 import { startSync } from '../sync/engine'
@@ -112,34 +112,7 @@ const GUARDIAN_SK_NAME = 'guardian-sk'
  *  re-seals its vault — one vault per burst of edits (v0.3). */
 export const VAULT_DEBOUNCE_MS = 30_000
 
-/** How often the guardian re-checks whether its vault is due — the weekly
- *  republish, and any publish that had to wait for a session (v0.3). */
-export const VAULT_CHECK_INTERVAL_MS = 60 * 60_000
-
-/** Where this device records the roster signature of its last vault publish
- *  that left the outbox — see the vault effect in `AppProvider`. Not a
- *  secret: a signature is child names, keys and relay URLs this device
- *  already stores in plain state. */
-export const VAULT_PUBLISHED_KEY = 'kinjar.vault.publishedSignature.v1'
-
-/** The recorded signature, or null (never recorded, or storage blocked). */
-export function readVaultPublished(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): string | null {
-  try {
-    return storage?.getItem(VAULT_PUBLISHED_KEY) ?? null
-  } catch {
-    return null
-  }
-}
-
-/** Records a publish that left the outbox. Never throws: a failed write only
- *  means the next check publishes once more than it needed to. */
-export function writeVaultPublished(signature: string, storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
-  try {
-    storage?.setItem(VAULT_PUBLISHED_KEY, signature)
-  } catch {
-    // See the doc comment.
-  }
-}
+export { VAULT_PUBLISHED_KEY, readVaultPublished, writeVaultPublished } from './vaultRepublish'
 
 /** 15 minutes — see the plan's "scheduler on mount + every 15 min + on app
  *  focus". */
@@ -1324,25 +1297,24 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     [relay],
   )
 
-  // Vault freshness (ruling R1, v0.3). The vault carries the family ROSTER,
-  // so one published before a child was added (or revoked, or renamed, or a
-  // relay changed) is out of date; and relays may expire kind-1059 wraps, so
-  // even an unchanged vault is republished weekly. `vaultPublishDue` is the
-  // whole decision; this is the glue.
+  // Vault freshness. The vault carries the family ROSTER, so one published
+  // before a child was added (or revoked, or renamed, or a relay changed) is
+  // out of date; and relays may expire kind-1059 wraps, so even an unchanged
+  // vault is republished weekly. `vaultPublishDue` is the whole decision and
+  // `republishVaultIfDue` does the sealing; this is the glue.
   //
   //  - DEBOUNCED: a roster or relay edit restarts a `VAULT_DEBOUNCE_MS`
   //    timer, so a burst of edits seals one vault, not one per keystroke.
-  //  - PERIODIC: an hourly check catches the weekly republish, and retries a
-  //    publish that could not happen earlier.
-  //  - QUEUED, never prompting: a publish runs only when a full My Signet
-  //    session can be restored silently (`signetRestore`: no picker, no user
-  //    interaction). Without one nothing is stamped, so the change stays due
-  //    and the next check tries again.
+  //    The same timer runs at launch, which catches the weekly republish.
+  //  - ON FOCUS: returning to the app checks again, so a long-lived session
+  //    still republishes weekly. There is no retry loop: a publish that did
+  //    not leave the outbox stays queued there and flushes with everything
+  //    else.
+  //  - SILENT: sealing needs only the stored Signet pubkey. It never touches
+  //    My Signet or any signer, so it can never prompt (see vaultRepublish.ts).
   //  - The last publish that LEFT the outbox is recorded durably
   //    (`VAULT_PUBLISHED_KEY`), so a change made while the app was closed or
-  //    offline is still due on the next launch. It used to be held in memory
-  //    and re-seeded from the current roster at every launch, which marked
-  //    any unpublished change as published.
+  //    offline is still due on the next launch.
   //
   // `cancelled` guards only the DISPATCH, never the publish: an in-flight
   // publish is allowed to finish, since the vault is worth more than the
@@ -1353,68 +1325,42 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   // `vaultRosterOf`, never `state.app` straight over: `revoked` lives on the
   // ACCOUNTS DOC, not at the top of AppState, so a structural pass of the
   // whole state would silently omit it and a revoke would neither re-publish
-  // the vault (ruling R1) nor drop the child from the vault it publishes.
+  // the vault nor drop the child from the vault it publishes.
   const vaultSignature = signetRootPk === '' ? '' : vaultRosterSignature(vaultRosterOf(state.app))
 
   useEffect(() => {
     if (state.app.role !== 'guardian' || signetRootPk === '' || guardianSk === null) return
     let cancelled = false
+    const sk = guardianSk
 
-    async function publishIfDue(sk: Uint8Array): Promise<void> {
-      const app = stateRef.current.app
-      const root = app.root
-      if (app.role !== 'guardian' || root === null || root.kind !== 'signet') return
-      const signature = vaultRosterSignature(vaultRosterOf(app))
+    const attempt = (): void => {
       const nowSec = Math.floor(Date.now() / 1000)
-      const due = vaultPublishDue({
-        signature,
-        lastPublished: readVaultPublished(),
-        inFlight: inFlightVaultSigRef.current,
-        backedUpAt: root.backedUpAt,
+      void republishVaultIfDue({
+        getApp: () => stateRef.current.app,
+        guardianSk: sk,
+        relay,
+        storage: window.localStorage,
+        record: window.localStorage,
         nowSec,
-      })
-      if (due === 'none') return
-      inFlightVaultSigRef.current = signature
-      try {
-        // Only with a full session for THIS root, restored without a prompt.
-        const { signetRestore } = await import('../identity/signetLogin')
-        const session = await signetRestore()
-        if (session === null || !session.full || session.pubkey !== root.pubkey) return
-        const mnemonic = await loadFamilyMnemonic()
-        if (mnemonic === null) return
-        // Read the roster and root fresh: this publish may have waited on the
-        // session, and what matters is the family as it stands now.
-        const fresh = stateRef.current.app
-        const freshRoot = fresh.root
-        if (freshRoot === null || freshRoot.kind !== 'signet' || freshRoot.pubkey !== root.pubkey) return
-        const { sent } = await sendVault(
-          vaultPayloadFor(vaultRosterOf(fresh), mnemonic, guardianFromMnemonic(mnemonic).pk, freshRoot.authEvent, nowSec),
-          { selfSk: sk, peerPk: freshRoot.pubkey, relay, storage: window.localStorage, nowSec },
-        )
-        if (!sent) return
-        writeVaultPublished(vaultRosterSignature(vaultRosterOf(fresh)))
-        if (cancelled) return
+        loadMnemonic: loadFamilyMnemonic,
+        inFlight: inFlightVaultSigRef,
+      }).then((stamp) => {
+        if (stamp === null || cancelled) return
         dispatch({
           type: 'updateApp',
-          update: (a) => (a.root !== null && a.root.kind === 'signet' ? { ...a, root: { ...a.root, backedUpAt: nowSec } } : a),
+          update: (a) => (a.root !== null && a.root.kind === 'signet' ? { ...a, root: { ...a.root, backedUpAt: stamp } } : a),
         })
-      } catch {
-        // Nothing stamped: still due, so the next check tries again.
-      } finally {
-        if (inFlightVaultSigRef.current === signature) inFlightVaultSigRef.current = null
-      }
+      })
     }
-
-    const sk = guardianSk
-    const attempt = (): void => {
-      void publishIfDue(sk)
+    const onVisible = (): void => {
+      if (document.visibilityState === 'visible') attempt()
     }
     const debounce = window.setTimeout(attempt, VAULT_DEBOUNCE_MS)
-    const periodic = window.setInterval(attempt, VAULT_CHECK_INTERVAL_MS)
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
       cancelled = true
       window.clearTimeout(debounce)
-      window.clearInterval(periodic)
+      document.removeEventListener('visibilitychange', onVisible)
     }
     // `relay` and the app state are read through stable references inside:
     // a change to either that MATTERS to this effect already moves

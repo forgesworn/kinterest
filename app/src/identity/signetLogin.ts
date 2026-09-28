@@ -11,7 +11,7 @@
 // from this package and are tested directly. This file is a pass-through and
 // deliberately has no test of its own.
 
-import { login, logout, restoreSession, type SignetSession, type SignetSigner } from 'signet-login'
+import { login, logout, type SignetSession, type SignetSigner } from 'signet-login'
 import type { NostrEvent } from 'nostr-tools/pure'
 
 export interface SignetLoginOpts {
@@ -79,17 +79,6 @@ export async function signetLogin(o: SignetLoginOpts): Promise<SignetLoginResult
       timeout: 180_000,
     })
     return toResult(session, o.requireFullSigner)
-  } catch {
-    return null
-  }
-}
-
-/** Re-opens a session `signet-login` already persisted, with no picker and no
- *  user interaction. `null` when there is nothing stored, or it no longer
- *  works. Never throws. */
-export async function signetRestore(): Promise<SignetLoginResult | null> {
-  try {
-    return toResult(await restoreSession(), false)
   } catch {
     return null
   }
