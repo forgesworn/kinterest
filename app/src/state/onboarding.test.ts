@@ -266,7 +266,7 @@ describe('startAsChildFromOffer and the family root', () => {
 
   function attest(challenge: string) {
     return finalizeEvent(
-      { kind: 21236, created_at: AT, content: '', tags: [['challenge', challenge], ['app', 'Jar']] },
+      { kind: 21236, created_at: AT, content: '', tags: [['challenge', challenge], ['app', 'Kinterest']] },
       signetSk,
     )
   }

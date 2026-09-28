@@ -1,16 +1,16 @@
 # Security
 
-Jar is a shared family pocket-money ledger: a parent (guardian) device and
+Kinterest is a shared family pocket-money ledger: a parent (guardian) device and
 one or more child devices, each running the same web app, syncing directly
 with each other over a public relay. There is no backend server, no real
-money, and no card ever involved — Jar only ever moves a number around in a
+money, and no card ever involved — Kinterest only ever moves a number around in a
 ledger that everyone in the family can already see.
 
 This document describes the threat model this app is designed against, what
 it deliberately does not try to defend against, and how to report a security
 issue.
 
-## What Jar never does
+## What Kinterest never does
 
 - It never touches real money, a bank account, or a card.
 - It never talks to a backend of its own — devices sync peer-to-peer over a
@@ -20,7 +20,7 @@ issue.
 
 ## Threat model, in plain English
 
-Jar assumes:
+Kinterest assumes:
 
 - The people using it are a family. The guardian device is trusted to run
   the family's ledger honestly; a child device is trusted to be operated by

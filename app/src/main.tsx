@@ -49,7 +49,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, Error
     // finding via the console, it just must never take the whole app down
     // with it (Global Constraints has no rule against console.error itself,
     // only against secrets ever reaching it).
-    console.error('Jar: unhandled render error', error)
+    console.error('Kinterest: unhandled render error', error)
   }
 
   render(): React.ReactNode {

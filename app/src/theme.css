@@ -1,5 +1,5 @@
 /* =========================================================================
-   Kindred design system (Jar parent app)
+   Kindred design system (Kinterest app)
    One stylesheet, imported once (src/main.tsx). Tokens as CSS custom
    properties + a small set of base component classes for the hand-rolled
    kit in components/ui.tsx and components/Money.tsx.

@@ -296,7 +296,7 @@ export function Home({
 
   if (app.children.length === 0) {
     return (
-      <Screen title="Jar" action={action}>
+      <Screen title="Kinterest" action={action}>
         <EmptyState title="No children yet">Add your first child to get started.</EmptyState>
       </Screen>
     )
@@ -305,7 +305,7 @@ export function Home({
   const entryBalances = balances(app.entries)
 
   return (
-    <Screen title="Jar" action={action}>
+    <Screen title="Kinterest" action={action}>
       {app.children.map((child) => (
         <ChildCard
           key={child.pubkey}

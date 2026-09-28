@@ -20,7 +20,7 @@ function attest(challenge: string, sk = signetSk, kind = 21236, createdAt = 1756
       tags: [
         ['challenge', challenge],
         ['origin', 'https://example.test'],
-        ['app', 'Jar'],
+        ['app', 'Kinterest'],
       ],
     },
     sk,

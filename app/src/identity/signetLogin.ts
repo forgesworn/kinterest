@@ -39,9 +39,12 @@ export interface SignetLoginResult {
   full: boolean
 }
 
-/** `appName` goes into the auth event's `app` tag, which is relay-visible.
- *  Name-free per the global rules: "Jar", never the working name. */
-const APP_NAME = 'Jar'
+/** `appName` goes into the auth event's `app` tag, which is relay-visible
+ *  and is what My Signet shows the user on its approval screen. The product
+ *  name is public now, so this is the real, user-facing name — unlike the
+ *  wire-level marker tag / storage keys (`kin-jar`, `kinjar.*`), which stay
+ *  name-free by design and must not change (sync + crypto vectors). */
+const APP_NAME = 'Kinterest'
 
 function toResult(session: SignetSession | null, requireFullSigner: boolean): SignetLoginResult | null {
   if (session === null) return null

@@ -16,7 +16,7 @@
 // app's `app/src/identity.test.ts`) — a package or algorithm change that
 // broke either suite's vectors would break both here.
 //
-// If this ever drifts, a Jar guardian's mnemonic would derive
+// If this ever drifts, a Kinterest guardian's mnemonic would derive
 // different children than the same mnemonic would in signet-app / that
 // earlier sibling app — the exact defect this rework fixes (see derive.ts's
 // header comment).

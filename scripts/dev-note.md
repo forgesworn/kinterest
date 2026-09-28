@@ -64,7 +64,7 @@ locked for launches/relaunches after that (`adb shell am start -n
 org.forgesworn.kinjar/.MainActivity` works regardless of lock state — it
 just resumes behind the keyguard until the phone is unlocked).
 
-Launch it directly via adb (skips hunting for the "Jar" icon):
+Launch it directly via adb (skips hunting for the "Kinterest" icon):
 
 ```
 adb shell am start -n org.forgesworn.kinjar/.MainActivity
@@ -129,7 +129,7 @@ Android 13+'s `POST_NOTIFICATIONS` is requested once, from `MainActivity`'s
 `onResume`, on first launch — without it neither the relay service's
 persistent row nor a family update can show. It's fire-and-forget: denying
 it once is not re-prompted. To re-test the prompt: uninstall and reinstall
-the APK, or clear the permission from Android Settings → Apps → Jar →
+the APK, or clear the permission from Android Settings → Apps → Kinterest →
 Notifications, then relaunch.
 
 ### The relay service

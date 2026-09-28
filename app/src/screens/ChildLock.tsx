@@ -100,7 +100,7 @@ export function ChildLock() {
   }
 
   if (!ready) {
-    return <Screen title="Jar">{null}</Screen>
+    return <Screen title="Kinterest">{null}</Screen>
   }
 
   if (!hasPin) {
@@ -110,7 +110,7 @@ export function ChildLock() {
     // possibility this screen must fail calmly on, not crash into a PIN pad
     // that can never succeed.
     return (
-      <Screen title="Jar">
+      <Screen title="Kinterest">
         <EmptyState title="This device needs pairing">
           Ask whoever set this up to pair this device again.
         </EmptyState>

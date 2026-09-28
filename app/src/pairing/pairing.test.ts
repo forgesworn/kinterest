@@ -259,7 +259,7 @@ describe('acceptPairOffer and the family root attestation', () => {
 
   function attest(challenge: string, sk = signetSk) {
     return finalizeEvent(
-      { kind: 21236, created_at: AT, content: '', tags: [['challenge', challenge], ['app', 'Jar']] },
+      { kind: 21236, created_at: AT, content: '', tags: [['challenge', challenge], ['app', 'Kinterest']] },
       sk,
     )
   }

@@ -1,11 +1,9 @@
 <resources>
-    <!-- NAME-FREE by design — see Global Constraints in
-         internal plan 2026-08-11-android-apk. Rename at launch. -->
-    <string name="app_name">Jar</string>
+    <string name="app_name">Kinterest</string>
 
     <!-- Notification channels (Notifier.kt) -->
     <string name="notif_channel_service">Keeping in touch</string>
     <string name="notif_channel_family">Family updates</string>
-    <string name="notif_service_title">Jar is keeping in touch with the family</string>
+    <string name="notif_service_title">Kinterest is keeping in touch with the family</string>
     <!-- The lock-screen stand-in for a family update: no name, no amount. -->
 </resources>

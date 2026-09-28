@@ -286,7 +286,7 @@ export function ChildHome({ onAsk, onChores, onAudit }: { onAsk: () => void; onC
 
   if (selfPk === null) {
     return (
-      <Screen title="Jar">
+      <Screen title="Kinterest">
         <EmptyState title="Almost there">Ask whoever set this up to finish pairing this device.</EmptyState>
       </Screen>
     )
@@ -300,8 +300,8 @@ export function ChildHome({ onAsk, onChores, onAudit }: { onAsk: () => void; onC
 
   if (accounts.length === 0) {
     return (
-      <Screen title="Jar">
-        <EmptyState title="Your jar is on its way">
+      <Screen title="Kinterest">
+        <EmptyState title="Kinterest is on its way">
           Ask whoever set this up to add your first pot.
         </EmptyState>
       </Screen>

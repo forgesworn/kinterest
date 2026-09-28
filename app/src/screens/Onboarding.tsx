@@ -398,7 +398,7 @@ export function Onboarding({
     return (
       <Screen title="Welcome">
         <div className="onboarding-hero">
-          <h2>Jar</h2>
+          <h2>Kinterest</h2>
           <p>A shared purse for your family — one secure sign-in across all your family's apps.</p>
         </div>
         {error && <Banner tone="bad">{error}</Banner>}
