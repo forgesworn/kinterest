@@ -50,8 +50,9 @@ The previous build passed the live ask-notification check: tapping a background
 notification opened Approvals, and dismissing it did not move money. The new
 first-release build needs its own device round for My Signet approvals, parent
 lock and child mode, pairing/replacement, correction sync and full recovery.
-The shared test phones are currently unavailable; installation and testing wait
-for the owner's go-ahead. The six-hour Android service test is deferred.
+The device round is underway. Dedicated family and parent-presence approvals
+have passed on-device, including returning from My Signet to parent PIN setup.
+The six-hour Android service test is deferred.
 
 Build locally with `android/scripts/build-apk.sh`. The debug APK is at
 `android/app/build/outputs/apk/debug/app-debug.apk`. The Android package remains
