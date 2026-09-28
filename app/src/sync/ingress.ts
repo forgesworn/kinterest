@@ -182,7 +182,14 @@ export function toStoredEvent(ev: NostrEvent): NostrEvent {
  *  its own (the offer is already pinned to the QR-scanned guardian). */
 export function applySnapshot(state: AppState, snapshot: PairingSnapshotPayload, nowSec: number = Infinity): AppState {
   let next = state
-  for (const entry of snapshot.state.entries) next = addEntry(next, entry)
+  for (const entry of snapshot.state.entries) {
+    // One refused entry (e.g. a second reversal) skips only itself.
+    try {
+      next = addEntry(next, entry)
+    } catch {
+      continue
+    }
+  }
   for (const kind of DOC_KINDS) {
     const doc = snapshot.state.docs[kind]
     if (doc.issuedAt > nowSec + MAX_ISSUED_AT_SKEW_SECS) continue
@@ -535,7 +542,14 @@ export function dispatchInner(
       }
       if (parsed !== null) {
         const before = next
-        next = addEntry(next, parsed.entry)
+        // addEntry refuses a reversal that is not its original's mirror, or
+        // a second reversal of one entry: refused like any other bad entry
+        // (no fold, no ack), never thrown out of this total dispatcher.
+        try {
+          next = addEntry(next, parsed.entry)
+        } catch {
+          break
+        }
         // authorPk provenance: in a multi-peer engine (sync/multi.ts) the
         // guardian talks to N children over ONE subscription, so the ack
         // must be routed back to whichever peer actually sent this ENTRY,

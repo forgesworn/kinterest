@@ -21,11 +21,11 @@ import {
   buildStatusPayload,
 } from '../wire/payloads'
 import { rootChallenge } from '../identity/signetRoot'
-import { creditEntry } from '../domain/ledger'
+import { creditEntry, reverseEntry } from '../domain/ledger'
 import type { Account } from '../domain/types'
 import { emptyState } from '../state/state'
 import type { AppState, ConfigDocs } from '../state/types'
-import { dispatchInner, handleWrap, retainsInnerEvent, toStoredEvent, MAX_ISSUED_AT_SKEW_SECS } from './ingress'
+import { applySnapshot, dispatchInner, handleWrap, retainsInnerEvent, toStoredEvent, MAX_ISSUED_AT_SKEW_SECS } from './ingress'
 
 const AT = 1000
 
@@ -670,5 +670,25 @@ describe('ENTRY deferral is only for an unknown account', () => {
     expect(r.effects).toEqual([])
     const wrongCcy = { ...entryFixture, id: 'x-r5-ccy', legs: [{ account: account.id, currency: 'EUR', amountMinor: 500 }] }
     expect(dispatchInner(childBase, KIND_ENTRY, buildEntryPayload(wrongCcy), guardian.pk, AT).deferred).toBeUndefined()
+  })
+})
+
+describe('a second reversal of one entry is refused, never thrown', () => {
+  const r1 = reverseEntry(entryFixture, { id: 'r1', child: child.pk, createdAt: AT + 1, author: 'guardian' })
+  const r2 = reverseEntry(entryFixture, { id: 'r2', child: child.pk, createdAt: AT + 2, author: 'guardian' })
+  const reversed: AppState = { ...childBase, entries: [entryFixture, r1] }
+
+  it('dispatchInner stays total: no fold, no ack', () => {
+    const payload = JSON.parse(JSON.stringify(buildEntryPayload(r2)))
+    const r = dispatchInner(reversed, KIND_ENTRY, payload, guardian.pk, AT + 10)
+    expect(r.state.entries.map((e) => e.id)).toEqual([entryFixture.id, 'r1'])
+    expect(r.effects).toEqual([])
+  })
+
+  it('applySnapshot skips only the refused entry', () => {
+    const other = creditEntry({ id: 'e-other', child: child.pk, createdAt: AT + 3, author: 'guardian' }, account, 200)
+    const snap = buildSnapshotPayload({ children: [{ pubkey: child.pk, name: 'Alex', index: 0 }], entries: [entryFixture, r1, r2, other], docs: familyDocs as ConfigDocs })
+    const s = applySnapshot(childBase, snap)
+    expect(s.entries.map((e) => e.id)).toEqual([entryFixture.id, 'r1', 'e-other'])
   })
 })

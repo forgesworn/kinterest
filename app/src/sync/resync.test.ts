@@ -19,7 +19,7 @@ import {
   RESYNC_PAGE_SIZE,
   type StatusPayload,
 } from '../wire/payloads'
-import { creditEntry } from '../domain/ledger'
+import { creditEntry, reverseEntry } from '../domain/ledger'
 import type { Account } from '../domain/types'
 import { emptyState } from '../state/state'
 import type { AppState, ConfigDocs } from '../state/types'
@@ -697,5 +697,15 @@ describe('compareStatus settles entries before docs', () => {
   it('asks for a resync when the peer has more entries, even though it is behind on a doc', () => {
     const local = { entryCount: 1, lastEntryId: 'e1', docHighWater: { chores: 900 } }
     expect(compareStatus(local, st(3, 'e3', { chores: 100 }))).toEqual({ kind: 'request-resync' })
+  })
+})
+
+describe('ingestResyncEvents: a second reversal', () => {
+  it('is refused without failing the page', () => {
+    const r1 = reverseEntry(entryFixture, { id: 'r1', child: child.pk, createdAt: AT + 1, author: 'guardian' })
+    const r2 = reverseEntry(entryFixture, { id: 'r2', child: child.pk, createdAt: AT + 2, author: 'guardian' })
+    const events = [entryFixture, r1, r2].map((e) => mkInner(guardian.sk, KIND_ENTRY, buildEntryPayload(e)))
+    const r = ingestResyncEvents(childState, events, { peerPk: guardian.pk, nowSec: 2000 })
+    expect(r.state.entries.map((e) => e.id)).toEqual([entryFixture.id, 'r1'])
   })
 })
