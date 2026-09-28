@@ -59,7 +59,7 @@ import {
   type RootAttestation,
   type StatusPayload,
 } from '../wire/payloads'
-import { addEntry, applyConfigDoc, recordGrantResult } from '../state/state'
+import { addEntry, applyConfigDoc, mergeConfigDoc, recordGrantResult } from '../state/state'
 import { retainCorpus } from './corpus'
 import { verifyRootAttestation } from '../identity/signetRoot'
 import type { AppState, ChildProfile, ConfigDocs } from '../state/types'
@@ -563,18 +563,23 @@ export function dispatchInner(
         if (doc.issuedAt > nowSec + MAX_ISSUED_AT_SKEW_SECS) return { state, effects: [], deferred: true }
         {
           const before = next
+          // A child takes the doc by LWW: what it is sent is its own view of
+          // the doc, holding every row it needs. The guardian only ever sees
+          // its own docs replayed back by children, each carrying only that
+          // child's rows, so it merges them per child instead.
+          const fold = state.role === 'guardian' ? mergeConfigDoc : applyConfigDoc
           switch (parsed.docKind) {
             case 'accounts':
-              next = applyConfigDoc(next, 'accounts', parsed.doc as ConfigDocs['accounts'])
+              next = fold(next, 'accounts', parsed.doc as ConfigDocs['accounts'])
               break
             case 'allowance':
-              next = applyConfigDoc(next, 'allowance', parsed.doc as ConfigDocs['allowance'])
+              next = fold(next, 'allowance', parsed.doc as ConfigDocs['allowance'])
               break
             case 'interest':
-              next = applyConfigDoc(next, 'interest', parsed.doc as ConfigDocs['interest'])
+              next = fold(next, 'interest', parsed.doc as ConfigDocs['interest'])
               break
             case 'chores':
-              next = applyConfigDoc(next, 'chores', parsed.doc as ConfigDocs['chores'])
+              next = fold(next, 'chores', parsed.doc as ConfigDocs['chores'])
               break
           }
           // Only when the doc actually applied — applyConfigDoc returns the

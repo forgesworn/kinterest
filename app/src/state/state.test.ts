@@ -4,7 +4,7 @@ import { creditEntry, reverseEntry } from '../domain/ledger'
 import { buildGrantPayload, buildRequestPayload, type GrantPayload, type RequestPayload } from '../wire/payloads'
 import type { ChoreTick } from '../domain/chores'
 import type { AuditResult } from '../domain/audit'
-import { emptyState, addEntry, applyConfigDoc, upsertRequest, recordRequestDecision, requestAlreadyDecided, recordGrantResult, recordTick, recordAudit, retainInnerEvents, activeChildren, configRecipients, selfRevokedAt, MAX_RETAINED_CHILD_SIG } from './state'
+import { emptyState, addEntry, applyConfigDoc, mergeConfigDoc, upsertRequest, recordRequestDecision, requestAlreadyDecided, recordGrantResult, recordTick, recordAudit, retainInnerEvents, activeChildren, configRecipients, selfRevokedAt, MAX_RETAINED_CHILD_SIG } from './state'
 
 const entry = (id: string, overrides: Partial<Entry> = {}): Entry => ({
   v: 1,
@@ -553,5 +553,37 @@ describe('addEntry checks reversals against their original (review R7)', () => {
   it('accepts a true reversal', () => {
     const good = reverseEntry(orig, { id: 'r', child: CHILD, createdAt: 2, author: 'guardian' })
     expect(addEntry(addEntry(emptyState(), orig), good).entries).toHaveLength(2)
+  })
+})
+
+describe('mergeConfigDoc (a guardian folding children s views of its docs)', () => {
+  const chore = (id: string, child: string) => ({ id, child, name: id, cadence: 'daily' as const })
+  const base = emptyState()
+  const withChores = (issuedAt: number, chores: ReturnType<typeof chore>[]) => ({
+    ...base,
+    docs: { ...base.docs, chores: { v: 1 as const, issuedAt, chores } },
+    docHighWater: { chores: issuedAt },
+  })
+
+  it('replaces only the named child s rows when the view is as new as the high-water', () => {
+    const s = withChores(100, [chore('a1', 'alex'), chore('s1', 'sam')])
+    const next = mergeConfigDoc(s, 'chores', { v: 1, issuedAt: 100, chores: [chore('s2', 'sam')] })
+    expect(next.docs.chores.chores.map((c) => c.id).sort()).toEqual(['a1', 's2'])
+  })
+
+  it('adopts an older view for a child it holds no rows for, and ignores one for a child it does', () => {
+    const s = withChores(200, [chore('a1', 'alex')])
+    const adopted = mergeConfigDoc(s, 'chores', { v: 1, issuedAt: 100, chores: [chore('s1', 'sam')] })
+    expect(adopted.docs.chores.chores.map((c) => c.id).sort()).toEqual(['a1', 's1'])
+    expect(adopted.docHighWater.chores).toBe(200)
+    expect(mergeConfigDoc(s, 'chores', { v: 1, issuedAt: 100, chores: [chore('a0', 'alex')] })).toBe(s)
+  })
+
+  it('returns the same state for a replay that changes nothing, and unions revoked', () => {
+    const s = withChores(100, [chore('a1', 'alex')])
+    expect(mergeConfigDoc(s, 'chores', { v: 1, issuedAt: 100, chores: [chore('a1', 'alex')] })).toBe(s)
+    const acc = { ...base, docs: { ...base.docs, accounts: { v: 1 as const, issuedAt: 100, accounts: [], revoked: { alex: 5 } } }, docHighWater: { accounts: 100 } }
+    const merged = mergeConfigDoc(acc, 'accounts', { v: 1, issuedAt: 100, accounts: [], revoked: { sam: 7, alex: 9 } })
+    expect(merged.docs.accounts.revoked).toEqual({ alex: 5, sam: 7 })
   })
 })

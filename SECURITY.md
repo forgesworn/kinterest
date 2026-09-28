@@ -53,10 +53,19 @@ assumes a stronger guarantee than the app actually provides:
   messages as them); it does not encrypt or hide the ledger data already on
   that device, which is readable the same way as any other locally stored
   app data.
-- **A child device may still be able to see a sibling's data.** In older
-  versions of the app, a child device that has been running for a while can
-  end up holding ledger entries belonging to a sibling, not just its own —
-  scoping each child device strictly to its own data is ongoing work.
+- **What a child device holds.** A child device is sent only its own data:
+  its own profile, its own ledger entries, the guardian's answers to its own
+  requests, and its own rows of the family settings (its accounts, its
+  pocket-money and interest settings, its chores, and the record of its own
+  removal if it has been removed). It also holds the guardian's public key
+  and the family's relay list, which it needs to sync. The guardian's
+  device holds the full family settings. One caveat: a child device that
+  ran an older version of the app may still hold sibling data it was sent
+  then — ledger entries, and other children's accounts, pocket-money and
+  interest settings and chores. Sibling entries are cleared the next time
+  the guardian sends that device a full catch-up, and each settings list is
+  replaced the next time the guardian changes it; until then, the old copy
+  remains readable in that device's storage.
 - **Background notifications are best-effort.** Neither the browser's
   Notification API nor the Android app's own background delivery is
   guaranteed to fire every time — a notification may be delayed, or simply

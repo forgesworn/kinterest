@@ -453,15 +453,16 @@ describe('resyncPage — scoped to one child', () => {
     innerEvents: corpusOf([evEntryA, evEntryB, evTickA, evTickB, evConfig, evGrant, evGrantB, evUnreadable]),
   }
 
-  it('serves that child s entries and ticks, plus policy, and nothing of a sibling s', () => {
+  it('serves that child s entries, ticks and grants, and nothing of a sibling s', () => {
     const ids = resyncPage(app, null, 0, child.pk).events.map((e) => e.id)
     expect(ids).toContain(evEntryA.id)
     expect(ids).toContain(evTickA.id)
-    expect(ids).toContain(evConfig.id)
+    // CONFIG is withheld: a child's docs reach it by snapshot, narrowed.
+    expect(ids).not.toContain(evConfig.id)
     expect(ids).toContain(evGrant.id)
     expect(ids).not.toContain(evEntryB.id)
     expect(ids).not.toContain(evTickB.id)
-    // Audit P14: a sibling's GRANT is withheld too.
+    // A sibling's GRANT is withheld too.
     expect(ids).not.toContain(evGrantB.id)
   })
 
@@ -476,7 +477,7 @@ describe('resyncPage — scoped to one child', () => {
   it('pages the SCOPED set, so more never reflects a sibling s events', () => {
     const page = resyncPage(app, null, 0, child.pk)
     expect(page.more).toBe(false)
-    expect(page.events).toHaveLength(4)
+    expect(page.events).toHaveLength(3)
   })
 })
 

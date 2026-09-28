@@ -377,8 +377,8 @@ export function statusFor(app: AppState, forChildPk: string | null, appVersion: 
  * sibling's ledger on that child's phone. Named a child, this serves only:
  * ENTRY events for that child, CHILD_SIG events that child itself signed,
  * GRANT events answering that child's own asks (by the guardian's record of
- * the ask — a GRANT payload does not name a child; audit P14), and the
- * family's CONFIG events. An ENTRY or GRANT this build cannot place is
+ * the ask — a GRANT payload does not name a child). CONFIG events are
+ * withheld: docs reach a child by snapshot. An ENTRY or GRANT this build cannot place is
  * WITHHELD rather than guessed at: failing closed costs a replay, guessing
  * would cost a leak. `null` means "everything", which is what a child
  * replying to its own guardian sends — the guardian already holds it all, and
@@ -439,6 +439,11 @@ function servesTo(app: AppState, ev: NostrEvent, forChildPk: string | null): boo
   if (ev.kind === KIND_ENTRY) return entryChildOf(ev) === forChildPk
   if (ev.kind === KIND_CHILD_SIG) return ev.pubkey === forChildPk
   if (ev.kind === KIND_GRANT) return grantChildOf(app, ev) === forChildPk
+  // CONFIG is never served to a child: a guardian's corpus holds only docs
+  // children replayed to it, each one child's own view, and a view with no
+  // rows cannot say whose it is. A child's docs travel by snapshot, which
+  // narrows the guardian's full docs to that child (`snapshot.ts#scopeDocs`).
+  if (ev.kind === KIND_CONFIG) return false
   return true
 }
 

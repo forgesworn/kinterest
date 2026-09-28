@@ -6,15 +6,11 @@
 // helpers (tested directly in ChildHome.test.ts, no React involved) plus a
 // thin render shell underneath. Three groups of pure logic live here:
 //   - `childOwnAccounts`/`childOwnEntries` — the ONE thing every other
-//     helper and the render body itself is built on top of. Per the plan's
-//     "family-snapshot-to-every-child limitation... child UI must simply
-//     never render siblings' data": a child device's own `AppState` can
-//     legitimately contain more than one child's accounts/entries (a
-//     SNAPSHOT/CONFIG the guardian broadcasts is family-wide, not scoped per
-//     recipient — see store.tsx's own "broadcasting identically to everyone
-//     is the current, documented limitation"), so filtering by
-//     `state.self.pubkey` is not an optimisation here, it is the ENTIRE
-//     privacy boundary for this screen. Every other function below takes
+//     helper and the render body itself is built on top of. The guardian
+//     now sends each child only its own rows, but a device that ran an
+//     older build may still hold a sibling's accounts or entries it was
+//     sent then, so filtering by `state.self.pubkey` is not an optimisation
+//     here: the child UI must never render a sibling's data. Every other function below takes
 //     already-filtered `accounts`/`entries` rather than a whole `AppState`,
 //     so there is exactly one place a future call site could get this wrong.
 //   - the jar's own balance/high-water tracking (`jarState`, built on

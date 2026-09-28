@@ -445,11 +445,10 @@ function guardConfigBody<K extends ConfigDocKind>(
 
 /** Publishes a config doc: stamps it via `stampConfigDoc` above, applies it
  *  locally via the same anti-rollback LWW every inbound CONFIG uses, then
- *  broadcasts it to every currently ACTIVE child — `state.ts#configRecipients`,
- *  i.e. the roster minus anyone revoked (each is a separate gift-wrapped
- *  send — see the carry-forward note on config docs being family-wide rather
- *  than per-child; broadcasting identically to everyone is the current,
- *  documented limitation). */
+ *  sends it to every currently ACTIVE child — `state.ts#configRecipients`,
+ *  i.e. the roster minus anyone revoked. Each is a separate gift-wrapped
+ *  send carrying only that child's rows (`publish.ts#sendConfig`); the
+ *  guardian keeps the full doc. */
 export async function publishConfigDoc<K extends ConfigDocKind>(
   app: AppState,
   docKind: K,

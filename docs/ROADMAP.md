@@ -187,8 +187,9 @@ completion; adjustment entries lack some spec fields.
 
 - **localStorage holds the whole family ledger in plaintext on every paired
   device.** The PIN gates *signing*, not *reading*; per-child UI filtering is
-  a convention, not a security boundary. Snapshots/configs are family-wide,
-  so each child device holds its siblings' data too (see Snapshot scoping).
+  a convention, not a security boundary. Snapshots and configs are now
+  scoped to each child, but a device that ran an older build may still hold
+  sibling data until it is replaced (see SECURITY.md).
 - `innerEvents` CONFIG entries are retained without pruning — a very
   long-lived family could eventually approach `localStorage`'s ~5 MB budget.
 - Background notification delivery is best-effort: the relay service keeps

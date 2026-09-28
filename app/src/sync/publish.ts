@@ -53,6 +53,7 @@ import type { AuditResult } from '../domain/audit'
 import type { ChoreTick } from '../domain/chores'
 import type { Entry } from '../domain/types'
 import type { ConfigDocs } from '../state/types'
+import { scopeDoc } from './snapshot'
 
 export interface PublishOpts {
   /** The sender's own secret key — inners are always fully signed here. */
@@ -100,12 +101,17 @@ export function sendEntry(entry: Entry, opts: PublishOpts): Promise<PublishResul
   return send(KIND_ENTRY, buildEntryPayload(entry), opts)
 }
 
+/** Sends a config doc to ONE child, narrowed to that child's own rows
+ *  (`snapshot.ts#scopeDoc`): its accounts, its allowance and interest
+ *  configs, its chores, and its own `revoked` row. Each recipient gets its
+ *  own guardian-signed view with the doc's kind and `issuedAt`, so no child
+ *  ever holds a sibling's settings. The guardian keeps the full doc. */
 export function sendConfig<K extends ConfigDocKind>(
   docKind: K,
   doc: ConfigDocs[K],
   opts: PublishOpts,
 ): Promise<PublishResult> {
-  return send(KIND_CONFIG, buildConfigPayload(docKind, doc), opts)
+  return send(KIND_CONFIG, buildConfigPayload(docKind, scopeDoc(docKind, doc, opts.peerPk)), opts)
 }
 
 export function sendAck(entryId: string, opts: PublishOpts): Promise<PublishResult> {

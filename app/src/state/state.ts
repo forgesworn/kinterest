@@ -87,7 +87,7 @@ export function activeChildren(app: AppState): ChildProfile[] {
   return app.children.filter((c) => revoked[c.pubkey] === undefined)
 }
 
-/** The pubkeys a family-wide CONFIG doc should be fanned out to — every
+/** The pubkeys a CONFIG doc should be sent to (each gets its own view) — every
  *  child that has not been revoked (v0.2 spec §4.5). Pure.
  *
  *  A separate name from `activeChildren` on purpose: this is the SEND side of
@@ -178,6 +178,56 @@ export function applyConfigDoc<K extends keyof ConfigDocs>(s: AppState, kind: K,
     ...s,
     docs: { ...s.docs, [kind]: doc },
     docHighWater: { ...s.docHighWater, [kind]: doc.issuedAt },
+  }
+}
+
+const ROWS_KEY = { accounts: 'accounts', allowance: 'configs', interest: 'configs', chores: 'chores' } as const
+
+/**
+ * The GUARDIAN's fold of one of its own config docs replayed back by a child
+ * (resync). Pure.
+ *
+ * Each child only ever holds its own view of a doc — its own rows, at the
+ * doc's `issuedAt` (`sync/snapshot.ts#scopeDoc`) — so a recovering guardian
+ * rebuilds the family's docs from several children's views that often share
+ * one `issuedAt`. Plain LWW would keep the first view and drop every
+ * sibling's. Instead, per child named in `doc`:
+ *   - the incoming rows replace that child's rows when `doc.issuedAt` is at
+ *     least the high-water, or when the guardian holds no rows for that
+ *     child at all (an older view is better than none);
+ *   - otherwise they are ignored.
+ * Rows for children the doc does not name are kept. `revoked` is a union
+ * (a revocation is never undone); the guardian's own value wins a conflict.
+ * The high-water becomes the larger `issuedAt`. A fold that changes nothing
+ * returns the same state reference, like `applyConfigDoc`.
+ */
+export function mergeConfigDoc<K extends keyof ConfigDocs>(s: AppState, kind: K, doc: ConfigDocs[K]): AppState {
+  const highWater = s.docHighWater[kind] ?? 0
+  const key = ROWS_KEY[kind]
+  const rowsOf = (d: ConfigDocs[K]): { child: string }[] => (d as unknown as Record<string, { child: string }[]>)[key] ?? []
+  const current = s.docs[kind]
+  const currentRows = rowsOf(current)
+  const incomingRows = rowsOf(doc)
+  const incomingRevoked = kind === 'accounts' ? ((doc as ConfigDocs['accounts']).revoked ?? {}) : {}
+  const currentRevoked = kind === 'accounts' ? ((current as ConfigDocs['accounts']).revoked ?? {}) : {}
+
+  const named = new Set<string>(incomingRows.map((r) => r.child))
+  const held = new Set<string>(currentRows.map((r) => r.child))
+  const taken = new Set([...named].filter((c) => doc.issuedAt >= highWater || !held.has(c)))
+  const rowsFor = (rows: { child: string }[], c: string) => JSON.stringify(rows.filter((r) => r.child === c))
+  const rowsChanged = [...taken].some((c) => rowsFor(currentRows, c) !== rowsFor(incomingRows, c))
+  const revokedChanged = Object.keys(incomingRevoked).some((pk) => currentRevoked[pk] === undefined)
+  if (!rowsChanged && !revokedChanged && doc.issuedAt <= highWater) return s
+
+  const rows = [...currentRows.filter((r) => !taken.has(r.child)), ...incomingRows.filter((r) => taken.has(r.child))]
+  const merged = { ...current, issuedAt: Math.max(current.issuedAt, doc.issuedAt), [key]: rows } as ConfigDocs[K]
+  if (kind === 'accounts' && (revokedChanged || Object.keys(currentRevoked).length > 0)) {
+    ;(merged as ConfigDocs['accounts']).revoked = { ...incomingRevoked, ...currentRevoked }
+  }
+  return {
+    ...s,
+    docs: { ...s.docs, [kind]: merged },
+    docHighWater: { ...s.docHighWater, [kind]: Math.max(highWater, doc.issuedAt) },
   }
 }
 
