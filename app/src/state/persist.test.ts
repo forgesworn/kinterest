@@ -572,3 +572,42 @@ describe('invalid entries are quarantined, not silently lost', () => {
     expect(quarantinedEntries(makeFakeStorage())).toEqual([])
   })
 })
+
+// v0.3: a child paired on a build older than `ChildProfile.pairedAt` itself
+// has none stored — `loadState` backfills it from independent evidence (see
+// state.ts#hasPairedDevice/backfillPairedAt) so every consumer, not just
+// ChildDetail.tsx, sees a consistent answer straight after load.
+describe('loadState backfills pairedAt from evidence (state.ts#backfillPairedAt)', () => {
+  const PK = 'a'.repeat(64)
+
+  it('stamps pairedAt, at the given nowSec, for a pre-v0.3 child with a child-authored entry on disk', () => {
+    const mem = makeFakeStorage()
+    const good = creditEntry({ id: 'e1', child: PK, createdAt: 1, author: 'child' }, { ...ledgerAcct, child: PK }, 100)
+    mem.setItem('kinjar.state.v1', JSON.stringify({ ...emptyState(), children: [{ pubkey: PK, name: 'Alex', index: 0 }], entries: [good] }))
+    const loaded = loadState(mem, 12345)
+    expect(loaded.children[0]!.pairedAt).toBe(12345)
+  })
+
+  it('leaves a child with no evidence at all without a pairedAt', () => {
+    const mem = makeFakeStorage()
+    mem.setItem('kinjar.state.v1', JSON.stringify({ ...emptyState(), children: [{ pubkey: PK, name: 'Alex', index: 0 }] }))
+    const loaded = loadState(mem, 12345)
+    expect(loaded.children[0]!.pairedAt).toBeUndefined()
+  })
+
+  it('never overwrites an already-stored pairedAt', () => {
+    const mem = makeFakeStorage()
+    mem.setItem('kinjar.state.v1', JSON.stringify({ ...emptyState(), children: [{ pubkey: PK, name: 'Alex', index: 0, pairedAt: 500 }] }))
+    const loaded = loadState(mem, 12345)
+    expect(loaded.children[0]!.pairedAt).toBe(500)
+  })
+
+  it('defaults nowSec to the real clock when not given (sanity: still a safe integer, close to now)', () => {
+    const mem = makeFakeStorage()
+    const good = creditEntry({ id: 'e1', child: PK, createdAt: 1, author: 'child' }, { ...ledgerAcct, child: PK }, 100)
+    mem.setItem('kinjar.state.v1', JSON.stringify({ ...emptyState(), children: [{ pubkey: PK, name: 'Alex', index: 0 }], entries: [good] }))
+    const before = Math.floor(Date.now() / 1000)
+    const loaded = loadState(mem)
+    expect(loaded.children[0]!.pairedAt).toBeGreaterThanOrEqual(before)
+  })
+})

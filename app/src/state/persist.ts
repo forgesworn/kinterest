@@ -2,7 +2,7 @@ import type { NostrEvent } from 'nostr-tools/pure'
 import { assertEntry } from '../domain/ledger'
 import type { Entry } from '../domain/types'
 import { isNostrEventShape, parseRequestPayload } from '../wire/payloads'
-import { emptyState, retainInnerEvents } from './state'
+import { backfillPairedAt, emptyState, retainInnerEvents } from './state'
 import type { AppState, ConfigDocs, RootRecord, StoredRequest } from './types'
 
 // Name-free by design: no product name on disk.
@@ -369,7 +369,13 @@ function sanitiseState(raw: Record<string, unknown>, dropped: unknown[] = []): A
 // like an AppState (wrong version, non-object, etc.) yields emptyState()
 // rather than throwing. A shape that does look like an AppState still has
 // its collections sanitised (see sanitiseState) before being trusted.
-export function loadState(storage: StorageLike = defaultStorage()): AppState {
+//
+// `nowSec` follows the same discipline as everywhere else in this codebase
+// ("no Date.now() in pure logic... obtained once per action" — see
+// store.tsx): a default parameter, evaluated once per call, the same way
+// `storage` itself defaults to the real thing. It only ever feeds
+// `state.ts#backfillPairedAt` below.
+export function loadState(storage: StorageLike = defaultStorage(), nowSec: number = Math.floor(Date.now() / 1000)): AppState {
   try {
     const raw = storage.getItem(STORAGE_KEY)
     if (raw === null) return emptyState()
@@ -378,7 +384,11 @@ export function loadState(storage: StorageLike = defaultStorage()): AppState {
     const dropped: unknown[] = []
     const state = sanitiseState(parsed, dropped)
     if (dropped.length > 0) quarantine(dropped, storage)
-    return state
+    // v0.3: recognises a child paired on a build older than `pairedAt`
+    // itself (state.ts#hasPairedDevice's own header) and stamps it on load,
+    // so every consumer that reads `pairedAt` — not just ChildDetail.tsx —
+    // sees the same answer.
+    return backfillPairedAt(state, nowSec)
   } catch {
     return emptyState()
   }

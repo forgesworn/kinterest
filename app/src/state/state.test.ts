@@ -4,7 +4,28 @@ import { creditEntry, reverseEntry } from '../domain/ledger'
 import { buildGrantPayload, buildRequestPayload, type GrantPayload, type RequestPayload } from '../wire/payloads'
 import type { ChoreTick } from '../domain/chores'
 import type { AuditResult } from '../domain/audit'
-import { emptyState, addEntry, applyConfigDoc, mergeConfigDoc, upsertRequest, recordRequestDecision, requestAlreadyDecided, recordGrantResult, recordTick, recordAudit, retainInnerEvents, activeChildren, archiveChild, childNeedingFirstPot, markChildPaired, configRecipients, selfRevokedAt, MAX_RETAINED_CHILD_SIG } from './state'
+import {
+  emptyState,
+  addEntry,
+  applyConfigDoc,
+  mergeConfigDoc,
+  upsertRequest,
+  recordRequestDecision,
+  requestAlreadyDecided,
+  recordGrantResult,
+  recordTick,
+  recordAudit,
+  retainInnerEvents,
+  activeChildren,
+  archiveChild,
+  childNeedingFirstPot,
+  markChildPaired,
+  hasPairedDevice,
+  backfillPairedAt,
+  configRecipients,
+  selfRevokedAt,
+  MAX_RETAINED_CHILD_SIG,
+} from './state'
 
 const entry = (id: string, overrides: Partial<Entry> = {}): Entry => ({
   v: 1,
@@ -401,9 +422,9 @@ describe('recordGrantResult', () => {
 
 // --- v0.2: the lossless inner-event corpus and per-child revocation -------------
 
-const ev = (id: string, kind: number, at: number) => ({
+const ev = (id: string, kind: number, at: number, pubkey = 'a'.repeat(64)) => ({
   id,
-  pubkey: 'a'.repeat(64),
+  pubkey,
   kind,
   created_at: at,
   tags: [],
@@ -546,6 +567,119 @@ describe('markChildPaired', () => {
   it('is a no-op — same reference back — once already paired (never overwritten by a later re-pair)', () => {
     const s = markChildPaired(roster(), 0, 700)
     expect(markChildPaired(s, 0, 999)).toBe(s)
+  })
+})
+
+// A child paired on a build that predates `ChildProfile.pairedAt` (v0.3) has
+// no `pairedAt` at all, but the device it paired left independent,
+// child-signed evidence behind. `hasPairedDevice` recovers "has a device
+// EVER claimed this identity" from that evidence when `pairedAt` itself is
+// silent.
+describe('hasPairedDevice', () => {
+  const PK = 'a'.repeat(64)
+  const OTHER = 'b'.repeat(64)
+  const roster = () => ({ ...emptyState(), children: [{ pubkey: PK, name: 'Alex', index: 0 }] })
+
+  it('false for a child with no pairedAt and no evidence at all', () => {
+    expect(hasPairedDevice(roster(), PK)).toBe(false)
+  })
+
+  it('false for an unknown pubkey, even with evidence under a different key', () => {
+    const s = upsertRequest(roster(), req('r1', { child: PK }), PK, 1000)
+    expect(hasPairedDevice(s, OTHER)).toBe(false)
+  })
+
+  it('true when pairedAt is set directly', () => {
+    const s = markChildPaired(roster(), 0, 700)
+    expect(hasPairedDevice(s, PK)).toBe(true)
+  })
+
+  it('true from a child-authored entry, with no pairedAt set', () => {
+    const s = addEntry(roster(), entry('e1', { child: PK, author: 'child' }))
+    expect(hasPairedDevice(s, PK)).toBe(true)
+  })
+
+  it('false from a GUARDIAN-authored entry on that same child — not evidence of a device', () => {
+    const s = addEntry(roster(), entry('e1', { child: PK, author: 'guardian' }))
+    expect(hasPairedDevice(s, PK)).toBe(false)
+  })
+
+  it('true from a request this child sent (authorPk), with no pairedAt set', () => {
+    const s = upsertRequest(roster(), req('r1', { child: PK }), PK, 1000)
+    expect(hasPairedDevice(s, PK)).toBe(true)
+  })
+
+  it('true from a child-authored audit, with no pairedAt set', () => {
+    const s = recordAudit(roster(), {
+      id: 'au1',
+      account: 'a-box',
+      child: PK,
+      countedMinor: 100,
+      expectedMinor: 100,
+      deltaMinor: 0,
+      at: 1000,
+      author: 'child',
+    })
+    expect(hasPairedDevice(s, PK)).toBe(true)
+  })
+
+  it('false from a GUARDIAN-authored audit on that same child — not evidence of a device', () => {
+    const s = recordAudit(roster(), {
+      id: 'au1',
+      account: 'a-box',
+      child: PK,
+      countedMinor: 100,
+      expectedMinor: 100,
+      deltaMinor: 0,
+      at: 1000,
+      author: 'guardian',
+    })
+    expect(hasPairedDevice(s, PK)).toBe(false)
+  })
+
+  it('true from a raw signed event in the resync corpus (covers a chore tick, which carries no child pubkey of its own)', () => {
+    const s = { ...roster(), innerEvents: { e1: ev('e1', 31124, 1000, PK) } }
+    expect(hasPairedDevice(s, PK)).toBe(true)
+  })
+})
+
+describe('backfillPairedAt', () => {
+  const PK = 'a'.repeat(64)
+  const OTHER = 'b'.repeat(64)
+  const roster = () => ({
+    ...emptyState(),
+    children: [
+      { pubkey: PK, name: 'Alex', index: 0 },
+      { pubkey: OTHER, name: 'Bo', index: 1 },
+    ],
+  })
+
+  it('is a no-op — same reference back — when no child has any evidence', () => {
+    const s = roster()
+    expect(backfillPairedAt(s, 900)).toBe(s)
+  })
+
+  it('is a no-op — same reference back — when every child already has pairedAt', () => {
+    const s = markChildPaired(markChildPaired(roster(), 0, 100), 1, 200)
+    expect(backfillPairedAt(s, 900)).toBe(s)
+  })
+
+  it('stamps pairedAt, at nowSec, for a child with evidence but no pairedAt', () => {
+    const s = addEntry(roster(), entry('e1', { child: PK, author: 'child' }))
+    const next = backfillPairedAt(s, 900)
+    expect(next.children.find((c) => c.pubkey === PK)?.pairedAt).toBe(900)
+  })
+
+  it('leaves a child with no evidence untouched, even while backfilling a sibling', () => {
+    const s = addEntry(roster(), entry('e1', { child: PK, author: 'child' }))
+    const next = backfillPairedAt(s, 900)
+    expect(next.children.find((c) => c.pubkey === OTHER)?.pairedAt).toBeUndefined()
+  })
+
+  it('never overwrites an existing pairedAt with nowSec', () => {
+    const s = markChildPaired(roster(), 0, 100)
+    const next = backfillPairedAt(s, 900)
+    expect(next.children.find((c) => c.pubkey === PK)?.pairedAt).toBe(100)
   })
 })
 

@@ -133,6 +133,64 @@ export function markChildPaired(app: AppState, childIndex: number, nowSec: numbe
   return { ...app, children: app.children.map((c) => (c.index === childIndex ? { ...c, pairedAt: nowSec } : c)) }
 }
 
+/** Whether a device has EVER claimed `childPk`'s identity — the question
+ *  ChildDetail.tsx asks to decide between "Remove this device" and "Pair
+ *  their phone". `ChildProfile.pairedAt` answers it directly, but only for a
+ *  child paired on a build that already had that field (v0.3) — a child
+ *  paired on an OLDER build carries no `pairedAt` at all, and would
+ *  otherwise be judged never-paired for ever, wrongly hiding "Remove this
+ *  device" and wrongly offering "Pair their phone" for a device that is
+ *  already live and talking.
+ *
+ *  So this falls back to independent evidence a paired device leaves behind
+ *  regardless of when it paired — every one of them CHILD-SIGNED (never
+ *  something the guardian itself could have produced), so a family with no
+ *  paired device at all cannot accidentally satisfy this:
+ *
+ *   - an ENTRY this child authored (`state.entries`, `author === 'child'`)
+ *   - a REQUEST this child sent (`state.requests`, `authorPk === childPk` —
+ *     spend.request/allowance.claim; upsertRequest already enforces
+ *     `authorPk === request.child`, so this alone is provenance-checked)
+ *   - an AUDIT this child reported (`state.audits`, `author === 'child'`)
+ *   - any raw signed event in the resync corpus (`state.innerEvents`) whose
+ *     `pubkey` is this child's — covers a chore TICK too (CHILD_SIG), which
+ *     carries no child pubkey of its own on `ChoreTick` and so cannot be
+ *     checked any other way (see chores.ts's `Chore.child` indirection).
+ *
+ *  Any one of these existing is proof a device really did claim this
+ *  identity and exchange signed traffic — the same fact `pairedAt` records,
+ *  just recovered after the fact. Pure. */
+export function hasPairedDevice(app: AppState, childPk: string): boolean {
+  const child = app.children.find((c) => c.pubkey === childPk)
+  if (child?.pairedAt !== undefined) return true
+  if (app.entries.some((e) => e.child === childPk && e.author === 'child')) return true
+  if (app.requests.some((r) => r.authorPk === childPk)) return true
+  if (app.audits.some((a) => a.child === childPk && a.author === 'child')) return true
+  if (Object.values(app.innerEvents).some((ev) => ev.pubkey === childPk)) return true
+  return false
+}
+
+/** Backfills `ChildProfile.pairedAt` (v0.3) on load, for a child paired on a
+ *  build that predates the field: `hasPairedDevice` already recognises such
+ *  a child by the evidence its device left behind, but stamping `pairedAt`
+ *  once that evidence is found makes every OTHER consumer that still reads
+ *  `pairedAt` directly (`state.ts#archiveChild`'s revoke-on-remove path,
+ *  reached via ChildDetail.tsx's `removeChild`) agree with it too, instead
+ *  of needing its own copy of the same fallback. Stamped at `nowSec` — the
+ *  moment the evidence was NOTICED, not when the device actually paired,
+ *  which this build has no way to recover. Idempotent (an already-paired or
+ *  no-evidence child is left exactly as is) and a no-op — same `AppState`
+ *  reference back — when nothing needed backfilling. Pure. */
+export function backfillPairedAt(app: AppState, nowSec: number): AppState {
+  let changed = false
+  const children = app.children.map((c) => {
+    if (c.pairedAt !== undefined || !hasPairedDevice(app, c.pubkey)) return c
+    changed = true
+    return { ...c, pairedAt: nowSec }
+  })
+  return changed ? { ...app, children } : app
+}
+
 /** The pubkeys a CONFIG doc should be sent to (each gets its own view) — every
  *  child that has not been revoked (v0.2 spec §4.5). Pure.
  *

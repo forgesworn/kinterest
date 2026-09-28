@@ -15,7 +15,7 @@ import { balances } from '../domain/ledger'
 import { formatMinor } from '../domain/money'
 import { Banner, Button, Card, EmptyState, ListRow, Screen, Sheet } from '../components/ui'
 import { Money } from '../components/Money'
-import { applyConfigDoc, archiveChild } from '../state/state'
+import { applyConfigDoc, archiveChild, hasPairedDevice } from '../state/state'
 import { sendConfig } from '../sync/publish'
 import type { ConfigDocs } from '../state/types'
 import { stampConfigDoc, useApp } from '../store/store'
@@ -187,12 +187,13 @@ export function ChildDetail({
 
   // "Remove child" (v0.3): archives the child (state/state.ts#archiveChild)
   // — never a deletion, see that function's own doc comment. If a device
-  // has ever paired (`pairedAt !== undefined`) and isn't already revoked,
-  // that device is ALSO revoked here, via the exact same `stampConfigDoc`/
-  // `applyConfigDoc` path `removeDevice` above uses — archiving must not
-  // leave a still-live device quietly talking to a child that has
-  // disappeared from every list. A child with no device (or one already
-  // revoked) is archived with no wire send at all.
+  // has ever paired (`hasPairedDevice`, which also recognises a child paired
+  // before `pairedAt` existed — see its own header) and isn't already
+  // revoked, that device is ALSO revoked here, via the exact same
+  // `stampConfigDoc`/`applyConfigDoc` path `removeDevice` above uses —
+  // archiving must not leave a still-live device quietly talking to a child
+  // that has disappeared from every list. A child with no device (or one
+  // already revoked) is archived with no wire send at all.
   function removeChild(): void {
     if (guardianSk === null || archiving) return
     setConfirmingArchive(false)
@@ -201,11 +202,10 @@ export function ChildDetail({
     dispatch({
       type: 'updateApp',
       update: (a) => {
-        const target = a.children.find((c) => c.pubkey === childPubkey)
         const alreadyRevoked = a.docs.accounts.revoked?.[childPubkey] !== undefined
         let next = a
         let revokeDoc: ConfigDocs['accounts'] | null = null
-        if (target !== undefined && target.pairedAt !== undefined && !alreadyRevoked) {
+        if (hasPairedDevice(a, childPubkey) && !alreadyRevoked) {
           revokeDoc = stampConfigDoc(
             next,
             'accounts',
@@ -264,7 +264,14 @@ export function ChildDetail({
   const nowSec = Math.floor(Date.now() / 1000)
   const feedGroups = buildFeed(childEntries, accounts, app.acks, tz, nowSec)
   const revokedDeviceAt = app.docs.accounts.revoked?.[childPubkey]
-  const hasPairedDevice = child.pairedAt !== undefined
+  // `hasPairedDevice` (state.ts) rather than `child.pairedAt !== undefined`
+  // directly: a child paired on a build older than `pairedAt` itself would
+  // otherwise be judged never-paired here, wrongly hiding "Remove this
+  // device" and wrongly offering "Pair their phone" for an already-live
+  // device (persist.ts's `loadState` backfills `pairedAt` once this same
+  // evidence is seen, but this still covers a state object that arrived some
+  // other way, e.g. mid-session before the next reload).
+  const deviceEverPaired = hasPairedDevice(app, childPubkey)
 
   return (
     <Screen title={child.name} onBack={onBack} action={<Button variant="quiet" onClick={onSettings}>Settings</Button>}>
@@ -327,14 +334,14 @@ export function ChildDetail({
           screen: without it, "Remove this device" used to show for a child
           that had never paired anything at all — a revoke with nothing
           real to revoke. */}
-      {revokedDeviceAt === undefined && hasPairedDevice && (
+      {revokedDeviceAt === undefined && deviceEverPaired && (
         <Card>
           <Button variant="quiet" block disabled={guardianSk === null || removing} onClick={() => setConfirmingRemoval(true)}>
             {removing ? 'Removing…' : 'Remove this device'}
           </Button>
         </Card>
       )}
-      {revokedDeviceAt === undefined && !hasPairedDevice && (
+      {revokedDeviceAt === undefined && !deviceEverPaired && (
         <Card>
           <Button variant="primary" block onClick={onPairDevice}>
             Pair their phone
@@ -382,7 +389,7 @@ export function ChildDetail({
           <p>
             {child.name} will disappear from Home and the rest of your family list. Their money history stays exactly as
             it is — it always has to add up.
-            {revokedDeviceAt === undefined && hasPairedDevice ? ' Their device will be removed too.' : ''}
+            {revokedDeviceAt === undefined && deviceEverPaired ? ' Their device will be removed too.' : ''}
           </p>
           <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
             <Button variant="danger" block onClick={removeChild}>
