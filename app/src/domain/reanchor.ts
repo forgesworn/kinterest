@@ -1,12 +1,13 @@
 // Schedule re-anchoring — an edit to an allowance/interest config never
-// reopens history (audit D1/D3/D4).
+// reopens history.
 //
 // `allowanceDue`/`interestDue` rescan from `startDay` and treat a period as
 // paid only when an entry carries that period's key AND a leg on the
 // config's account. Changing `account` or `cadence` therefore makes every
-// past period look unpaid; un-pausing or switching a gate off exposes every
+// past period look unpaid; changing the due day or the timezone moves the
+// deposit-match window back over deposits the old schedule already matched; un-pausing or switching a gate off exposes every
 // period that was deliberately never paid; changing an interest config's
-// rate would pay every still-open past period at the new rate (review R1).
+// rate would pay every still-open past period at the new rate.
 // Re-anchoring moves `startDay`
 // forward at the moment of such an edit so none of those periods can come
 // back.
@@ -17,9 +18,12 @@
 //   - the old config's current period (the one containing `today`) is paid
 //     at most once in total across old and new configs: if its due day has
 //     already arrived (so the old config paid it, or deliberately did not),
-//     the new schedule starts only after that whole period ends.
+//     the new schedule starts only after that whole period ends;
+//   - a deposit is matched at most once across all edits: every earlier
+//     match window ends before the new `startDay`, where the new schedule's
+//     first window begins.
 //
-// Known edge cases (review R10). Both under-pay or overlap; neither pays
+// Known edge cases. Both under-pay or overlap; neither pays
 // the same period twice. Kept deliberately, pinned by tests:
 //   - A re-anchoring edit made ON a due day, before that day's scheduler
 //     tick has run: the floor is the end of that period (its due day has
@@ -56,8 +60,8 @@ function earlierOf(a: string, b: string): string {
 
 // Fields that set how much a period pays (interest configs only; an
 // allowance config has none of them). Changing any of them re-anchors, so a
-// period before the edit is never paid at the new terms (review R1: a rate
-// moved off 0 used to back-pay every zero-paid period since `startDay`).
+// period before the edit is never paid at the new terms (a rate moved off
+// 0 used to back-pay every zero-paid period since `startDay`).
 const AMOUNT_TERMS = ['rateBps', 'matchBps', 'matchCapMinor'] as const
 
 function amountTermsChanged(prev: SchedulableConfig, next: SchedulableConfig): boolean {
@@ -66,13 +70,22 @@ function amountTermsChanged(prev: SchedulableConfig, next: SchedulableConfig): b
   return AMOUNT_TERMS.some((f) => p[f] !== n[f])
 }
 
+/** True when an edit changes which days are due: the cadence, the due
+ *  weekday or day of month, or the timezone the days are counted in. A
+ *  deposit-match window reaches back to the previous due day under the
+ *  CURRENT schedule, so moving the due day without re-anchoring would let
+ *  the next window cover deposits the old schedule already matched. */
+function scheduleChanged(prev: SchedulableConfig, next: SchedulableConfig): boolean {
+  return prev.cadence !== next.cadence || prev.day !== next.day || prev.tz !== next.tz
+}
+
 /** True when moving from `prev` to `next` could expose periods that were
  *  never meant to be paid under `next`'s schedule or terms. */
 export function needsReanchor<C extends SchedulableConfig>(prev: C, next: C): boolean {
   return (
     amountTermsChanged(prev, next) ||
     prev.account !== next.account ||
-    prev.cadence !== next.cadence ||
+    scheduleChanged(prev, next) ||
     Boolean(prev.paused) !== Boolean(next.paused) ||
     (Boolean(prev.choresGate) && !next.choresGate) ||
     (Boolean(prev.auditGate) && !next.auditGate)

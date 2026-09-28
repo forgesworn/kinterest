@@ -477,6 +477,56 @@ describe('runSchedulers: deposit match (audit S1)', () => {
   })
 })
 
+describe('runSchedulers: a due-day edit never matches a deposit twice', () => {
+  const account = { id: ACCOUNT_ID, child: CHILD, name: 'P', currency: 'GBP', custody: 'ledger' as const }
+  const t = (y: number, m: number, d: number, h = 8) => Date.UTC(y, m - 1, d, h) / 1000
+  const base: InterestConfig = { child: CHILD, account: ACCOUNT_ID, rateBps: 100, cadence: 'weekly', day: 5, tz: 'Europe/London', startDay: '2026-08-07', matchBps: 5000 }
+  const withCfg = (cfg: InterestConfig): AppState => {
+    const s = baseState()
+    return { ...s, docs: { ...s.docs, accounts: { v: 1, issuedAt: 1, accounts: [account] }, interest: { v: 1, issuedAt: 1, configs: [cfg] } } }
+  }
+  const run = (s: AppState, now: number): AppState => {
+    for (const e of runSchedulers(s, now).entries) s = addEntry(s, e)
+    return s
+  }
+  const edit = (s: AppState, change: Partial<InterestConfig>, now: number): AppState => {
+    const prev = s.docs.interest.configs
+    const configs = reanchorConfigs(prev, [{ ...prev[0]!, ...change }], now)
+    return { ...s, docs: { ...s.docs, interest: { v: 1, issuedAt: s.docs.interest.issuedAt + 1, configs } } }
+  }
+  const matches = (s: AppState) => s.entries.filter((e) => e.category === 'match').map((e) => [e.id, e.legs[0]!.amountMinor])
+
+  it('weekly: moving Friday to Monday after Friday paid does not re-match the week', () => {
+    let s = withCfg(base)
+    s = addEntry(s, creditEntry({ id: 'gift', child: CHILD, createdAt: t(2026, 8, 11), author: 'guardian' }, account, 1000)) // Tue 11 Aug
+    s = run(s, t(2026, 8, 14, 9)) // Fri 14 Aug pays 500
+    s = edit(s, { day: 1 }, t(2026, 8, 15)) // move to Mondays
+    s = run(s, t(2026, 8, 17, 9))
+    s = run(s, t(2026, 8, 24, 9))
+    expect(matches(s)).toEqual([['sched:match:sam:a-ledger:2026-08-14', 500]])
+  })
+
+  it('monthly: moving day 20 to day 5 does not re-match deposits from the 6th to the 20th', () => {
+    let s = withCfg({ ...base, cadence: 'monthly', day: 20, startDay: '2026-07-31' })
+    s = addEntry(s, creditEntry({ id: 'gift', child: CHILD, createdAt: t(2026, 8, 10), author: 'guardian' }, account, 1000))
+    s = run(s, t(2026, 8, 20, 9)) // pays 500 for [31 Jul, 20 Aug)
+    s = edit(s, { day: 5 }, t(2026, 8, 21))
+    s = run(s, t(2026, 9, 5, 9))
+    s = run(s, t(2026, 10, 5, 9))
+    expect(matches(s)).toEqual([['sched:match:sam:a-ledger:2026-08-20', 500]])
+  })
+
+  it('a timezone change re-anchors like a due-day change', () => {
+    let s = withCfg(base)
+    s = addEntry(s, creditEntry({ id: 'gift', child: CHILD, createdAt: t(2026, 8, 11), author: 'guardian' }, account, 1000))
+    s = run(s, t(2026, 8, 14, 9))
+    s = edit(s, { tz: 'Pacific/Auckland' }, t(2026, 8, 15))
+    expect(s.docs.interest.configs[0]!.startDay > base.startDay).toBe(true)
+    s = run(s, t(2026, 8, 21, 9))
+    expect(matches(s)).toEqual([['sched:match:sam:a-ledger:2026-08-14', 500]])
+  })
+})
+
 describe('scheduler ids are deterministic, not ULIDs (audit S5)', () => {
   it('two independent runs over the same state mint identical ids', () => {
     const state = baseState({ docs: { ...baseState().docs, allowance: { v: 1, issuedAt: 1, configs: [allowanceCfg] } } })

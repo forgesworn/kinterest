@@ -123,6 +123,12 @@ describe('R1: an interest amount-term edit re-anchors', () => {
     expect(needsReanchor(i0, { ...i0, matchCapMinor: 1000 })).toBe(true)
     expect(needsReanchor(i0, { ...i0 })).toBe(false)
   })
+  it('needsReanchor is true for any change to which days are due', () => {
+    expect(needsReanchor(i0, { ...i0, day: 5 })).toBe(true)
+    expect(needsReanchor(i0, { ...i0, tz: 'Europe/London' })).toBe(true)
+    expect(needsReanchor(i0, { ...i0, cadence: 'monthly' })).toBe(true)
+    expect(needsReanchor(base, { ...base, day: 5 })).toBe(true)
+  })
   it('0 % -> 5 %: no period before the edit is due at the new rate', () => {
     // Wednesday edit; this week's Tuesday has already passed, so nothing is due now.
     const [edited] = reanchorConfigs([i0], [{ ...i0, rateBps: 500 }], now)
