@@ -88,18 +88,6 @@ function categoryChildTitle(entry: Entry): string | null {
   return CATEGORY_CHILD_TITLES[category]!(entry)
 }
 
-// TRACKING NOTE — currently unreachable, nothing wired through Task 3 ever
-// produces one: domain/ledger.ts#reverseEntry keeps the ORIGINAL entry's
-// `kind` but negates every leg's sign (a reversed 'credit' entry is a
-// negative-amount 'credit', i.e. money actually leaving), so a reversal
-// reaching this feed (e.g. a future audit-adjustment correction, Task 5)
-// would have `kindChildTitle` say "added some money"/"took some money out"
-// backwards for the `credit`/`debit` cases below — they trust `entry.kind`
-// blindly rather than the headline leg's actual sign. `spendTitle` above
-// already gets this right (it branches on `headlineLeg(entry).amountMinor <
-// 0`, not on kind/category alone); when a reversal-producing flow lands,
-// `credit`/`debit` here should adopt the same sign-check pattern instead of
-// (or in addition to) the kind switch.
 function kindChildTitle(entry: Entry): string {
   const byGuardian = entry.author === 'guardian'
   switch (entry.kind) {
@@ -122,6 +110,8 @@ function kindChildTitle(entry: Entry): string {
  *  but — unlike feed.ts — `entry.note` is never consulted at all. See this
  *  module's header for why. */
 function childTitleFor(entry: Entry): string {
+  if (entry.reverses) return 'Your parent reversed an earlier entry'
+  if (entry.correctionOf) return 'Your parent recorded the corrected amount'
   return categoryChildTitle(entry) ?? kindChildTitle(entry)
 }
 
@@ -133,6 +123,7 @@ function childTitleFor(entry: Entry): string {
  *  ruled out as title text, and is no more useful as a subtitle. Falls back
  *  to the account name otherwise, same as feed.ts's own `subFor`. */
 function childSubFor(entry: Entry, accounts: Account[]): string | undefined {
+  if ((entry.reverses || entry.correctionOf) && entry.note) return entry.note
   if (entry.category === 'spend' && entry.note !== undefined && entry.note !== '') return entry.note
   if (entry.legs.length === 2) {
     const from = entry.legs.find((l) => l.amountMinor < 0)

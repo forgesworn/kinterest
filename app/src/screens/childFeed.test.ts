@@ -1,3 +1,4 @@
+import { correctionEntries } from '../domain/corrections'
 import { describe, expect, it } from 'vitest'
 import { creditEntry, debitEntry, exchangeEntry, transferEntry } from '../domain/ledger'
 import { allowanceEntry } from '../domain/allowance'
@@ -182,5 +183,18 @@ describe('buildChildFeed — a catch-up shows each payout on its own due day', (
     const groups = buildChildFeed([paid('2026-08-07'), paid('2026-08-14'), gift, paid('2026-08-21')], accounts, 'UTC', now)
     expect(groups.map((g) => g.dayKey)).toEqual(['2026-08-21', '2026-08-14', '2026-08-10', '2026-08-07'])
     expect(groups[0]!.label).toBe('Today')
+  })
+})
+
+
+describe('child correction history', () => {
+  it.each(['credit', 'debit', 'interest'] as const)('names a %s reversal and its reason without describing a new payment', kind => {
+    const original = kind === 'debit' ? debitEntry(meta('original'), spending, 100) : creditEntry(meta('original'), spending, 100)
+    if (kind === 'interest') original.category = 'interest'
+    const [reversal, replacement] = correctionEntries(original, { ...meta('correction'), createdAt: AT + 60 }, 'Correct test amount', [75])
+    const rows = buildChildFeed([original, reversal!, replacement!], accounts, TZ, AT + 60).flatMap(g => g.rows)
+    expect(rows.find(r => r.id === reversal!.id)).toMatchObject({ title: 'Your parent reversed an earlier entry', sub: 'Correct test amount', amountMinor: kind === 'debit' ? 100 : -100 })
+    expect(rows.find(r => r.id === replacement!.id)).toMatchObject({ title: 'Your parent recorded the corrected amount', sub: 'Correct test amount', amountMinor: kind === 'debit' ? -75 : 75 })
+    expect(rows.some(r => r.id === original.id)).toBe(true)
   })
 })
