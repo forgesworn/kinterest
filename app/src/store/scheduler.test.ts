@@ -441,7 +441,7 @@ describe('runSchedulers: deposit match (audit S1)', () => {
     s = addEntry(s, creditEntry({ id: 'gift', child: CHILD, createdAt: t(2026, 8, 10), author: 'guardian' }, account, 400))
     for (const e of runSchedulers(s, t(2026, 8, 14)).entries) s = addEntry(s, e)
     expect(runSchedulers(s, t(2026, 8, 14)).entries).toEqual([])
-    // The next week's window starts after 08-14: the same gift is never matched twice.
+    // The next week's window is [08-14, 08-21): the gift on 08-10 is never matched twice.
     expect(runSchedulers(s, t(2026, 8, 21)).entries.filter((e) => e.category === 'match')).toEqual([])
   })
 
@@ -524,6 +524,47 @@ describe('runSchedulers: a due-day edit never matches a deposit twice', () => {
     expect(s.docs.interest.configs[0]!.startDay > base.startDay).toBe(true)
     s = run(s, t(2026, 8, 21, 9))
     expect(matches(s)).toEqual([['sched:match:sam:a-ledger:2026-08-14', 500]])
+  })
+})
+
+describe('runSchedulers: a deposit match window is [previous due day, due day)', () => {
+  const account = { id: ACCOUNT_ID, child: CHILD, name: 'P', currency: 'GBP', custody: 'ledger' as const }
+  const t = (y: number, m: number, d: number, h = 8) => Date.UTC(y, m - 1, d, h) / 1000
+  const cfg: InterestConfig = { child: CHILD, account: ACCOUNT_ID, rateBps: 100, cadence: 'weekly', day: 5, tz: 'Europe/London', startDay: '2026-08-07', matchBps: 5000 }
+  const withCfg = (): AppState => {
+    const s = baseState()
+    return { ...s, docs: { ...s.docs, accounts: { v: 1, issuedAt: 1, accounts: [account] }, interest: { v: 1, issuedAt: 1, configs: [cfg] } } }
+  }
+  const run = (s: AppState, now: number): AppState => {
+    for (const e of runSchedulers(s, now).entries) s = addEntry(s, e)
+    return s
+  }
+  const matched = (s: AppState) => s.entries.filter((e) => e.category === 'match').map((e) => [e.periodKey, e.legs[0]!.amountMinor])
+  const deposit = (s: AppState, id: string, at: number, amount = 1000) =>
+    addEntry(s, creditEntry({ id, child: CHILD, createdAt: at, author: 'guardian' }, account, amount))
+
+  it('money added on a due day after that day\'s tick is matched in the next period', () => {
+    let s = deposit(withCfg(), 'early', t(2026, 8, 11))
+    s = run(s, t(2026, 8, 14, 7)) // Fri 14 Aug, 08:00 BST
+    s = deposit(s, 'gift', t(2026, 8, 14, 17)) // 18:00 BST, same due day
+    s = run(s, t(2026, 8, 21, 7))
+    s = run(s, t(2026, 8, 28, 7))
+    expect(matched(s)).toEqual([['2026-W33', 500], ['2026-W34', 500]])
+  })
+
+  it('money added on a due day before that day\'s tick is matched in the next period too', () => {
+    let s = deposit(withCfg(), 'morning', t(2026, 8, 14, 5)) // 06:00 BST on Fri 14
+    s = run(s, t(2026, 8, 14, 7))
+    expect(matched(s)).toEqual([])
+    s = run(s, t(2026, 8, 21, 7))
+    expect(matched(s)).toEqual([['2026-W34', 500]])
+  })
+
+  it('the first period starts at startDay, inclusive', () => {
+    let s = deposit(withCfg(), 'onStart', t(2026, 8, 7, 10), 400) // Fri 7 Aug = startDay
+    s = deposit(s, 'before', t(2026, 8, 6, 10), 400)
+    s = run(s, t(2026, 8, 14, 9))
+    expect(matched(s)).toEqual([['2026-W33', 200]])
   })
 })
 

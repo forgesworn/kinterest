@@ -179,7 +179,7 @@ describe('deposit match (audit S1)', () => {
     expect(depositMinor(reverseEntry(reversed, meta('rr', 4)), 'L', none)).toBe(0)
   })
 
-  it('a match window runs from the previous due day (exclusive) to the due day (inclusive), never before startDay', () => {
+  it('a match window runs from the previous due day (inclusive) to the due day (exclusive), never before startDay', () => {
     expect(matchWindowStart(cfg, '2026-08-14')).toBe('2026-08-07')
     expect(matchWindowStart(cfg, '2026-08-07')).toBe('2026-08-01') // previous Friday 07-31 is before startDay
     expect(matchWindowStart({ cadence: 'monthly', day: 31, startDay: '2026-01-01' }, '2026-03-31')).toBe('2026-02-28')
@@ -187,12 +187,13 @@ describe('deposit match (audit S1)', () => {
 
   it('sums deposits inside the window only', () => {
     const entries = [
-      creditEntry(meta('d1', 7), acct, 100), // on the previous due day: previous window
+      creditEntry(meta('d0', 6), acct, 50), // before the previous due day: previous window
+      creditEntry(meta('d1', 7), acct, 100), // on the previous due day: this window
       creditEntry(meta('d2', 8), acct, 200),
-      creditEntry(meta('d3', 14), acct, 300),
-      creditEntry(meta('d4', 15), acct, 400), // after the due day: next window
+      creditEntry(meta('d3', 14), acct, 300), // on the due day: next window
+      creditEntry(meta('d4', 15), acct, 400),
     ]
-    expect(depositsInWindow(entries, 'L', '2026-08-07', '2026-08-14', 'Europe/London')).toBe(500)
+    expect(depositsInWindow(entries, 'L', '2026-08-07', '2026-08-14', 'Europe/London')).toBe(300)
   })
 
   it('pays 50p per £1 deposited, capped per period, as a match credit carrying the periodKey', () => {

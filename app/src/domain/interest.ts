@@ -174,7 +174,7 @@ export function interestEntry(
 }
 
 // ---------------------------------------------------------------------------
-// Deposit match (audit S1)
+// Deposit match
 // ---------------------------------------------------------------------------
 
 export const MATCH_CATEGORY = 'match'
@@ -205,11 +205,14 @@ export function depositMinor(e: Entry, accountId: string, reversedIds: ReadonlyS
   return sum
 }
 
-/** The exclusive lower bound of the deposit window a match on `dueDay`
- *  covers: the schedule's previous due day, or `cfg.startDay` if that is
- *  later (a deposit made before the schedule — or before a re-anchoring
- *  edit — is never matched). Every deposit therefore falls into exactly one
- *  window: the one of the first due day on or after it. */
+/** The inclusive first day of the deposit window a match on `dueDay`
+ *  covers. A window runs from the schedule's previous due day (included) up
+ *  to `dueDay` (excluded), so money added ON a due day counts towards the
+ *  next period, whatever time of day that day's tick ran. The first period
+ *  starts at `cfg.startDay` (a deposit made before the schedule, or before a
+ *  re-anchoring edit, is never matched). Every deposit on or after
+ *  `startDay` therefore falls into exactly one window: the one of the first
+ *  due day strictly after it. */
 export function matchWindowStart(cfg: Pick<InterestConfig, 'cadence' | 'day' | 'startDay'>, dueDay: string): string {
   const earlier = dueDays({ cadence: cfg.cadence, day: cfg.day, fromExclusive: addDays(dueDay, -32), toInclusive: addDays(dueDay, -1) })
   const prev = earlier[earlier.length - 1] ?? addDays(dueDay, -32)
@@ -217,12 +220,12 @@ export function matchWindowStart(cfg: Pick<InterestConfig, 'cadence' | 'day' | '
 }
 
 /** Total deposits on `accountId` whose effective day (in `tz`) is in
- *  (`fromExclusive`, `toInclusive`]. Pure; integer sum, overflow-checked. */
+ *  [`fromInclusive`, `toExclusive`). Pure; integer sum, overflow-checked. */
 export function depositsInWindow(
   entries: readonly Entry[],
   accountId: string,
-  fromExclusive: string,
-  toInclusive: string,
+  fromInclusive: string,
+  toExclusive: string,
   tz: string,
 ): number {
   const reversedIds = new Set(entries.map((e) => e.reverses).filter((r): r is string => r !== undefined))
@@ -231,7 +234,7 @@ export function depositsInWindow(
     const amount = depositMinor(e, accountId, reversedIds)
     if (amount === 0) continue
     const day = effectiveDay(e, tz)
-    if (day > fromExclusive && day <= toInclusive) sum += amount
+    if (day >= fromInclusive && day < toExclusive) sum += amount
   }
   assertMinor(sum)
   return sum
@@ -253,7 +256,7 @@ function isMatchPayout(e: Entry, accountId: string, reversedIds: ReadonlySet<str
  * is unix SECONDS). Empty when the match is off (`matchBps` unset or ≤ 0) or
  * the config is paused. Idempotent by periodKey, like `interestDue`.
  *
- * Bounded the same way as `interestDue` (review R1): a period is closed
+ * Bounded the same way as `interestDue`: a period is closed
  * once a later match has been paid, or once interest has been paid for a
  * LATER period (the scheduler pays a period's match and interest in the
  * same pass, so an interest payout proves the match for every earlier
