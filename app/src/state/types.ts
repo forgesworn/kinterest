@@ -14,6 +14,22 @@ export interface ChildProfile {
   pubkey: string
   name: string
   index: number
+  /** Unix SECONDS the guardian's own "pair.claim" ceremony last succeeded
+   *  for this child (store.tsx's `onPairClaimAnswered`) — additive/optional
+   *  so an existing snapshot/vault/persisted state that predates it parses
+   *  exactly as before (field simply absent, meaning "no device has ever
+   *  paired"). Never cleared once set, even across a later revoke/re-pair —
+   *  it answers "has a device EVER claimed this identity", not "is one
+   *  paired right now" (that's `docs.accounts.revoked`, separately). */
+  pairedAt?: number
+  /** Unix SECONDS the guardian archived ("removed") this child — additive/
+   *  optional for the same reason as `pairedAt`. An archived child stays in
+   *  `state.children` and its ledger entries are untouched (money must
+   *  always add up); it is simply hidden from Home and the other family
+   *  lists, and the scheduler stops paying it. Never removed once set. A
+   *  paired device is revoked separately, via `docs.accounts.revoked`, at
+   *  the same moment a child with one is archived. */
+  archived?: number
 }
 
 // Each doc is full-state replaceable: a later doc of the same kind wholly

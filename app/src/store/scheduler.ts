@@ -130,9 +130,17 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
   // Revoked children (v0.2 §4.5) accrue nothing and are sent
   // nothing: their device was removed, and a re-paired device is a new key.
   const revoked = state.docs.accounts.revoked ?? {}
+  // Archived children (v0.3's "Remove child") accrue nothing either — an
+  // archived child is off Home and the family lists, and must never keep
+  // earning pocket money/interest silently in the background. Looked up
+  // against `state.children` rather than a doc map (archived lives on
+  // `ChildProfile` — the smallest correct place, see state/types.ts); a
+  // `cfg.child` naming no `ChildProfile` at all is simply never archived,
+  // which several fixtures in this module's own tests rely on.
+  const archived = new Set(state.children.filter((c) => c.archived !== undefined).map((c) => c.pubkey))
 
   for (const cfg of state.docs.allowance.configs) {
-    if (revoked[cfg.child] !== undefined) continue
+    if (revoked[cfg.child] !== undefined || archived.has(cfg.child)) continue
     try {
       const account = accountFor(state, cfg.account)
       if (account === undefined) continue
@@ -157,7 +165,7 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
   }
 
   for (const cfg of state.docs.interest.configs) {
-    if (revoked[cfg.child] !== undefined) continue
+    if (revoked[cfg.child] !== undefined || archived.has(cfg.child)) continue
     try {
       const account = accountFor(state, cfg.account)
       if (account === undefined) continue

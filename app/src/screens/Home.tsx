@@ -179,6 +179,19 @@ export function pendingRequestCount(requests: StoredRequest[], childPubkey: stri
 }
 
 // ============================================================================
+// familyChildren
+// ============================================================================
+
+/** The children Home (and every other family list) shows — every child that
+ *  has not been archived (v0.3's "Remove child" — never a deletion, see
+ *  state/state.ts#archiveChild's own doc comment). A revoked-but-not-yet-
+ *  archived child is deliberately still listed here: revoking a device and
+ *  removing a child are two separate, deliberate actions. Pure. */
+export function familyChildren(children: ChildProfile[]): ChildProfile[] {
+  return children.filter((c) => c.archived === undefined)
+}
+
+// ============================================================================
 // Screen
 // ============================================================================
 
@@ -293,8 +306,9 @@ export function Home({
   const { app } = state
   const pendingTotal = app.requests.filter((r) => r.status === 'pending').length
   const action = <HomeActions pendingTotal={pendingTotal} onApprovals={onApprovals} onAddChild={onAddChild} />
+  const listedChildren = familyChildren(app.children)
 
-  if (app.children.length === 0) {
+  if (listedChildren.length === 0) {
     return (
       <Screen title="Kinterest" action={action}>
         <EmptyState title="No children yet">Add your first child to get started.</EmptyState>
@@ -306,7 +320,7 @@ export function Home({
 
   return (
     <Screen title="Kinterest" action={action}>
-      {app.children.map((child) => (
+      {listedChildren.map((child) => (
         <ChildCard
           key={child.pubkey}
           child={child}

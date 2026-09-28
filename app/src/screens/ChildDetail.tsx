@@ -15,7 +15,7 @@ import { balances } from '../domain/ledger'
 import { formatMinor } from '../domain/money'
 import { Banner, Button, Card, EmptyState, ListRow, Screen, Sheet } from '../components/ui'
 import { Money } from '../components/Money'
-import { applyConfigDoc } from '../state/state'
+import { applyConfigDoc, archiveChild } from '../state/state'
 import { sendConfig } from '../sync/publish'
 import type { ConfigDocs } from '../state/types'
 import { stampConfigDoc, useApp } from '../store/store'
@@ -100,6 +100,8 @@ export function ChildDetail({
   const [sheet, setSheet] = useState<QuickActionKind | null>(null)
   const [confirmingRemoval, setConfirmingRemoval] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [confirmingArchive, setConfirmingArchive] = useState(false)
+  const [archiving, setArchiving] = useState(false)
   // The stamped accounts doc, captured OUT of the dispatched updater so the
   // wire send happens after commit rather than inside a reducer — the same
   // pattern (and the same reasoning) as ChildSettings.tsx's
@@ -169,6 +171,77 @@ export function ChildDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.app, guardianSk, relay])
 
+  // Captured the same way as `pendingRevokeRef` above: set inside the
+  // dispatched updater (so `revokeDoc` — when there IS one — is stamped
+  // against the reducer's real `docHighWater`, not a stale render-time
+  // snapshot), drained by the effect below once the commit has landed.
+  // `revokeDoc` is `null` whenever the child had no paired device to revoke
+  // — see `removeChild`.
+  const pendingArchiveRef = useRef<{ revokeDoc: ConfigDocs['accounts'] | null } | null>(null)
+
+  // "Remove child" (v0.3): archives the child (state/state.ts#archiveChild)
+  // — never a deletion, see that function's own doc comment. If a device
+  // has ever paired (`pairedAt !== undefined`) and isn't already revoked,
+  // that device is ALSO revoked here, via the exact same `stampConfigDoc`/
+  // `applyConfigDoc` path `removeDevice` above uses — archiving must not
+  // leave a still-live device quietly talking to a child that has
+  // disappeared from every list. A child with no device (or one already
+  // revoked) is archived with no wire send at all.
+  function removeChild(): void {
+    if (guardianSk === null || archiving) return
+    setConfirmingArchive(false)
+    setArchiving(true)
+    const nowSec = Math.floor(Date.now() / 1000)
+    dispatch({
+      type: 'updateApp',
+      update: (a) => {
+        const target = a.children.find((c) => c.pubkey === childPubkey)
+        const alreadyRevoked = a.docs.accounts.revoked?.[childPubkey] !== undefined
+        let next = a
+        let revokeDoc: ConfigDocs['accounts'] | null = null
+        if (target !== undefined && target.pairedAt !== undefined && !alreadyRevoked) {
+          revokeDoc = stampConfigDoc(
+            next,
+            'accounts',
+            { accounts: next.docs.accounts.accounts, revoked: { ...(next.docs.accounts.revoked ?? {}), [childPubkey]: nowSec } },
+            nowSec,
+          )
+          next = applyConfigDoc(next, 'accounts', revokeDoc)
+        }
+        next = archiveChild(next, childPubkey, nowSec)
+        pendingArchiveRef.current = { revokeDoc }
+        return next
+      },
+    })
+  }
+
+  // Drains `removeChild`'s pending result after commit — sends the revoke
+  // doc over the FULL roster exactly like `removeDevice`'s own effect
+  // (same reasoning: the device just revoked must receive it too) when one
+  // was stamped, then returns to Home either way (an archived child is off
+  // Home's own list from this same commit onward, so there is nothing left
+  // here worth staying on).
+  useEffect(() => {
+    const pending = pendingArchiveRef.current
+    if (pending === null || guardianSk === null) return
+    pendingArchiveRef.current = null
+    const { revokeDoc } = pending
+    if (revokeDoc === null) {
+      onBack()
+      return
+    }
+    const sk = guardianSk
+    const roster = stateRef.current.app.children
+    const nowSec = Math.floor(Date.now() / 1000)
+    void (async () => {
+      for (const c of roster) {
+        await sendConfig('accounts', revokeDoc, { selfSk: sk, peerPk: c.pubkey, relay, storage: window.localStorage, nowSec }).catch(() => {})
+      }
+      onBack()
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.app, guardianSk, relay])
+
   const child = app.children.find((c) => c.pubkey === childPubkey) ?? null
   if (child === null) {
     return (
@@ -184,6 +257,8 @@ export function ChildDetail({
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const nowSec = Math.floor(Date.now() / 1000)
   const feedGroups = buildFeed(childEntries, accounts, app.acks, tz, nowSec)
+  const revokedDeviceAt = app.docs.accounts.revoked?.[childPubkey]
+  const hasPairedDevice = child.pairedAt !== undefined
 
   return (
     <Screen title={child.name} onBack={onBack} action={<Button variant="quiet" onClick={onSettings}>Settings</Button>}>
@@ -241,13 +316,19 @@ export function ChildDetail({
 
       <ChildActivity rows={childActivityRows(app, childPubkey)} />
 
-      {app.docs.accounts.revoked?.[childPubkey] === undefined ? (
+      {/* Device actions. `hasPairedDevice` (v0.3) is the one thing
+          `revoked?.[childPubkey] === undefined` alone never told this
+          screen: without it, "Remove this device" used to show for a child
+          that had never paired anything at all — a revoke with nothing
+          real to revoke. */}
+      {revokedDeviceAt === undefined && hasPairedDevice && (
         <Card>
           <Button variant="quiet" block disabled={guardianSk === null || removing} onClick={() => setConfirmingRemoval(true)}>
             {removing ? 'Removing…' : 'Remove this device'}
           </Button>
         </Card>
-      ) : (
+      )}
+      {revokedDeviceAt !== undefined && (
         <Card>
           {/* "Pair a device" in Settings can't actually
               re-pair this child — it would reuse the same (now revoked)
@@ -256,6 +337,15 @@ export function ChildDetail({
           <p className="muted">This device has been removed. Use "Add a child" on the family home screen to set them up on a new one.</p>
         </Card>
       )}
+
+      {/* "Remove child" (v0.3): always offered for an active child, whether
+          or not a device was ever paired or has since been revoked — this
+          is the one action that was previously missing entirely. */}
+      <Card>
+        <Button variant="danger" block disabled={guardianSk === null || archiving} onClick={() => setConfirmingArchive(true)}>
+          {archiving ? 'Removing…' : 'Remove child'}
+        </Button>
+      </Card>
 
       {confirmingRemoval && (
         <Sheet title="Remove this device" onClose={() => setConfirmingRemoval(false)}>
@@ -268,6 +358,24 @@ export function ChildDetail({
               Remove
             </Button>
             <Button variant="quiet" block onClick={() => setConfirmingRemoval(false)}>
+              Cancel
+            </Button>
+          </div>
+        </Sheet>
+      )}
+
+      {confirmingArchive && (
+        <Sheet title="Remove child" onClose={() => setConfirmingArchive(false)}>
+          <p>
+            {child.name} will disappear from Home and the rest of your family list. Their money history stays exactly as
+            it is — it always has to add up.
+            {revokedDeviceAt === undefined && hasPairedDevice ? ' Their device will be removed too.' : ''}
+          </p>
+          <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+            <Button variant="danger" block onClick={removeChild}>
+              Remove {child.name}
+            </Button>
+            <Button variant="quiet" block onClick={() => setConfirmingArchive(false)}>
               Cancel
             </Button>
           </div>

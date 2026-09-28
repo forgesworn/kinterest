@@ -42,7 +42,7 @@ import {
   type SnapshotPayload,
 } from '../wire/payloads'
 import { loadState, saveState } from '../state/persist'
-import { activeChildren, addEntry, applyConfigDoc, configRecipients, recordGrantResult, recordRequestDecision, requestAlreadyDecided, upsertRequest, claimPeriodGrantable } from '../state/state'
+import { activeChildren, addEntry, applyConfigDoc, configRecipients, markChildPaired, recordGrantResult, recordRequestDecision, requestAlreadyDecided, upsertRequest, claimPeriodGrantable } from '../state/state'
 import type { AppState, ConfigDocs, Role } from '../state/types'
 import { reanchorConfigs } from '../domain/reanchor'
 import { creditEntry, debitEntry } from '../domain/ledger'
@@ -1473,8 +1473,21 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
         // ceremony that was just answered (the `endPairing` dispatch just
         // below clears it, but only takes effect on the NEXT render; this
         // read happens first, synchronously, in the same tick).
+        const childIndex = pairingRef.current?.childIndex
         const childName = pairingRef.current?.childName
         if (childName !== undefined) fireNotification('guardian', { type: 'pairAnswered', childName })
+        // v0.3: durably records that a device has now claimed this child's
+        // identity at least once (`ChildProfile.pairedAt`) — the signal
+        // ChildDetail.tsx uses to decide whether "Remove this device"/"Pair
+        // their phone" makes sense at all. Read from `pairingRef`, not from
+        // `answered` itself: the offer's `recipientPk` is the CLAIMING
+        // device's own ephemeral key, never the derived child identity this
+        // marks (see pairing.ts's own header on why those two must never be
+        // conflated).
+        if (childIndex !== undefined) {
+          const nowSec = Math.floor(Date.now() / 1000)
+          dispatch({ type: 'updateApp', update: (a) => markChildPaired(a, childIndex, nowSec) })
+        }
         dispatch({ type: 'endPairing' })
       },
       nowSec: () => Math.floor(Date.now() / 1000),

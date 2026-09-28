@@ -78,13 +78,44 @@ export function retainInnerEvents(m: Record<string, NostrEvent>): Record<string,
 }
 
 /** The children this guardian still syncs with — every child whose device has
- *  not been revoked (v0.2 spec §4.5). Pure. A revoked child stays in
- *  `state.children` (its history is still the family's) and stays in the
- *  accounts doc's `revoked` map forever; it is simply no longer a peer. */
+ *  not been revoked (v0.2 spec §4.5) AND who has not been archived (v0.3:
+ *  "Remove child"). Pure. A revoked child stays in `state.children` (its
+ *  history is still the family's) and stays in the accounts doc's `revoked`
+ *  map forever; an archived one stays too, marked on its own `ChildProfile`
+ *  — either way it is simply no longer a peer. */
 export function activeChildren(app: AppState): ChildProfile[] {
   const revoked = app.docs.accounts.revoked
-  if (revoked === undefined) return app.children
-  return app.children.filter((c) => revoked[c.pubkey] === undefined)
+  return app.children.filter((c) => c.archived === undefined && (revoked === undefined || revoked[c.pubkey] === undefined))
+}
+
+/** Archives a child (v0.3's "Remove child" — never a deletion, since money
+ *  must always add up): hides them from Home and the other family lists
+ *  while keeping their `ChildProfile` and every ledger entry untouched.
+ *  Idempotent — an already-archived child, or a `childPubkey` naming no
+ *  child at all, is a no-op (same `AppState` reference back). Pure.
+ *
+ *  Revoking a paired device is a SEPARATE step the caller takes itself
+ *  (screens/ChildDetail.tsx, the same `stampConfigDoc`/`applyConfigDoc` path
+ *  "Remove this device" already uses) — this function only ever touches
+ *  `state.children`. */
+export function archiveChild(app: AppState, childPubkey: string, nowSec: number): AppState {
+  const child = app.children.find((c) => c.pubkey === childPubkey)
+  if (child === undefined || child.archived !== undefined) return app
+  return { ...app, children: app.children.map((c) => (c.pubkey === childPubkey ? { ...c, archived: nowSec } : c)) }
+}
+
+/** Records that a child's device has completed the pairing ceremony
+ *  (v0.3) — set once, right when a `pair.claim` is successfully answered
+ *  (store.tsx's `onPairClaimAnswered`). Looked up by `childIndex`, not
+ *  pubkey: that is all a `PairingSessionState` knows about which child the
+ *  ceremony was opened for. Idempotent — a child already marked paired, or a
+ *  `childIndex` naming no child, is a no-op (same `AppState` reference
+ *  back). Never cleared by a later revoke: this answers "has a device EVER
+ *  paired", which a revocation does not undo. Pure. */
+export function markChildPaired(app: AppState, childIndex: number, nowSec: number): AppState {
+  const child = app.children.find((c) => c.index === childIndex)
+  if (child === undefined || child.pairedAt !== undefined) return app
+  return { ...app, children: app.children.map((c) => (c.index === childIndex ? { ...c, pairedAt: nowSec } : c)) }
 }
 
 /** The pubkeys a CONFIG doc should be sent to (each gets its own view) — every

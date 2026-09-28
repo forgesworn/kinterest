@@ -4,7 +4,7 @@ import type { AllowanceConfig } from '../domain/allowance'
 import type { InterestConfig } from '../domain/interest'
 import type { Account } from '../domain/types'
 import type { StoredRequest } from '../state/types'
-import { approxTotal, nextDates, pendingRequestCount } from './Home'
+import { approxTotal, familyChildren, nextDates, pendingRequestCount } from './Home'
 
 // Pure-logic coverage only — Home.tsx's screen half is a thin `useApp()` +
 // render shell, matching PairDevice.tsx's own split (pairingRemainingSecs
@@ -127,5 +127,26 @@ describe('pendingRequestCount', () => {
 
   it('empty requests -> 0', () => {
     expect(pendingRequestCount([], CHILD)).toBe(0)
+  })
+})
+
+describe('familyChildren', () => {
+  it('excludes an archived child', () => {
+    const children = [
+      { pubkey: 'a'.repeat(64), name: 'Alex', index: 0 },
+      { pubkey: 'b'.repeat(64), name: 'Bo', index: 1, archived: 500 },
+    ]
+    expect(familyChildren(children)).toEqual([{ pubkey: 'a'.repeat(64), name: 'Alex', index: 0 }])
+  })
+
+  it('keeps a child whose device was revoked but who is not archived', () => {
+    // Revoking a device and removing a child are two separate actions —
+    // see familyChildren's own doc comment.
+    const children = [{ pubkey: 'a'.repeat(64), name: 'Alex', index: 0 }]
+    expect(familyChildren(children)).toHaveLength(1)
+  })
+
+  it('empty family -> empty list', () => {
+    expect(familyChildren([])).toEqual([])
   })
 })

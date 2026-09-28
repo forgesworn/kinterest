@@ -4,7 +4,7 @@ import { creditEntry, reverseEntry } from '../domain/ledger'
 import { buildGrantPayload, buildRequestPayload, type GrantPayload, type RequestPayload } from '../wire/payloads'
 import type { ChoreTick } from '../domain/chores'
 import type { AuditResult } from '../domain/audit'
-import { emptyState, addEntry, applyConfigDoc, mergeConfigDoc, upsertRequest, recordRequestDecision, requestAlreadyDecided, recordGrantResult, recordTick, recordAudit, retainInnerEvents, activeChildren, configRecipients, selfRevokedAt, MAX_RETAINED_CHILD_SIG } from './state'
+import { emptyState, addEntry, applyConfigDoc, mergeConfigDoc, upsertRequest, recordRequestDecision, requestAlreadyDecided, recordGrantResult, recordTick, recordAudit, retainInnerEvents, activeChildren, archiveChild, markChildPaired, configRecipients, selfRevokedAt, MAX_RETAINED_CHILD_SIG } from './state'
 
 const entry = (id: string, overrides: Partial<Entry> = {}): Entry => ({
   v: 1,
@@ -454,6 +454,51 @@ describe('activeChildren', () => {
   it('keeps every child when nothing is revoked', () => {
     const s = { ...emptyState(), children: [{ pubkey: 'a'.repeat(64), name: 'Alex', index: 0 }] }
     expect(activeChildren(s)).toHaveLength(1)
+  })
+
+  it('excludes an archived child', () => {
+    const s = { ...emptyState(), children: [{ pubkey: 'a'.repeat(64), name: 'Alex', index: 0, archived: 500 }] }
+    expect(activeChildren(s)).toHaveLength(0)
+  })
+})
+
+describe('archiveChild', () => {
+  const PK = 'a'.repeat(64)
+  const roster = () => ({ ...emptyState(), children: [{ pubkey: PK, name: 'Alex', index: 0 }] })
+
+  it('marks the named child archived, at the given time', () => {
+    const next = archiveChild(roster(), PK, 500)
+    expect(next.children).toEqual([{ pubkey: PK, name: 'Alex', index: 0, archived: 500 }])
+  })
+
+  it('is a no-op — same reference back — for an unknown pubkey', () => {
+    const s = roster()
+    expect(archiveChild(s, 'b'.repeat(64), 500)).toBe(s)
+  })
+
+  it('is a no-op — same reference back — for an already-archived child', () => {
+    const s = archiveChild(roster(), PK, 500)
+    expect(archiveChild(s, PK, 999)).toBe(s)
+  })
+})
+
+describe('markChildPaired', () => {
+  const PK = 'a'.repeat(64)
+  const roster = () => ({ ...emptyState(), children: [{ pubkey: PK, name: 'Alex', index: 0 }] })
+
+  it('stamps pairedAt on the child at the given index', () => {
+    const next = markChildPaired(roster(), 0, 700)
+    expect(next.children).toEqual([{ pubkey: PK, name: 'Alex', index: 0, pairedAt: 700 }])
+  })
+
+  it('is a no-op — same reference back — for an unknown index', () => {
+    const s = roster()
+    expect(markChildPaired(s, 1, 700)).toBe(s)
+  })
+
+  it('is a no-op — same reference back — once already paired (never overwritten by a later re-pair)', () => {
+    const s = markChildPaired(roster(), 0, 700)
+    expect(markChildPaired(s, 0, 999)).toBe(s)
   })
 })
 

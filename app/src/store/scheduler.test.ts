@@ -388,6 +388,33 @@ describe('runSchedulers: revoked children', () => {
   })
 })
 
+describe('runSchedulers: archived children', () => {
+  it('accrues nothing — allowance, interest or claims — for an archived child', () => {
+    const base = baseState()
+    const state = baseState({
+      children: [{ pubkey: CHILD, name: 'Sam', index: 0, archived: 1 }],
+      docs: {
+        ...base.docs,
+        allowance: { v: 1, issuedAt: 1, configs: [allowanceCfg, { ...allowanceCfg, choresGate: true }] },
+        interest: { v: 1, issuedAt: 1, configs: [interestCfg] },
+      },
+      entries: [{ v: 1, id: 'seed', child: CHILD, kind: 'credit', createdAt: 1, author: 'guardian', legs: [{ account: ACCOUNT_ID, currency: 'GBP', amountMinor: 10_000 }] }],
+    })
+    expect(runSchedulers(state, NOW)).toEqual({ entries: [], claims: [] })
+  })
+
+  it('a non-archived child with the same pubkey shape is unaffected', () => {
+    // Belt and braces: an unarchived ChildProfile for CHILD must not
+    // accidentally trip the archived filter.
+    const base = baseState()
+    const state = baseState({
+      children: [{ pubkey: CHILD, name: 'Sam', index: 0 }],
+      docs: { ...base.docs, allowance: { v: 1, issuedAt: 1, configs: [allowanceCfg] } },
+    })
+    expect(runSchedulers(state, NOW).entries.length).toBeGreaterThan(0)
+  })
+})
+
 describe('an interest rate moved off 0 never back-pays past periods', () => {
   const account = { id: ACCOUNT_ID, child: CHILD, name: 'Pocket money', currency: 'GBP', custody: 'ledger' as const }
   const t = (y: number, m: number, d: number, h = 8) => Date.UTC(y, m - 1, d, h) / 1000
