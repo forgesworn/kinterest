@@ -1,3 +1,5 @@
+import { isBackupReference, type BackupReference } from '../identity/familyBackup'
+import { isChildDevice, type ChildDevice } from '../identity/devices'
 // Wire payload shapes for every inner event kind (see ./kinds.ts) plus the
 // builders that construct them and the TOTAL parsers that validate untrusted
 // JSON back into them. "Total" (forgesworn kit convention): every parseX
@@ -51,6 +53,7 @@ function isRelayUrlArray(x: unknown): x is string[] {
 export interface EntryPayload {
   v: 1
   entry: Entry
+  correction?: Entry[]
 }
 
 export function buildEntryPayload(entry: Entry): EntryPayload {
@@ -65,6 +68,12 @@ export function parseEntryPayload(json: unknown): EntryPayload | null {
     assertEntry(json.entry as Entry)
   } catch {
     return null
+  }
+  if (json.correction !== undefined) {
+    if (!Array.isArray(json.correction) || json.correction.length < 1 || json.correction.length > 2) return null
+    try { json.correction.forEach(e => assertEntry(e as Entry)) } catch { return null }
+    if (JSON.stringify(json.entry) !== JSON.stringify(json.correction[0])) return null
+    return { v: 1, entry: json.entry as Entry, correction: json.correction as Entry[] }
   }
   return { v: 1, entry: json.entry as Entry }
 }
@@ -152,7 +161,7 @@ function isChoreShape(x: unknown): x is Chore {
 // ConfigDocs, i.e. one of each kind).
 function isConfigDocShape(docKind: ConfigDocKind, doc: unknown): boolean {
   if (!isPlainObject(doc) || doc.v !== 1 || !isNonNegSafeInt(doc.issuedAt)) return false
-  if (docKind === 'accounts') return Array.isArray(doc.accounts) && doc.accounts.every(isAccountShape)
+  if (docKind === 'accounts') return Array.isArray(doc.accounts) && doc.accounts.every(isAccountShape) && (doc.devices === undefined || (Array.isArray(doc.devices) && doc.devices.every(isChildDevice))) && (doc.deviceRevision === undefined || isNonNegSafeInt(doc.deviceRevision))
   if (docKind === 'allowance') return Array.isArray(doc.configs) && doc.configs.every(isAllowanceConfigShape)
   if (docKind === 'interest') return Array.isArray(doc.configs) && doc.configs.every(isInterestConfigShape)
   return Array.isArray(doc.chores) && doc.chores.every(isChoreShape) // docKind === 'chores'
@@ -343,7 +352,7 @@ function parseRootAttestation(x: unknown): RootAttestation | undefined {
   // consumer's `verifyRootAttestation` needs every NIP-01 field present to
   // have anything to check. Then the two root-specific narrowings.
   if (!isNostrEventShape(ev)) return undefined
-  if (ev.kind !== KIND_SIGNET_AUTH) return undefined
+  if (![KIND_SIGNET_AUTH, 30078].includes(ev.kind)) return undefined
   if (!HEX64.test(ev.id) || !HEX64.test(ev.pubkey)) return undefined
   return { pubkey: x.pubkey, authEvent: ev }
 }
@@ -354,6 +363,8 @@ export interface SnapshotState {
   children: ChildProfile[]
   entries: Entry[]
   docs: ConfigDocs
+  ticks?: ChoreTick[]
+  audits?: AuditResult[]
 }
 
 export interface SnapshotPayload {
@@ -429,6 +440,8 @@ export function parseSnapshotPayload(json: unknown): SnapshotPayload | null {
       children: state.children as ChildProfile[],
       entries: entries as Entry[],
       docs: state.docs as ConfigDocs,
+      ...(Array.isArray(state.ticks) ? { ticks: state.ticks.filter(isChoreTickShape) } : {}),
+      ...(Array.isArray(state.audits) ? { audits: state.audits.filter(isAuditResultShape) } : {}),
     },
     ...(root !== undefined ? { root } : {}),
     ...(grants !== undefined ? { grants } : {}),
@@ -511,6 +524,7 @@ export function parseChildSigPayload(json: unknown): ChildSigPayload | null {
 // --- PairOfferPayload ---------------------------------------------------------------
 
 export interface PairOfferPayload {
+  device?: ChildDevice
   v: 1
   childSkHex: string
   childIndex: number
@@ -527,7 +541,7 @@ export function buildPairOfferPayload(fields: Omit<PairOfferPayload, 'v'>): Pair
 
 export function parsePairOfferPayload(json: unknown): PairOfferPayload | null {
   if (!isPlainObject(json) || json.v !== 1) return null
-  if (typeof json.childSkHex !== 'string' || !HEX64.test(json.childSkHex)) return null
+  if (json.device !== undefined ? !isChildDevice(json.device) || json.childSkHex !== '' : typeof json.childSkHex !== 'string' || !HEX64.test(json.childSkHex)) return null
   if (!isNonNegSafeInt(json.childIndex)) return null
   if (!isNonEmptyString(json.name)) return null
   if (!isRelayUrlArray(json.relays)) return null
@@ -536,7 +550,8 @@ export function parsePairOfferPayload(json: unknown): PairOfferPayload | null {
   const root = parseRootAttestation(json.root)
   return {
     v: 1,
-    childSkHex: json.childSkHex,
+    ...(json.device ? { device: json.device as ChildDevice } : {}),
+    childSkHex: json.childSkHex as string,
     childIndex: json.childIndex,
     name: json.name,
     relays: json.relays,
@@ -573,6 +588,10 @@ export function parsePairOfferPayload(json: unknown): PairOfferPayload | null {
  * guardian key. See spec §1.6.
  */
 export interface VaultPayload {
+  checkpoint?: BackupReference
+  devices?: ChildDevice[]
+  deviceRevision?: number
+  revokedDevices?: Record<string, number>
   v: 1
   type: 'vault'
   /** BIP-39 family mnemonic. */
@@ -639,7 +658,7 @@ export function parseVaultPayload(json: unknown): VaultPayload | null {
   // right kind, and hex keys.
   const authEvent = json.authEvent
   if (!isNostrEventShape(authEvent)) return null
-  if (authEvent.kind !== KIND_SIGNET_AUTH) return null
+  if (![KIND_SIGNET_AUTH, 30078].includes(authEvent.kind)) return null
   if (!HEX64.test(authEvent.id) || !HEX64.test(authEvent.pubkey)) return null
 
   let children: ChildProfile[] = []
@@ -654,7 +673,15 @@ export function parseVaultPayload(json: unknown): VaultPayload | null {
     relays = json.relays
   }
 
+  if (json.checkpoint !== undefined && !isBackupReference(json.checkpoint)) return null
+  if (json.devices !== undefined && (!Array.isArray(json.devices) || !json.devices.every(isChildDevice))) return null
+  if (json.deviceRevision !== undefined && !isNonNegSafeInt(json.deviceRevision)) return null
+  if (json.revokedDevices !== undefined && (!isPlainObject(json.revokedDevices) || !Object.entries(json.revokedDevices).every(([pk, ts]) => HEX64.test(pk) && isNonNegSafeInt(ts)))) return null
   return {
+    ...(json.checkpoint ? { checkpoint: json.checkpoint as BackupReference } : {}),
+    ...(json.devices ? { devices: json.devices as ChildDevice[] } : {}),
+    ...(json.deviceRevision !== undefined ? { deviceRevision: json.deviceRevision as number } : {}),
+    ...(json.revokedDevices ? { revokedDevices: json.revokedDevices as Record<string, number> } : {}),
     v: 1,
     type: 'vault',
     mnemonic: json.mnemonic,

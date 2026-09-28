@@ -1,3 +1,4 @@
+import { publishFamilyBackup, familyCheckpointSignature } from '../identity/familyBackup'
 import { guardianNeedsSignet } from '../identity/guardianAccess'
 import { dataStorage } from '../platform/dataStorage'
 // One child's settings: accounts, pocket money (allowance), interest,
@@ -922,6 +923,8 @@ function formatBackupDate(unixSec: number): string {
 function FamilyRootCard(): ReactElement {
   const { state, dispatch, relay, guardianSk } = useApp()
   const app = state.app
+  const latestApp = useRef(app)
+  latestApp.current = app
   const model = rootCardModel(guardianNeedsSignet(app) ? null : app.root, formatBackupDate)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
@@ -951,7 +954,7 @@ function FamilyRootCard(): ReactElement {
       const { connectSignetRoot } = await import('../identity/signetConnect')
       const connected = await connectSignetRoot({ guardianPk: pk, relayUrls: app.relays })
       if (connected === null) {
-        setError('We could not confirm that sign-in — please try again.')
+        setError('My Signet did not confirm this family authorisation. Update My Signet and approve the Kinterest family request, then try again.')
         return
       }
       if (!connected.full) {
@@ -977,13 +980,20 @@ function FamilyRootCard(): ReactElement {
   async function backUp(root: SignetRoot, mnemonic: string, nowSec: number): Promise<boolean> {
     if (guardianSk === null) return false
     try {
-      const { sent } = await sendVault(
-        vaultPayloadFor(vaultRosterOf(app), mnemonic, guardianFromMnemonic(mnemonic).pk, root.authEvent, nowSec),
-        { selfSk: guardianSk, peerPk: root.pubkey, relay, storage: dataStorage(), nowSec },
-      )
-      // The store's automatic re-seal reads this, so a manual backup counts.
-      if (sent) writeVaultPublished(vaultRosterSignature(vaultRosterOf(app)))
-      return sent
+      // An offline job is immutable. Finish it, then save this checkpoint.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const current = latestApp.current
+        const { sent, signature } = await publishFamilyBackup(current,
+          vaultPayloadFor(vaultRosterOf(current), mnemonic, guardianFromMnemonic(mnemonic).pk, root.authEvent, nowSec),
+          { selfSk: guardianSk, rootPk: root.pubkey, relay, storage: dataStorage(), nowSec },
+        )
+        if (!sent) return false
+        if (signature === familyCheckpointSignature(latestApp.current)) {
+          writeVaultPublished(vaultRosterSignature(vaultRosterOf(latestApp.current)))
+          return true
+        }
+      }
+      return false
     } catch {
       return false
     }
@@ -1216,7 +1226,7 @@ export function ChildSettings({
       />
 
       <h2 className="settings-section-heading">Device</h2>
-      {app.docs.accounts.revoked?.[childPubkey] === undefined ? (
+      {child.signet || app.docs.accounts.revoked?.[childPubkey] === undefined ? (
         <Card>
           <Button variant="quiet" block onClick={onPairDevice}>
             Pair a device

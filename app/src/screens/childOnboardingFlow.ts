@@ -17,7 +17,7 @@ import { isValidPinFormat } from '../identity/pinLock'
 
 export type ChildOnboardingStep =
   | { kind: 'scan'; error: string | null }
-  | { kind: 'waiting'; guardianPk: string; token: string; relays: string[] }
+  | { kind: 'waiting'; guardianPk: string; token: string; relays: string[]; childPk?: string }
   | { kind: 'setPin' }
   | { kind: 'confirmPin'; firstPin: string }
   | { kind: 'pinMismatch' }
@@ -49,7 +49,7 @@ export function submitScannedText(text: string): ChildOnboardingStep {
   if (parsed === null) {
     return { kind: 'scan', error: "That code didn't look right — try scanning again, or check what you pasted." }
   }
-  return { kind: 'waiting', guardianPk: parsed.guardianPk, token: parsed.token, relays: parsed.relays }
+  return { kind: 'waiting', guardianPk: parsed.guardianPk, token: parsed.token, relays: parsed.relays, ...(parsed.childPk ? { childPk: parsed.childPk } : {}) }
 }
 
 /** The guardian's PAIR_OFFER arrived and was accepted — only meaningful from

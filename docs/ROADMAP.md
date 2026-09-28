@@ -1,262 +1,82 @@
 # Kinterest — roadmap & status
 
-*Last updated 2026-09-28. Still in the dogfooding phase, not yet launched.*
+*Updated 2026-09-28. The first-release build is in validation; it has not been launched.*
 
-## Where it is now (v0.2)
+## First release
 
-v0.2.0 (Android versionCode 2), ~1230 tests green, built on the v1 base (domain
-core, wire/identity/pairing, parent mode, child mode, Android shell — all still
-in place and unchanged in kind):
+- **My Signet family authority.** Guardians approve a dedicated Kinterest
+  family request in My Signet. Generic login signatures cannot authorise a
+  family. Existing unbound families must connect their saved family identity.
+  A saved binding supports ordinary offline use.
+- **Stable child identities.** Children are selected from the guardian's My
+  Signet dependants, with a displayed approval for the selected child and
+  device. Only the approved name and optional contact avatar are shared.
+  Existing children are explicitly linked without rewriting their money or
+  history. The child's identity key stays in My Signet.
+- **Shared parent phone.** Parents can act as a child to make asks, tick chores
+  and record audits. Returning to parent screens requires a separate parent
+  PIN. Reloading or backgrounding locks parent access. Setting or resetting
+  that PIN requires a fresh, dedicated My Signet approval.
+- **Confirmed pairing and replacement.** Parent and child compare a code
+  bound to the claiming phone before the parent approves it. Each phone has
+  its own operational key. Replacing a lost phone or forgotten child PIN
+  revokes the old phone credentials and keeps the same child, pots and history.
+- **Append-only corrections.** A parent supplies a reason and reverses an
+  original entry, optionally replacing its amounts in the same operation.
+  The original remains visible. Corrected scheduled periods stay closed;
+  corrections do not silently recalculate previous interest or deposit match.
+  Offline correction delivery intents survive restart.
+- **Complete family backup.** Encrypted checkpoints include phone-less
+  children's money, history, settings, device grants and revocations, activity
+  and pending corrections. My Signet recovery opens the family manifest;
+  checkpoint chunks are decrypted locally with the recovered family key.
+  A relay must acknowledge every chunk before its manifest is published there.
+  An incomplete latest checkpoint is an error, never an automatic rollback.
+- **Exact money and scoped sync.** Amounts are integer minor units. Child
+  devices receive their own data. Signed snapshots, paged reconciliation,
+  durable offline delivery and scheduled allowance, interest and match remain
+  supported. Parent Home shows money held for the family by currency.
+- **Durable storage.** IndexedDB migration commits before deleting old copies.
+  Failed writes retain data for retry and show a banner; one browser tab owns
+  the writer. Android uses native relay sockets while its service is running.
 
-1. **Signet root of recovery and authority.** Signing in with My Signet
-   (`nostrconnect://` NIP-46) is now the guardian's login. The family mnemonic
-   is generated silently behind it — never a 12-word ceremony on this path —
-   and stays viewable from Settings as an optional, advanced fallback either
-   way. A vault carrying the mnemonic, the active children, and the family's
-   relays is gift-wrapped to the Signet pubkey on those relays, so recovery is
-   "sign in again", not "type the words back in". Full design: internal
-   design spec 2026-09-02-signet-rooted-family-design §1.
-2. **Resilient sync.** Each child sends an hourly heartbeat (`status`); the
-   guardian reconciles it against its own checkpoint for that child — a peer
-   that's behind gets a fresh snapshot, a peer that's ahead gets a paged,
-   signature-verified resync (10 pages, rate-limited per peer), so neither
-   side ever trusts unsigned JSON handed to it by another peer or a relay.
-   The offline outbox flushes every 60 s and on the browser's `online` event.
-3. **Final key-vs-UI lock policy.** The screen locks fast (60 s hidden in the
-   shell, immediately on a native stop or a real browser `pagehide`); the
-   child's signing key survives longer (30 minutes) so sync and notifications
-   keep working while the screen is locked. Native `onStop` locks the UI but
-   never wipes the key; only an actual page teardown wipes on the spot.
-4. **Android notifications and relay service.** Adaptive launcher icon (ember
-   jar); a `dataSync` foreground service keeps sync alive with the Activity
-   backgrounded (Android 15's 6-hour cap handled via `onTimeout`, restarted
-   when the app is brought back to the foreground); two notification
-   channels ("Keeping in touch" for the persistent row, "Family updates" for
-   tappable ones); `POST_NOTIFICATIONS` requested on first resume; the Signet
-   picker's external links (`mysignet.app`, `lite.mysignet.app`,
-   `nostrconnect:`, `bunker:`, `signet:`) hand off outside the WebView.
-5. **Guardian and child gaps closed.** A guardian-side activity viewer for
-   ticks and audit results; dismissed asks show "Not now" rather than a
-   stale "no reply yet"; coin-jar accounts reject a currency with no real
-   coins; a new "Remove this device" action revokes a child's device and
-   signs it out to an `Unpaired` screen.
+These features require the corresponding My Signet build with explicit
+Kinterest family, dependant and parent-presence approvals. Earlier My Signet
+builds cannot complete those ceremonies.
 
-**On the phone:** build and install with `android/scripts/build-apk.sh` then
-`adb install -r android/app/build/outputs/apk/debug/app-debug.apk`; launch
-directly with `adb shell am start -n org.forgesworn.kinjar/.MainActivity`.
-Release builds sign with `android/keystore.properties` when it's present
-(owned by the deploy owner), and fall back to debug signing when it isn't.
+## Validation still required
 
-## v0.3 — Signet mandatory for guardian onboarding (2026-09-28)
+The previous build passed the live ask-notification check: tapping a background
+notification opened Approvals, and dismissing it did not move money. The new
+first-release build needs its own device round for My Signet approvals, parent
+lock and child mode, pairing/replacement, correction sync and full recovery.
+The shared test phones are currently unavailable; installation and testing wait
+for the owner's go-ahead. The six-hour Android service test is deferred.
 
-Welcome now offers only "Sign in with My Signet" (fresh family) and "I
-already have a family on My Signet" (recovery), plus the child's own "Join
-your family" — the standalone recovery-phrase setup ceremony is no longer
-reachable from onboarding at all, and a Signet sign-in that doesn't finish no
-longer falls back to showing the mnemonic (it never asks a guardian to write
-anything down). Recovery words remain a fallback, but only *inside* Signet
-recovery: when "I already have a family on My Signet" ends in no backup
-found, too many candidates, or conflicting backups, the screen offers "Use
-recovery words instead" — worded as optional, since a guardian may never have
-looked at Settings' "Show recovery words". Submitting words there binds the
-restored family back to that same signed-in Signet session (same
-connect-and-seal path "Sign in with My Signet" itself uses), not to a bare
-phrase root. A family already set up on a phrase keeps working unchanged —
-this only changes onboarding. "Connect My Signet" from Settings (existing,
-`FamilyRootCard`) already lets a guardian who set up before this change add a
-Signet root afterwards, so nothing new was needed there.
+Build locally with `android/scripts/build-apk.sh`. The debug APK is at
+`android/app/build/outputs/apk/debug/app-debug.apk`. The Android package remains
+`org.forgesworn.kinjar` so updates retain existing installations.
 
-Also in v0.3 (all on `main`, tested on two real phones):
+## Supported limits
 
-- **Renamed** to Kinterest everywhere users see it (package id and sync tag
-  unchanged for now).
-- **Privacy:** snapshots *and* settings sent to a child carry only that
-  child's own data.
-- **Sync:** children can ask for a catch-up themselves; snapshots carry the
-  child's GRANTs; superseded settings records are pruned.
-- **Backup:** the My Signet vault re-seals when children or relays change and
-  republishes weekly, without ever touching the signer.
-- **Money:** deposit match is paid; "leave it 4 more weeks and it's £X"
-  projection; pay-day and timezone edits never skip or double-pay.
-- **Parent UX:** remove (archive) a child, "Pair their phone" on the child's
-  page, first-pot prompt after adding a child, ask notifications open
-  Approvals.
-- **Web:** optional browser notifications; PIN lockout harder to reset.
-- `SECURITY.md` describes the threat model and known limits.
+- One guardian installation per family; retire the old installation after
+  recovery. Concurrent guardian histories are not merged.
+- Checkpoints are bounded to 4 MiB, split into at most 256 encrypted chunks.
+  Oversize or incomplete backups fail visibly. Keep the existing phone until
+  a current backup succeeds; relay storage is not guaranteed permanent.
+- Local ledger data remains plaintext in IndexedDB. PINs protect ordinary app
+  use and signing keys, not a compromised device or browser developer tools.
+- Updates are forward-only. Older builds do not understand the current
+  identity, backup and correction formats.
+- Background notifications are best-effort; Android can stop the service or
+  process. The ledger itself remains unbounded by policy.
 
-## Reliability and storage follow-up (2026-09-28)
+## Later
 
-- Parents require a verified My Signet family binding. Cancelled setup or
-  word recovery stays unfinished; existing unbound families must connect
-  their saved identity before using parent screens, sync or scheduled payments.
-  Ordinary offline use works with the saved binding. Disconnecting into a
-  recovery-words-only family is no longer offered.
-- Parent Home shows exact money held for the family by currency. It counts
-  ledger pots, including outstanding archived balances; physical cash and
-  external accounts are held elsewhere and excluded.
-- The ledger, sealed outbox, quarantine and recovery publish records use
-  IndexedDB. First migration commits before legacy copies are removed; a
-  failed read blocks startup, failed writes retain data for retry, and one
-  browser tab owns the writer at a time.
-- Android relay sockets use native threads, with the existing web code still
-  decrypting and verifying every event. Reloading the page clears old sockets;
-  service timeout and task removal stop background transport.
-- Recovery tracks config recency per child, avoiding a newer sibling's view
-  pinning another child's stale settings. Healed grant history uses the
-  guardian's decision timestamp.
-- Empty match periods are checkpointed without creating zero-value ledger
-  entries. A config or ledger change invalidates the checkpoint, including
-  historical deposits arriving during recovery.
-- PIN lockouts report their actual countdown instead of describing a deferred
-  attempt as a wrong PIN. A vault sent by a later outbox flush is recognised
-  without sealing another copy.
-- The My Signet locked family-add prompt bug is reported upstream.
+IOUs and cross-family lending, multiple guardians, biometric unlock and
+shared identity-kit extraction are outside this release. Handling a guardian
+clock that pins configuration recency in the future still needs a separate
+policy decision. An unchanged deferred entry can trigger bounded catch-up
+requests every 30 minutes.
 
-The live Android ask check passed: a background parent received a notification,
-tapping it opened Approvals, and dismissing it returned to the child without
-moving money. The Android six-hour service timeout still needs a dedicated
-device test.
-Dependant identities, acting as the child, PIN recovery policy and correction
-semantics still require the design session before implementation.
-
-## v0.2.1 — audit fixes (2026-09-27)
-
-A full-code audit (domain, protocol, UI, Android shell) found 5 critical and
-~25 major bugs; all criticals and majors are fixed on `main` with regression
-tests. The ones that mattered most:
-
-- **Money.** Editing an allowance/interest config (account, cadence, pause,
-  gate) no longer re-pays history — the schedule re-anchors on every save
-  (`domain/reanchor.ts`). Interest is computed on the balance *as of* each due
-  day, so a deposit never earns back-interest for empty weeks. Denied/dismissed
-  gated periods are never auto-paid. Revoked children stop accruing.
-- **Ledger integrity.** `assertEntry` now enforces ledger invariants (signs,
-  transfers balance, safe integers); `assertEntryAgainst` binds every leg to
-  the entry's own child and currency. The guardian refuses child-authored
-  ENTRY events outright (live and resync); ticks/audits are bound to the
-  signing child.
-- **Revocation.** Saving any accounts change no longer un-revokes a removed
-  device; a revoked child can't be "re-paired" onto its revoked key.
-- **Sync.** Heartbeat heals a child behind on config; timing-related refusals
-  (clock skew, doc not yet arrived) are deferred, not dropped; relays
-  reconnect with backoff and on `online`.
-- **Recovery.** Vault recovery waits for in-flight unwraps, reports "too
-  many candidates" distinctly, and refuses to silently pick between backups
-  naming different guardians ("conflicting backups" — the tell of a planted
-  vault from a phished Signet login).
-- **Android.** Family updates are hidden from the lock screen (`family.v3`,
-  VISIBILITY_SECRET); relay service restarts after the Android 15 timeout and
-  stops when the task is removed; `configChanges` stops a theme/font change
-  wiping the child's session; `FLAG_SECURE` blanks the recents thumbnail.
-- **UI.** Settle-up can record £0; transfer/allowance/interest dead-ends fixed;
-  bad-currency asks can't break Approvals; recovery words are normalised;
-  "Add a child" is reachable after the first child.
-
-**Hardware round needed** (turnkey checks, on a test phone):
-`android/scripts/build-apk.sh && adb install -r android/app/build/outputs/apk/debug/app-debug.apk`, then:
-1. Lock screen — "Show sensitive content" ON, lock, trigger an ask. Expect
-   nothing on the lock screen; `adb shell dumpsys notification | grep -A3 family.v3`
-   shows `mLockscreenVisibility=-1`.
-2. Swipe from recents → `adb shell dumpsys activity services org.forgesworn.kinjar`
-   shows no RelayService; the ongoing notification is gone.
-3. Unlocked as child, `adb shell cmd uimode night yes` → no PIN prompt, no reload.
-4. App switcher → blank thumbnail; screenshots blocked.
-5. Service timeout (if `adb shell cmd activity service-timeout-now` exists) →
-   background, reopen → "Keeping in touch" notification returns.
-
-## Next — in priority order
-
-**Direction:** children become My Signet dependants from day one. The main
-experience is *acting as the child* on the parent's phone (building the habit
-together); when a child gets their own phone it pairs to their existing
-identity, with nothing to migrate. Lock policy to be revisited (biometrics,
-parent as "bank manager" for a lost PIN).
-
-
-1. **Adopt Signet dependant pairing (was "Signet-side issuance").** The
-    Signet side now exists: signet-app `main` ships "Pair an app as this
-    dependant" (`bunker://…?dependant=` QR), and the sibling app
-    Kindependence already uses it — the child phone scans, connects over
-    NIP-46, makes a local device-only phone key, and has the guardian's
-    Signet sign a device statement; the child's real key never leaves
-    Signet. Adopting it would retire the app-generated family mnemonic,
-    and also fix lost-phone re-homing (the lost-phone item), the pairing-QR race
-    (the pairing-QR race), and give children the Signet identity the IOU idea needs.
-    **Open design question (Fable session): shared kit or not.**
-    Recommendation to start from:
-    - Signet half (scan, NIP-46 dependant session, phone key, device
-      statement) → a dependant mode in `signet-login`, next to Signet's
-      own pairing screen.
-    - Family-link format (guardian-of / dependant-of statements, device
-      statement — today a generic kind 30078) → a written protocol with
-      fixtures; check `brood-kit` (family policy + guardian approvals)
-      before making a new kit.
-    - Extract from Kindependence's working code *when Kinterest adopts
-      it* (two real consumers), not ahead of time.
-    - Shared layer = pairing + identity only; each app decides which
-      actions need the guardian's live Signet. Kinterest's asks, ticks and
-      heartbeat must work on the phone key alone.
-    - Consumers: Kindependence now, Kinterest next, likely Kinclude and
-      Kintrinsic.
-2. **Replace a lost phone without losing the child's money.** Re-pairing now
-   correctly uses a new index (new key), but the child's accounts stay keyed to
-   the old pubkey. Needs a guardian-authored "move child" config op that
-   re-homes accounts, chores and history to the new device key. *Design
-   question — decide before building.*
-3. **Pairing-QR race.** Anyone who photographs the offer QR within its 600 s
-   window can claim first and receive the child's key. Bind the claim to the
-   SAS confirmation before the key is released, or shorten + single-use.
-4. **Root attestation that a generic login can't produce.** Today the
-   attestation is an ordinary Signet login event over a public challenge, so
-   any site the guardian logs into with Signet could obtain one (the `origin`
-   tag is written by the requesting site, so it proves nothing). Needs a
-   Signet-side change: a dedicated, displayed "authorise this family root"
-   signature. Conflicting-backup detection is the stopgap. Fold into the
-   Signet-side brief.
-5. **Root retraction on children.** A guardian who changes/disconnects Signet
-   leaves the old root pinned on every child.
-6. **Corrections.** `reverseEntry` has no UI; reversed scheduled payouts are
-   never re-paid (latent), and a reversed older interest period stays closed
-   once a later payout exists. Decide semantics, add a guardian "correct this"
-   path.
-7. **Storage.** IndexedDB migration and settings-record pruning are done.
-   Failed writes show a banner and are retried without discarding live data.
-
-## Later — ideas captured
-
-- **IOUs: who owes whom.** A child (or parent) notes money lent or owed —
-  most often a cash-flow "you get this one, I'll get the next", sometimes a
-  real loan. Works inside one family (sibling ↔ sibling) and between two
-  families using the app (a child owes a friend's child). The counterparty
-  is picked from **My Signet contacts**, so the note names a real person
-  rather than free text, and can be shown to them to confirm. Open
-  questions to settle before design:
-  - A private note on my side only, or a shared record both sides sign?
-  - Does settling an IOU move money in the ledger, or just mark it paid
-    (cash may change hands outside the app)?
-  - Cross-family: what does the other child's guardian see, and does a
-    child need their parent's OK to lend or borrow?
-  - Interest on loans — never, or parent-set?
-  - Depends on children having a Signet identity (see Signet-side
-    dependant issuance) for contacts to work on the child's side.
-- **Phone-less children.** A parent manages a young child's pots on their own
-  phone and can switch into the child's view via the child's My Signet
-  dependant (like switching persona). Depends on adopting Signet dependant
-  pairing (item 12, above).
-
-Remaining design decisions include adjustment semantics, correction/reversal
-policy, and handling a guardian clock that pinned a child's config high-water
-in the future. An unchanged deferred entry can still trigger bounded catch-up
-requests every 30 minutes; that policy belongs with the clock-reset design.
-
-## Known limitations to keep in mind while dogfooding
-
-- **IndexedDB holds each device's ledger in plaintext.** The PIN gates *signing*, not *reading*; per-child UI filtering is
-  a convention, not a security boundary. Snapshots and configs are now
-  scoped to each child, but a device that ran an older build may still hold
-  sibling data until it is replaced (see SECURITY.md).
-- The ledger remains unbounded. Superseded CONFIG records are pruned, but a
-  long-lived family can still approach the device's storage budget.
-- Background notification delivery is best-effort: native relay sockets
-  improve transport while the foreground service is active, but Android can
-  stop the service or process. The six-hour timeout test remains outstanding.
+See [SECURITY.md](../SECURITY.md) for the threat model and accepted limits.

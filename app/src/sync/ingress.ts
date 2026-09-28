@@ -1,3 +1,5 @@
+import { appendCorrection } from '../domain/corrections'
+import { childForDevice } from '../identity/devices'
 // Inbound wire dispatch — every gift-wrapped event this app receives is
 // unwrapped and folded into `AppState` here. See
 // internal plan 2026-08-10-wire-identity-pairing, Task 7.
@@ -183,6 +185,12 @@ export function toStoredEvent(ev: NostrEvent): NostrEvent {
 export function applySnapshot(state: AppState, snapshot: PairingSnapshotPayload, nowSec: number = Infinity): AppState {
   let next = state
   for (const entry of snapshot.state.entries) {
+    if (entry.correctionGroup) {
+      if (entry.reverses) {
+        try { next = { ...next, entries: appendCorrection(next.entries, snapshot.state.docs.accounts.accounts, snapshot.state.entries.filter(e => e.correctionGroup === entry.correctionGroup).sort((a, b) => Number(!a.reverses) - Number(!b.reverses))) } } catch { /* refuse the whole correction */ }
+      }
+      continue
+    }
     // One refused entry (e.g. a second reversal) skips only itself.
     try {
       next = addEntry(next, entry)
@@ -196,6 +204,14 @@ export function applySnapshot(state: AppState, snapshot: PairingSnapshotPayload,
     next = applyConfigDoc(next, kind, doc)
   }
   next = { ...next, children: mergeChildren(next.children, snapshot.state.children) }
+  // The guardian authenticates historical activity in its scoped snapshot.
+  const own = state.role === 'child' ? state.self.pubkey : null
+  for (const tick of snapshot.state.ticks ?? []) {
+    if ((!own || next.docs.chores.chores.some(c => c.id === tick.chore && c.child === own)) && !next.ticks.some(t => t.id === tick.id)) next = { ...next, ticks: [...next.ticks, tick] }
+  }
+  for (const audit of snapshot.state.audits ?? []) {
+    if ((!own || audit.child === own) && next.docs.accounts.accounts.some(a => a.id === audit.account && a.child === audit.child) && !next.audits.some(a => a.id === audit.id)) next = { ...next, audits: [...next.audits, audit] }
+  }
   return next
 }
 
@@ -445,7 +461,7 @@ export interface DispatchResult {
 function ackAuthorised(state: AppState, entryId: string, authorPk: string): boolean {
   if (state.role === 'guardian') {
     const entry = state.entries.find((e) => e.id === entryId)
-    return entry !== undefined && entry.child === authorPk
+    return entry !== undefined && (entry.child === authorPk || entry.child === childForDevice(state, authorPk))
   }
   return state.guardianPubkey !== null && authorPk === state.guardianPubkey
 }
@@ -455,18 +471,20 @@ function childSigBinding(
   state: AppState,
   parsed: NonNullable<ReturnType<typeof parseChildSigPayload>>,
   authorPk: string,
+  historicalChild?: string,
 ): 'ok' | 'refused' | 'deferred' {
   if (authorPk === state.guardianPubkey) return 'refused'
+  const child = historicalChild ?? childForDevice(state, authorPk) ?? authorPk
   if (parsed.kind === 'tick') {
     const chore = state.docs.chores.chores.find((c) => c.id === parsed.tick.chore)
     if (chore === undefined) return 'deferred'
-    return chore.child === authorPk ? 'ok' : 'refused'
+    return chore.child === child ? 'ok' : 'refused'
   }
   const audit = parsed.audit
-  if (audit.child !== authorPk || audit.author !== 'child') return 'refused'
+  if (audit.child !== child || audit.author !== 'child') return 'refused'
   const account = state.docs.accounts.accounts.find((a) => a.id === audit.account)
   if (account === undefined) return 'deferred'
-  return account.child === authorPk ? 'ok' : 'refused'
+  return account.child === child ? 'ok' : 'refused'
 }
 
 /**
@@ -492,7 +510,9 @@ export function dispatchInner(
   payload: unknown,
   authorPk: string,
   nowSec: number,
+  historicalChild?: string,
 ): DispatchResult {
+  if (!historicalChild && state.role === 'guardian' && authorPk !== state.guardianPubkey && state.children.some(c => c.signet) && childForDevice(state, authorPk) === null) return { state, effects: [] }
   let next = state
   const effects: Effect[] = []
   // `nowSec` gates the CONFIG/SNAPSHOT issuedAt clamp below (see
@@ -532,7 +552,7 @@ export function dispatchInner(
       // whenever it arrives, and deferring it meant decrypting and refusing
       // the same wrap on every reconnect for ever: it is refused outright.
       const accounts = state.docs.accounts.accounts
-      if (parsed.entry.legs.some((leg) => !accounts.some((a) => a.id === leg.account))) {
+      if ((parsed.correction ?? [parsed.entry]).some(e => e.legs.some((leg) => !accounts.some((a) => a.id === leg.account))) || (parsed.correction && !state.entries.some(e => e.id === parsed.entry.reverses))) {
         return { state, effects: [], deferred: true }
       }
       try {
@@ -546,7 +566,7 @@ export function dispatchInner(
         // a second reversal of one entry: refused like any other bad entry
         // (no fold, no ack), never thrown out of this total dispatcher.
         try {
-          next = addEntry(next, parsed.entry)
+          next = parsed.correction ? { ...next, entries: appendCorrection(next.entries, accounts, parsed.correction) } : addEntry(next, parsed.entry)
         } catch {
           break
         }
@@ -617,7 +637,7 @@ export function dispatchInner(
           // `before` gates it to the TRANSITION: a device already revoked in
           // its own state must not re-wipe on every later policy doc.
           if (parsed.docKind === 'accounts' && state.role === 'child' && state.self.pubkey !== null) {
-            const selfPk = state.self.pubkey
+            const selfPk = state.self.devicePk ?? state.self.pubkey
             const wasRevoked = before.docs.accounts.revoked?.[selfPk] !== undefined
             const revokedAt = next.docs.accounts.revoked?.[selfPk]
             if (!wasRevoked && revokedAt !== undefined) effects.push({ type: 'revoked', at: revokedAt })
@@ -662,7 +682,7 @@ export function dispatchInner(
         // a sibling's account (resetting its reconcile baseline). A chore or
         // account we do not know yet is deferred, as for ENTRY: the policy
         // doc may simply not have arrived.
-        const binding = childSigBinding(state, parsed, authorPk)
+        const binding = childSigBinding(state, parsed, authorPk, historicalChild)
         if (binding === 'deferred') return { state, effects: [], deferred: true }
         if (binding === 'refused') break
         if (parsed.kind === 'tick') {
@@ -717,7 +737,7 @@ export function dispatchInner(
     }
     case KIND_REQUEST: {
       const parsed = parseRequestPayload(payload)
-      if (parsed !== null) effects.push({ type: 'request', payload: parsed, authorPk })
+      if (parsed !== null && (parsed.op === 'pair.claim' || parsed.child === authorPk || childForDevice(state, authorPk) === parsed.child)) effects.push({ type: 'request', payload: parsed, authorPk })
       break
     }
     case KIND_GRANT: {

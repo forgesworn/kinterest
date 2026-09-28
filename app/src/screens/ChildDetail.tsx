@@ -1,3 +1,8 @@
+import { CorrectEntry } from './CorrectEntry'
+import type { Entry } from '../domain/types'
+import { devicesForChild } from '../identity/devices'
+import { useParentMode } from './ParentAccess'
+import { SignetChildPicker } from './SignetChildPicker'
 import { dataStorage } from '../platform/dataStorage'
 // One child's accounts, unified feed, and quick-action entry points. See
 // internal plan 2026-08-11-parent-mode, Task 4.
@@ -104,6 +109,9 @@ export function ChildDetail({
 }): ReactElement {
   const { state, dispatch, relay, guardianSk } = useApp()
   const { app } = state
+  const parentMode = useParentMode()
+  const [linkingSignet, setLinkingSignet] = useState(false)
+  const [correcting, setCorrecting] = useState<Entry | null>(null)
   const [sheet, setSheet] = useState<QuickActionKind | null>(null)
   const [confirmingRemoval, setConfirmingRemoval] = useState(false)
   const [removing, setRemoving] = useState(false)
@@ -140,7 +148,7 @@ export function ChildDetail({
         const doc = stampConfigDoc(
           a,
           'accounts',
-          { accounts: a.docs.accounts.accounts, revoked: { ...(a.docs.accounts.revoked ?? {}), [childPubkey]: nowSec } },
+          { accounts: a.docs.accounts.accounts, revoked: { ...(a.docs.accounts.revoked ?? {}), [childPubkey]: nowSec, ...Object.fromEntries((a.docs.accounts.devices ?? []).filter(d => d.child === childPubkey && d.role === 'child-phone').map(d => [d.devicePk, nowSec])) } },
           nowSec,
         )
         pendingRevokeRef.current = doc
@@ -165,13 +173,13 @@ export function ChildDetail({
     if (doc === null || guardianSk === null) return
     pendingRevokeRef.current = null
     const sk = guardianSk
-    const roster = stateRef.current.app.children
+    const roster = stateRef.current.app.children.flatMap(c => devicesForChild(stateRef.current.app, c.pubkey, true).map(pubkey => ({ pubkey })))
     const nowSec = Math.floor(Date.now() / 1000)
     void (async () => {
       for (const c of roster) {
         // Sequential, not Promise.all-ed — every send shares one outbox; see
         // store.tsx#publishConfigDoc's own send loop.
-        await sendConfig('accounts', doc, { selfSk: sk, peerPk: c.pubkey, relay, storage: dataStorage(), nowSec }).catch(() => {})
+        await sendConfig('accounts', doc, { selfSk: sk, peerPk: c.pubkey, relay, storage: dataStorage(), nowSec, directPeer: true }).catch(() => {})
       }
       onBack()
     })()
@@ -206,11 +214,11 @@ export function ChildDetail({
         const alreadyRevoked = a.docs.accounts.revoked?.[childPubkey] !== undefined
         let next = a
         let revokeDoc: ConfigDocs['accounts'] | null = null
-        if (hasPairedDevice(a, childPubkey) && !alreadyRevoked) {
+        if ((!alreadyRevoked || (a.docs.accounts.devices ?? []).some(d => d.child === childPubkey && a.docs.accounts.revoked?.[d.devicePk] === undefined))) {
           revokeDoc = stampConfigDoc(
             next,
             'accounts',
-            { accounts: next.docs.accounts.accounts, revoked: { ...(next.docs.accounts.revoked ?? {}), [childPubkey]: nowSec } },
+            { accounts: next.docs.accounts.accounts, revoked: { ...(next.docs.accounts.revoked ?? {}), [childPubkey]: nowSec, ...Object.fromEntries((a.docs.accounts.devices ?? []).filter(d => d.child === childPubkey).map(d => [d.devicePk, nowSec])) } },
             nowSec,
           )
           next = applyConfigDoc(next, 'accounts', revokeDoc)
@@ -238,11 +246,11 @@ export function ChildDetail({
       return
     }
     const sk = guardianSk
-    const roster = stateRef.current.app.children
+    const roster = stateRef.current.app.children.flatMap(c => devicesForChild(stateRef.current.app, c.pubkey, true).map(pubkey => ({ pubkey })))
     const nowSec = Math.floor(Date.now() / 1000)
     void (async () => {
       for (const c of roster) {
-        await sendConfig('accounts', revokeDoc, { selfSk: sk, peerPk: c.pubkey, relay, storage: dataStorage(), nowSec }).catch(() => {})
+        await sendConfig('accounts', revokeDoc, { selfSk: sk, peerPk: c.pubkey, relay, storage: dataStorage(), nowSec, directPeer: true }).catch(() => {})
       }
       onBack()
     })()
@@ -264,7 +272,7 @@ export function ChildDetail({
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const nowSec = Math.floor(Date.now() / 1000)
   const feedGroups = buildFeed(childEntries, accounts, app.acks, tz, nowSec)
-  const revokedDeviceAt = app.docs.accounts.revoked?.[childPubkey]
+  const revokedDeviceAt = child.signet ? undefined : app.docs.accounts.revoked?.[childPubkey]
   // `hasPairedDevice` (state.ts) rather than `child.pairedAt !== undefined`
   // directly: a child paired on a build older than `pairedAt` itself would
   // otherwise be judged never-paired here, wrongly hiding "Remove this
@@ -273,6 +281,8 @@ export function ChildDetail({
   // evidence is seen, but this still covers a state object that arrived some
   // other way, e.g. mid-session before the next reload).
   const deviceEverPaired = hasPairedDevice(app, childPubkey)
+
+  if (linkingSignet) return <><Button variant="quiet" onClick={() => setLinkingSignet(false)}>Back</Button><SignetChildPicker legacyChild={childPubkey} onDone={() => setLinkingSignet(false)} /></>
 
   return (
     <Screen title={child.name} onBack={onBack} action={<Button variant="quiet" onClick={onSettings}>Settings</Button>}>
@@ -291,6 +301,11 @@ export function ChildDetail({
         )}
       </Card>
 
+      {child.signet ? <>
+        <Button variant="quiet" block onClick={onPairDevice}>Pair or replace their phone</Button>
+        <Button variant="primary" block onClick={() => parentMode?.actAs(childPubkey)}>Act as {child.name}</Button>
+        <Button variant="quiet" block onClick={() => setLinkingSignet(true)}>Reconnect this child’s view on this phone</Button>
+      </> : <Button variant="primary" block onClick={() => setLinkingSignet(true)}>Link this child to My Signet</Button>}
       <div className="quick-actions-row">
         {QUICK_ACTION_LABELS.map(({ kind, label }) => (
           <Button key={kind} variant="quiet" onClick={() => setSheet(kind)}>
@@ -309,6 +324,7 @@ export function ChildDetail({
               {group.rows.map((row) => (
                 <ListRow
                   key={row.id}
+                  onClick={() => { const e = app.entries.find(e => e.id === row.id); if (e && !e.reverses && !e.correctionOf && !app.entries.some(r => r.reverses === e.id)) setCorrecting(e) }}
                   leading={
                     <span className="feed-icon" aria-hidden="true">
                       {row.icon}
@@ -328,6 +344,7 @@ export function ChildDetail({
         ))
       )}
 
+      {correcting && <CorrectEntry entry={correcting} onClose={() => setCorrecting(null)} />}
       <ChildActivity rows={childActivityRows(app, childPubkey)} />
 
       {/* Device actions. `hasPairedDevice` (v0.3) is the one thing

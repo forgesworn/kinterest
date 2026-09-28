@@ -65,6 +65,8 @@ export interface PublishOpts {
   /** This device's durable outbox storage (see module header). */
   storage: StorageLike
   nowSec: number
+  /** Used only to notify a retired device of its revocation. */
+  directPeer?: boolean
 }
 
 export interface PublishResult {
@@ -74,9 +76,11 @@ export interface PublishResult {
    *  / every relay rejected / timed out) and will be retried on a future
    *  flush — airplane mode must never read as `sent: true`. */
   sent: boolean
+  /** Every recipient either accepted delivery or has a durable queued copy. */
+  queued?: boolean
 }
 
-async function send(innerKind: number, payload: unknown, opts: PublishOpts): Promise<PublishResult> {
+async function sendOne(innerKind: number, payload: unknown, opts: PublishOpts): Promise<PublishResult> {
   const event = wrapFor({
     innerKind,
     payload,
@@ -91,14 +95,31 @@ async function send(innerKind: number, payload: unknown, opts: PublishOpts): Pro
     // a failure used to lose it without a trace. Publish it directly instead;
     // `sent` then says whether it got out, and a caller that cares can retry.
     const result = await opts.relay.publish(event).catch(() => 'rejected' as const)
-    return { event, sent: result === 'accepted' }
+    return { event, sent: result === 'accepted', queued:false }
   }
   // Commit the offline queue before publishing; a failed write is retained
   // in memory and reported by the storage banner while relay delivery proceeds.
-  if (opts.storage instanceof IndexedDataStorage) await flushDataStorage(opts.storage)
+  const durable = !(opts.storage instanceof IndexedDataStorage) || await flushDataStorage(opts.storage)
   await flush(opts.relay, opts.nowSec, opts.storage)
   const stillQueued = outboxEvents(opts.storage).some((e) => e.id === event.id)
-  return { event, sent: !stillQueued }
+  return { event, sent: !stillQueued, queued: stillQueued && durable }
+}
+
+async function send(innerKind: number, payload: unknown, opts: PublishOpts): Promise<PublishResult> {
+  const peers = opts.directPeer ? [opts.peerPk] : opts.relay.family?.recipients(opts.peerPk) ?? [opts.peerPk]
+  if (peers.length === 0) throw new Error('No authorised device for this child')
+  let result: PublishResult | undefined
+  let allSent = true, allDelivered = true
+  for (const peerPk of peers) {
+    result = await sendOne(innerKind, payload, { ...opts, peerPk })
+    allSent &&= result.sent
+    allDelivered &&= result.sent || result.queued === true
+  }
+  return { event: result!.event, sent: allSent, queued: allDelivered }
+}
+
+export function sendCorrection(correction: Entry[], opts: PublishOpts): Promise<PublishResult> {
+  return send(KIND_ENTRY, { v: 1, entry: correction[0], correction }, opts)
 }
 
 export function sendEntry(entry: Entry, opts: PublishOpts): Promise<PublishResult> {
@@ -115,7 +136,7 @@ export function sendConfig<K extends ConfigDocKind>(
   doc: ConfigDocs[K],
   opts: PublishOpts,
 ): Promise<PublishResult> {
-  return send(KIND_CONFIG, buildConfigPayload(docKind, scopeDoc(docKind, doc, opts.peerPk)), opts)
+  return send(KIND_CONFIG, buildConfigPayload(docKind, scopeDoc(docKind, doc, opts.relay.family?.childForPeer(opts.peerPk) ?? opts.peerPk)), opts)
 }
 
 export function sendAck(entryId: string, opts: PublishOpts): Promise<PublishResult> {

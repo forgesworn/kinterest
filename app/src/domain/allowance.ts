@@ -1,3 +1,4 @@
+import { reopenedEntryIds } from './corrections'
 import { dayKey, dueDays, isoWeekKey, monthKeyOf } from './period'
 import { creditEntry, type EntryMeta } from './ledger'
 import type { Account, Entry } from './types'
@@ -33,7 +34,7 @@ export function allowanceDue(cfg: AllowanceConfig, existing: Entry[], nowSec: nu
     fromExclusive: cfg.startDay,
     toInclusive: today,
   })
-  const reversedIds = new Set(existing.map((e) => e.reverses).filter((r): r is string => r !== undefined))
+  const reversedIds = reopenedEntryIds(existing)
   const paid = new Set(
     existing
       .filter(

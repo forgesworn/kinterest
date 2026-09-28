@@ -1,3 +1,5 @@
+import { validDevice } from '../identity/devices'
+import { getPublicKey } from 'nostr-tools/pure'
 // QR content and the claim/offer handshake that pairs a child device to a
 // guardian. See internal plan 2026-08-10-wire-identity-pairing,
 // Task 6, and this task's brief for the exact interfaces.
@@ -46,12 +48,14 @@ const QR_PREFIX = 'kin-jar-pair:v1?'
 const HEX64 = /^[0-9a-f]{64}$/
 
 export interface PairQrOpts {
+  childPk?: string
   guardianPk: string
   relays: string[]
   token: string
 }
 
 export interface PairQrContent {
+  childPk?: string
   guardianPk: string
   relays: string[]
   token: string
@@ -64,6 +68,7 @@ export function qrContent(opts: PairQrOpts): string {
     `g=${opts.guardianPk}`,
     ...opts.relays.map((r) => `r=${encodeURIComponent(r)}`),
     `t=${opts.token}`,
+    ...(opts.childPk ? [`c=${opts.childPk}`] : []),
   ]
   return `${QR_PREFIX}${parts.join('&')}`
 }
@@ -85,7 +90,9 @@ export function parsePairQr(s: string): PairQrContent | null {
   if (guardianPk === null || !HEX64.test(guardianPk)) return null
   if (token === null || token.length === 0) return null
   if (relays.length === 0) return null
-  return { guardianPk, relays, token }
+  const childPk = params.get('c')
+  if (childPk !== null && !HEX64.test(childPk)) return null
+  return { guardianPk, relays, token, ...(childPk ? { childPk } : {}) }
 }
 
 // --- Child side: build the claim ----------------------------------------------
@@ -194,6 +201,7 @@ export interface AcceptedPairOffer {
    *  guardian identity). */
   guardianPk: string
   childSk: Uint8Array
+  ledgerChildPk?: string
   childIndex: number
   name: string
   relays: string[]
@@ -223,10 +231,19 @@ export interface AcceptedPairOffer {
  * still succeeds. An unverifiable decoration must never cost a family its
  * ability to pair a phone.
  */
-export function acceptPairOffer(offer: PairOfferPayload, sealAuthorPk: string): AcceptedPairOffer | null {
+export function acceptPairOffer(offer: PairOfferPayload, sealAuthorPk: string, deviceSk?: Uint8Array): AcceptedPairOffer | null {
   if (typeof sealAuthorPk !== 'string' || sealAuthorPk.length === 0) return null
   if (!isPlainObject(offer) || offer.v !== 1) return null
   let childSk: Uint8Array
+  if (offer.device) {
+    if (offer.snapshot.kind !== 'snapshot' || !deviceSk || !offer.root || offer.device.devicePk !== getPublicKey(deviceSk) ||
+        !verifyRootAttestation(offer.root.authEvent, offer.root.pubkey, sealAuthorPk) ||
+        !validDevice(offer.device, sealAuthorPk, offer.root.pubkey) ||
+        !offer.snapshot.state.children.some(c => c.pubkey === offer.device!.child && c.signet?.identityPk === offer.device!.identityPk)) return null
+    return { guardianPk: sealAuthorPk, childSk: Uint8Array.from(deviceSk), ledgerChildPk: offer.device.child,
+      childIndex: offer.childIndex, name: offer.name, relays: offer.relays, snapshot: offer.snapshot,
+      root: { kind: 'signet', ...offer.root, backedUpAt: null }, rootRejected: false }
+  }
   try {
     childSk = hexToBytes(offer.childSkHex)
   } catch {

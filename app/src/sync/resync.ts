@@ -1,3 +1,4 @@
+import { childForDevice, historicalChildForDevice } from '../identity/devices'
 // sync/resync.ts — the heartbeat comparison and the verified ingest of
 // replayed events (v0.2 spec §2.2 and §2.4).
 //
@@ -196,7 +197,7 @@ function authorAuthorised(state: AppState, ev: NostrEvent, peerPk: string): bool
     case KIND_GRANT:
       return state.guardianPubkey !== null && ev.pubkey === state.guardianPubkey
     case KIND_CHILD_SIG:
-      return ev.pubkey === peerPk && ev.pubkey !== state.guardianPubkey
+      return ev.pubkey !== state.guardianPubkey && (ev.pubkey === peerPk || (state.role === 'child' ? ev.pubkey === state.self.pubkey || historicalChildForDevice(state, ev.pubkey, ev.created_at) === state.self.pubkey : historicalChildForDevice(state, ev.pubkey, ev.created_at) === (childForDevice(state, peerPk) ?? peerPk)))
     case KIND_ENTRY:
       return state.guardianPubkey !== null && ev.pubkey === state.guardianPubkey
     default:
@@ -300,7 +301,7 @@ export function ingestResyncEvents(state: AppState, events: unknown[], opts: Ing
     }
 
     const base = next
-    const dispatched = parsedOk ? dispatchInner(base, ev.kind, payload, ev.pubkey, opts.nowSec) : null
+    const dispatched = parsedOk ? dispatchInner(base, ev.kind, payload, ev.pubkey, opts.nowSec, ev.kind === KIND_CHILD_SIG ? historicalChildForDevice(base, ev.pubkey, ev.created_at) ?? undefined : undefined) : null
     // A deferred refusal (a doc beyond the clock-skew window, an entry on an
     // account whose doc has not arrived) is about WHEN, not WHAT: leave the
     // event un-seen and un-stored so the next replay can fold it.
@@ -355,7 +356,8 @@ function lastEntryIdOf(entries: readonly { id: string; createdAt: number }[]): s
  * exactly what makes `compareStatus`'s count comparison meaningful.
  */
 export function statusFor(app: AppState, forChildPk: string | null, appVersion: string, nowSec: number): StatusPayload {
-  const entries = forChildPk === null ? app.entries : app.entries.filter((e) => e.child === forChildPk)
+  const child = forChildPk === null ? null : childForDevice(app, forChildPk) ?? forChildPk
+  const entries = child === null ? app.entries : app.entries.filter((e) => e.child === child)
   return buildStatusPayload({
     at: nowSec,
     lastEntryId: lastEntryIdOf(entries),
@@ -398,6 +400,7 @@ export function statusFor(app: AppState, forChildPk: string | null, appVersion: 
  * anything is left after this one.
  */
 export function resyncPage(app: AppState, since: string | null, page: number, forChildPk: string | null = null): ResyncReplyPayload {
+  if (forChildPk !== null) forChildPk = childForDevice(app, forChildPk) ?? forChildPk
   const ordered = Object.values(app.innerEvents)
     .filter((ev) => servesTo(app, ev, forChildPk))
     .sort(corpusOrder)
@@ -437,7 +440,7 @@ function corpusOrder(a: NostrEvent, b: NostrEvent): number {
 function servesTo(app: AppState, ev: NostrEvent, forChildPk: string | null): boolean {
   if (forChildPk === null) return true
   if (ev.kind === KIND_ENTRY) return entryChildOf(ev) === forChildPk
-  if (ev.kind === KIND_CHILD_SIG) return ev.pubkey === forChildPk
+  if (ev.kind === KIND_CHILD_SIG) return ev.pubkey === forChildPk || historicalChildForDevice(app, ev.pubkey, ev.created_at) === forChildPk
   if (ev.kind === KIND_GRANT) return grantChildOf(app, ev) === forChildPk
   // CONFIG is never served to a child: a guardian's corpus holds only docs
   // children replayed to it, each one child's own view, and a view with no
@@ -456,7 +459,7 @@ function grantChildOf(app: AppState, ev: NostrEvent): string | null {
     const grant = parseGrantPayload(JSON.parse(ev.content))
     if (grant === null) return null
     const record = app.requests.find((r) => r.request.reqId === grant.reqId)
-    return record !== undefined && record.authorPk === record.request.child ? record.authorPk : null
+    return record !== undefined && (record.authorPk === record.request.child || childForDevice(app, record.authorPk) === record.request.child) ? record.request.child : null
   } catch {
     return null
   }

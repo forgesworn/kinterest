@@ -1,3 +1,5 @@
+import { familyCheckpointSignature } from './familyBackup'
+import type { ChildDevice } from './devices'
 // Choosing which family backup to restore from (v0.2 spec §1.6, step 4).
 //
 // PURE: the relay subscription, the NIP-46 signer and the clock all stay in
@@ -9,6 +11,7 @@
 
 import type { NostrEvent } from 'nostr-tools/pure'
 import { buildVaultPayload, parseVaultPayload, type VaultPayload } from '../wire/payloads'
+import { verifyFamilyAuthority } from './familyAuthority'
 import { verifyRootAttestation } from './signetRoot'
 import { KIND_VAULT, MARKER_TAG, WRAP } from '../wire/kinds'
 import type { RelayLike } from '../wire/relayClient'
@@ -17,6 +20,7 @@ import type { AppState, ChildProfile } from '../state/types'
 /** One candidate as it comes off the wire: the decrypted inner payload plus
  *  the inner event's own `created_at` (unix SECONDS). */
 export interface VaultCandidate {
+  authorPk?: string
   payload: unknown
   /** unix SECONDS — the inner event's `created_at`. */
   createdAt: number
@@ -89,7 +93,7 @@ function authenticVaults(
   const out: VaultPayload[] = []
   for (const candidate of newestFirst) {
     const parsed = parseVaultPayload(candidate.payload)
-    if (parsed === null) continue
+    if (parsed === null || parsed.checkpoint && (candidate.authorPk !== parsed.guardianPk || !verifyFamilyAuthority(parsed.authEvent,signetPk,parsed.guardianPk))) continue
     // Before the mnemonic is so much as looked at: an unauthentic vault is
     // not a vault, whatever else about it is well formed.
     if (!verifyRootAttestation(parsed.authEvent, signetPk, parsed.guardianPk)) continue
@@ -101,7 +105,7 @@ function authenticVaults(
     }
     out.push(parsed)
   }
-  return out
+  return out.sort((a,b) => (b.checkpoint?.revision ?? 0) - (a.checkpoint?.revision ?? 0) || b.createdAt - a.createdAt)
 }
 
 /** One family among conflicting vaults: its guardian key and the unix
@@ -114,6 +118,7 @@ export interface ConflictingFamily {
 export type FamilyVaultPick =
   | { kind: 'vault'; vault: VaultPayload }
   | { kind: 'conflicting-vaults'; families: ConflictingFamily[] }
+  | { kind: 'conflicting-backups' }
   | { kind: 'none' }
 
 /**
@@ -145,7 +150,9 @@ export function pickFamilyVault(
     if (!families.some((f) => f.guardianPk === v.guardianPk)) families.push({ guardianPk: v.guardianPk, newestAt: v.createdAt })
   }
   if (families.length > 1) return { kind: 'conflicting-vaults', families }
-  return { kind: 'vault', vault: vaults[0]! }
+  const newest=vaults[0]!
+  if(newest.checkpoint && vaults.some(v=>v.checkpoint?.revision===newest.checkpoint!.revision && v.checkpoint.sha256!==newest.checkpoint!.sha256))return {kind:'conflicting-backups'}
+  return { kind: 'vault', vault: newest }
 }
 
 // --- publishing a vault ------------------------------------------------------
@@ -154,6 +161,9 @@ export function pickFamilyVault(
  *  taken as a narrow structural type so this module never depends on the
  *  whole of `AppState`. */
 export interface VaultRoster {
+  checkpointSignature?: string
+  devices?: ChildDevice[]
+  deviceRevision?: number
   children: ChildProfile[]
   relays: string[]
   /** `AppState['docs']['accounts']['revoked']` — child pubkey -> the unix
@@ -171,7 +181,7 @@ export interface VaultRoster {
  *  revocation map lives on the accounts DOC, not at the top of the state, so
  *  every call site that skipped this used to get an unfiltered roster. Pure. */
 export function vaultRosterOf(app: AppState): VaultRoster {
-  return { children: app.children, relays: app.relays, revoked: app.docs.accounts.revoked }
+  return { checkpointSignature: familyCheckpointSignature(app), children: app.children, relays: app.relays, revoked: app.docs.accounts.revoked, devices: app.docs.accounts.devices, deviceRevision: app.docs.accounts.deviceRevision }
 }
 
 /** The roster minus anyone revoked — what both the payload and the signature
@@ -180,7 +190,7 @@ export function vaultRosterOf(app: AppState): VaultRoster {
 function activeRoster(roster: VaultRoster): ChildProfile[] {
   const revoked = roster.revoked
   if (revoked === undefined) return roster.children
-  return roster.children.filter((c) => revoked[c.pubkey] === undefined)
+  return roster.children.filter((c) => c.signet !== undefined || revoked[c.pubkey] === undefined)
 }
 
 /** Pure. The vault payload for a family as it stands at `nowSec` (unix
@@ -213,6 +223,7 @@ export function vaultPayloadFor(
     guardianPk,
     authEvent,
     children: activeRoster(roster),
+    ...(roster.devices ? { devices: roster.devices, deviceRevision: roster.deviceRevision, revokedDevices: roster.revoked } : {}),
     relays: roster.relays,
     createdAt: nowSec,
   })
@@ -237,7 +248,7 @@ export function vaultRosterSignature(roster: VaultRoster): string {
   const children = activeRoster(roster)
     .map((c) => `${c.index}:${c.pubkey}:${c.name}`)
     .join('|')
-  return `${children}#${[...roster.relays].join('|')}`
+  return `${children}#${[...roster.relays].join('|')}` + (roster.devices ? `#${JSON.stringify({ devices: roster.devices, revoked: roster.revoked, revision: roster.deviceRevision })}` : '') + (roster.checkpointSignature ? `#${roster.checkpointSignature}` : '')
 }
 
 /**
@@ -310,6 +321,7 @@ export function vaultPublishDue(o: {
  *  three fields this hunt needs. Injected rather than imported so the bound
  *  can be tested without a signer. */
 export interface UnwrappedVault {
+  authorPk?: string
   innerKind: number
   payload: unknown
   /** unix SECONDS — the INNER event's `created_at`, which is what dates a
@@ -399,7 +411,7 @@ export async function collectVaultCandidates(o: CollectVaultCandidatesOpts): Pro
           .then(
             (unwrapped) => {
               if (!settled && unwrapped !== null && unwrapped.innerKind === KIND_VAULT) {
-                found.push({ payload: unwrapped.payload, createdAt: unwrapped.innerCreatedAt })
+                found.push({ payload: unwrapped.payload, createdAt: unwrapped.innerCreatedAt, authorPk: unwrapped.authorPk })
               }
             },
             () => {},

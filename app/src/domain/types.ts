@@ -46,6 +46,9 @@ export interface Entry {
   link?: string
   requestId?: string
   reverses?: string
+  /** An append-only correction; both rows share the reversal id as group. */
+  correctionOf?: string
+  correctionGroup?: string
   /** `adjustment` only: the audit this adjustment resolves (v1 §Entries:
    *  "requires the audit reference"). Optional on the type so entries stored
    *  or sent before it was set by every builder still parse. */

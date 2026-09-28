@@ -30,10 +30,13 @@ import {
   unlockWithPinResult,
 } from '../identity/pinLock'
 
+import { ChildOnboarding } from './ChildOnboarding'
+
 const MIN_PIN_LENGTH = 4
 
 export function ChildLock() {
   const { unlockChildSk } = useApp()
+  const [replacing, setReplacing] = useState(false)
   const [ready, setReady] = useState(false)
   const [hasPin, setHasPin] = useState(false)
   const [pin, setPin] = useState('')
@@ -100,6 +103,8 @@ export function ChildLock() {
     }
   }
 
+  if (replacing) return <ChildOnboarding onCancel={() => setReplacing(false)} />
+
   if (!ready) {
     return <Screen title="Kinterest">{null}</Screen>
   }
@@ -113,8 +118,9 @@ export function ChildLock() {
     return (
       <Screen title="Kinterest">
         <EmptyState title="This device needs pairing">
-          Ask whoever set this up to pair this device again.
+          Ask your parent to replace this phone’s pairing. Your pots and history stay with you.
         </EmptyState>
+        <Button block onClick={() => setReplacing(true)}>Pair this phone again</Button>
       </Screen>
     )
   }
@@ -139,6 +145,7 @@ export function ChildLock() {
       >
         {busy ? 'Checking…' : 'Unlock'}
       </Button>
+      <Button variant="quiet" block disabled={busy} onClick={() => setReplacing(true)}>Forgot your PIN? Pair this phone again with your parent</Button>
     </Screen>
   )
 }

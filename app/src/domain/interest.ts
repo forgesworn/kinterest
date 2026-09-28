@@ -1,3 +1,4 @@
+import { reopenedEntryIds } from './corrections'
 import { assertMinor, assertPositiveMinor } from './money'
 import { addDays, dayKey, dueDays, isoWeekKey, monthKeyOf, periodDaysFor } from './period'
 import { scheduledDueDay, type EntryMeta } from './ledger'
@@ -99,7 +100,7 @@ export function projectBalance(balanceMinor: number, rateBps: number, periods: n
 export function interestDue(cfg: InterestConfig, existing: Entry[], nowSec: number): string[] {
   if (cfg.paused) return []
   const today = dayKey(nowSec, cfg.tz)
-  const reversedIds = new Set(existing.map((e) => e.reverses).filter((r): r is string => r !== undefined))
+  const reversedIds = reopenedEntryIds(existing)
   const payouts = existing.filter(
     (e) =>
       e.kind === 'interest' &&
@@ -198,7 +199,7 @@ const NON_DEPOSIT_CATEGORIES: ReadonlySet<string> = new Set(['allowance', 'inter
  * Returns the positive amount deposited on `accountId`, or 0.
  */
 export function depositMinor(e: Entry, accountId: string, reversedIds: ReadonlySet<string>): number {
-  if (e.kind !== 'credit' || e.reverses !== undefined || reversedIds.has(e.id)) return 0
+  if (e.kind !== 'credit' || e.correctionOf !== undefined || e.reverses !== undefined || reversedIds.has(e.id)) return 0
   if (e.category !== undefined && NON_DEPOSIT_CATEGORIES.has(e.category)) return 0
   let sum = 0
   for (const l of e.legs) if (l.account === accountId && l.amountMinor > 0) sum += l.amountMinor
@@ -289,7 +290,7 @@ export function matchDue(cfg: InterestConfig, existing: Entry[], nowSec: number,
   if (cfg.paused) return []
   if (cfg.matchBps === undefined || !(cfg.matchBps > 0)) return []
   const today = dayKey(nowSec, cfg.tz)
-  const reversedIds = new Set(existing.map((e) => e.reverses).filter((r): r is string => r !== undefined))
+  const reversedIds = reopenedEntryIds(existing)
   const matches = existing.filter((e) => isMatchPayout(e, cfg.account, reversedIds))
   let fromExclusive = cfg.startDay
   for (const e of matches) {

@@ -1,3 +1,7 @@
+import { consumeToken } from '../pairing/tokens'
+import { parseRequestPayload } from '../wire/payloads'
+import { KIND_REQUEST } from '../wire/kinds'
+import { childForDevice } from '../identity/devices'
 // The guardian's multi-peer sync engine — see
 // internal plan 2026-08-11-parent-mode, Task 2, and the Plan 2
 // carry-forwards ("Engine is single-peer; guardian-with-N-children UI needs
@@ -87,6 +91,7 @@ import { sendAck } from './publish'
  *  `StartGuardianSyncOpts.getPairingSession` means "no ceremony in
  *  progress" — every `pair.claim` is then dropped unconditionally. */
 export interface PairingSession {
+  requireApproval?: boolean
   tokenStore: PairTokenStore
   mnemonic: string
   childIndex: number
@@ -141,6 +146,7 @@ export interface StartGuardianSyncOpts {
    *  consumed, identity bound) so the caller can register the new child,
    *  send the PAIR_OFFER, and close the pairing UI. Never called for a
    *  rejected/expired/mismatched claim. */
+  onPairClaimPending?: (claim: import('../wire/payloads').RequestPayload, authorPk: string) => void
   onPairClaimAnswered?: (answered: AnsweredPairClaim) => void
   /** Defaults to wall-clock seconds; tests inject a fixed/controlled clock. */
   nowSec?: () => number
@@ -174,7 +180,7 @@ export function startGuardianSync(opts: StartGuardianSyncOpts): () => void {
     const probe = unwrapFrom({ wrap, recipientSk: opts.selfSk })
     if (probe === null) return
 
-    if (memberPks.has(probe.authorPk)) {
+    if (memberPks.has(probe.authorPk) && (!opts.getState().children.some(c => c.signet) || childForDevice(opts.getState(), probe.authorPk) !== null)) {
       const authorPk = probe.authorPk
 
       // `effects` are computed once, eagerly, from whatever `getState()`
@@ -242,6 +248,14 @@ export function startGuardianSync(opts: StartGuardianSyncOpts): () => void {
     // device's pair.claim, and only while a pairing ceremony is open.
     const session = opts.getPairingSession?.() ?? null
     if (session === null) return
+    if (session.requireApproval) {
+      const claim = probe.innerKind === KIND_REQUEST ? parseRequestPayload(probe.payload) : null
+      if (claim?.op === 'pair.claim' && claim.child === probe.authorPk && claim.params.devicePk === probe.authorPk &&
+          typeof claim.params.token === 'string' && consumeToken(session.tokenStore.get(), claim.params.token, now)) {
+        opts.onPairClaimPending?.(claim, probe.authorPk)
+      }
+      return
+    }
 
     // Synchronous, no `await` before it — `handlePairClaimWrap` itself is
     // the carried single-use-atomicity obligation (see ingress.ts); calling

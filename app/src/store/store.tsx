@@ -1,3 +1,5 @@
+import { reopenedEntryIds } from '../domain/corrections'
+import { activeDevicePks, childForDevice, devicesForChild } from '../identity/devices'
 import { guardianNeedsSignet } from '../identity/guardianAccess'
 import { dataStorage, flushDataStorage, dataStorageHasError, onDataStorageError } from '../platform/dataStorage'
 // The guardian app's central store — see
@@ -51,7 +53,7 @@ import { creditEntry, debitEntry } from '../domain/ledger'
 import type { Entry } from '../domain/types'
 import { mintToken, type MintedToken } from '../pairing/tokens'
 import { loadFamilyMnemonic, vaultLoad } from '../identity/vault'
-import { sendAck, sendConfig, sendEntry, sendRequest, sendResyncReply, sendResyncRequest, sendSnapshot, sendStatus } from '../sync/publish'
+import { sendAck, sendConfig, sendCorrection, sendEntry, sendRequest, sendResyncReply, sendResyncRequest, sendSnapshot, sendStatus } from '../sync/publish'
 import { vaultRosterOf, vaultRosterSignature } from '../identity/signetVault'
 import { republishVaultIfDue } from './vaultRepublish'
 import { clearPin } from '../identity/pinLock'
@@ -228,7 +230,7 @@ export function rootAttestationOf(app: AppState): RootAttestation | undefined {
 export function notificationContextFor(role: 'guardian' | 'child', app: AppState): NotificationContext {
   return {
     role,
-    childNameFor: (pubkey) => app.children.find((c) => c.pubkey === pubkey)?.name ?? null,
+    childNameFor: (pubkey) => app.children.find((c) => c.pubkey === (childForDevice(app, pubkey) ?? pubkey))?.name ?? null,
     formatMoney: safeFormatMoney,
     currencyForAccount: (accountId) => app.docs.accounts.accounts.find((a) => a.id === accountId)?.currency ?? null,
   }
@@ -600,7 +602,7 @@ export const GRANT_ENTRY_GRACE_MS = 2 * 60_000
  *  under a fresh reqId/nonce (a child's own retry), which reqId-based
  *  dedupe alone (`requestAlreadyDecided`) would not catch. */
 function periodAlreadyPaid(entries: Entry[], accountId: string, periodKey: string): boolean {
-  const reversedIds = new Set(entries.map((e) => e.reverses).filter((r): r is string => r !== undefined))
+  const reversedIds = reopenedEntryIds(entries)
   return entries.some(
     (e) => e.category === 'allowance' && e.periodKey === periodKey && !reversedIds.has(e.id) && e.legs.some((l) => l.account === accountId),
   )
@@ -972,6 +974,7 @@ export interface AppContextValue {
    *  than state: setting it must not itself cause a re-render, and only one
    *  ceremony is ever open at a time (mirrors `PairingSessionState` being a
    *  single slot, not a list). */
+  onPairClaimPendingRef: React.MutableRefObject<((claim: RequestPayload, authorPk: string) => void) | null>
   onPairClaimAnsweredRef: React.MutableRefObject<((answered: AnsweredPairClaim) => void) | null>
 }
 
@@ -986,7 +989,7 @@ const MAX_LOGGED_EFFECTS = 50
  *  exactly one other place without this file racing it. */
 const APP_VERSION = '0.2.0'
 
-const AppContext = createContext<AppContextValue | null>(null)
+export const AppContext = createContext<AppContextValue | null>(null)
 
 export function useApp(): AppContextValue {
   const ctx = useContext(AppContext)
@@ -1017,6 +1020,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   // See AppContextValue's doc comment — set by whichever pairing screen is
   // currently mounted, read by the guardian-engine effect's
   // `onPairClaimAnswered` handler below.
+  const onPairClaimPendingRef = useRef<((claim: RequestPayload, authorPk: string) => void) | null>(null)
   const onPairClaimAnsweredRef = useRef<((answered: AnsweredPairClaim) => void) | null>(null)
 
   // Task E4 (v0.2 spec §3.1/§3.2) — the store's own onEffect glue for both
@@ -1156,16 +1160,42 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   // the engine's peer set is what `sync/multi.ts` membership-checks inbound
   // wraps against, so a revoked device's traffic is discarded before it can
   // touch state, with no new code path anywhere.
-  const peerPksKey = activeChildren(state.app)
-    .map((c) => c.pubkey)
-    .join(',')
+  const peerPksKey = activeDevicePks(state.app).sort().join(',')
   const relaysKey = state.app.relays.join(',')
 
   // ONE relay pool shared by the engine and scheduler effects below (rather
   // than each opening its own `SimplePool` against the same relay URLs) —
   // recreated only when the relay list itself changes.
-  const relay = useMemo<RelayLike>(() => makePool(state.app.relays), [relaysKey])
+  const relay = useMemo<RelayLike>(() => {
+    const pool = makePool(state.app.relays)
+    pool.family = {
+      childForPeer: peer => childForDevice(stateRef.current.app, peer) ?? stateRef.current.app.docs.accounts.devices?.find(d => d.devicePk === peer)?.child ?? peer,
+      recipients: peer => stateRef.current.app.children.some(c => c.pubkey === peer && c.signet)
+        ? devicesForChild(stateRef.current.app, peer)
+        : [peer],
+    }
+    return pool
+  }, [relaysKey])
   const guardianBlocked = useMemo(() => guardianNeedsSignet(state.app), [state.app.role, state.app.root, state.app.guardianPubkey])
+  const correctionDeliveryBusy = useRef(false)
+  const [correctionRetry, setCorrectionRetry] = useState(0)
+  useEffect(() => {
+    const timer = window.setInterval(() => setCorrectionRetry(n => n + 1),60_000)
+    return () => window.clearInterval(timer)
+  }, [])
+  useEffect(() => {
+    if (state.app.role !== 'guardian' || guardianBlocked || !guardianSk || correctionDeliveryBusy.current || !state.app.pendingCorrections?.length) return
+    correctionDeliveryBusy.current = true
+    void (async () => {
+      for (const bundle of stateRef.current.app.pendingCorrections ?? []) {
+        const nowSec = Math.floor(Date.now()/1000)
+        const delivery = await sendCorrection(bundle,{selfSk:guardianSk,peerPk:bundle[0]!.child,relay,storage:dataStorage(),nowSec})
+        if ((!delivery.sent && !delivery.queued) || !await flushDataStorage()) break
+        dispatch({type:'updateApp',update:app => ({...app,pendingCorrections:(app.pendingCorrections ?? []).filter(b => b[0]?.id !== bundle[0]!.id)})})
+      }
+    })().catch(() => {}).finally(() => { correctionDeliveryBusy.current = false })
+  }, [state.app.pendingCorrections, guardianBlocked, guardianSk, relay, correctionRetry, state.app.role])
+
 
   // How many pages of a resync exchange each peer has served us, keyed by
   // peer pubkey and reset whenever WE start a fresh exchange. This is the
@@ -1359,6 +1389,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
         nowSec,
         loadMnemonic: loadFamilyMnemonic,
         inFlight: inFlightVaultSigRef,
+        onError: message => dispatch({type:'setNotice',notice:message}),
       }).then((stamp) => {
         if (stamp === null || cancelled) return
         dispatch({
@@ -1382,7 +1413,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     // `vaultSignature` (the relay list is part of the signature), which
     // restarts the debounce.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultSignature, signetRootPk, state.app.role, guardianBlocked, guardianSk])
+  }, [vaultSignature, signetRootPk, state.app.role, guardianBlocked, guardianSk, correctionRetry])
 
   // Task E4 (v0.2 spec §3.2/§3.3) — the Android foreground relay-keepalive
   // service. ONE effect, keyed on role alone (`shouldRunRelayService`), and
@@ -1463,6 +1494,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
         // vanished mid-ceremony gets an empty scope rather than the family's.
         const pairingPk = pairingChildPk(pairingApp, session.childIndex) ?? ''
         return {
+          requireApproval: true,
           tokenStore,
           mnemonic: session.mnemonic,
           childIndex: session.childIndex,
@@ -1474,6 +1506,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
           root: rootAttestationOf(stateRef.current.app),
         }
       },
+      onPairClaimPending: (claim, authorPk) => onPairClaimPendingRef.current?.(claim, authorPk),
       onPairClaimAnswered: (answered) => {
         // The identity-binding half of pairing is complete (token consumed,
         // devicePk matched). Whatever pairing screen is currently mounted
@@ -1572,7 +1605,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
         // that screen exists.
         if (effect.type === 'grant') {
           const nowSec = Math.floor(Date.now() / 1000) // sampled once — see the guardian effect's own comment on this
-          dispatch({ type: 'updateApp', update: (app) => recordGrantResult(app, effect.payload, selfPk, nowSec) })
+          dispatch({ type: 'updateApp', update: (app) => recordGrantResult(app, effect.payload, app.self.pubkey ?? selfPk, nowSec) })
           // A granted spend whose ENTRY has not followed within the grace
           // period was lost on the way: ask to catch up (v0.3).
           const grant = effect.payload
@@ -1772,7 +1805,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     // just before the revocation landed.
     const revoked = state.app.docs.accounts.revoked ?? {}
     for (const entry of entries) {
-      if (revoked[entry.child] !== undefined) continue
+      if (revoked[entry.child] !== undefined && !state.app.children.some(c => c.pubkey === entry.child && c.signet)) continue
       void sendEntry(entry, { selfSk: guardianSk, peerPk: entry.child, relay, storage, nowSec }).catch(() => {})
     }
   }, [state.app, guardianSk, relay])
@@ -1844,6 +1877,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       unlockChildSk,
       lockUi,
       wipeChildSk,
+      onPairClaimPendingRef,
       onPairClaimAnsweredRef,
     }),
     [state, storageError, effects, relay, guardianSk, childSk, locked, unlockChildSk, lockUi, wipeChildSk],

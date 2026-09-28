@@ -91,9 +91,12 @@ export function startAsChildFromOffer(
   offer: PairOfferPayload,
   sealAuthorPk: string,
   nowSec: number,
+  deviceSk?: Uint8Array,
 ): StartedAsChild | null {
-  const accepted = acceptPairOffer(offer, sealAuthorPk)
+  const accepted = acceptPairOffer(offer, sealAuthorPk, deviceSk)
   if (accepted === null) return null
+  // Replacing a forgotten PIN cannot change family or ledger identity.
+  if (state.role === 'child' && (state.guardianPubkey !== accepted.guardianPk || state.self.pubkey !== (accepted.ledgerChildPk ?? getPublicKey(accepted.childSk)))) { accepted.childSk.fill(0); return null }
 
   const childPk = getPublicKey(accepted.childSk)
 
@@ -101,7 +104,7 @@ export function startAsChildFromOffer(
     ...state,
     role: 'child',
     guardianPubkey: accepted.guardianPk,
-    self: { pubkey: childPk, childIndex: accepted.childIndex },
+    self: { pubkey: accepted.ledgerChildPk ?? childPk, childIndex: accepted.childIndex, ...(accepted.ledgerChildPk ? { devicePk: childPk } : {}) },
     relays: accepted.relays.length > 0 ? [...accepted.relays] : state.relays,
     // Only a VERIFIED root is kept (acceptPairOffer's check against the
     // authenticated seal author); an unverifiable one leaves the existing

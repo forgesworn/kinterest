@@ -1,3 +1,5 @@
+import { bytesToHex } from 'nostr-tools/utils'
+import { authorityRequest, parentPresenceRequest, verifyParentPresence, verifyFamilyAuthority, verifyChildConsent, type ChildConsent } from './familyAuthority'
 // The ONLY module in this app that imports `signet-login` (v0.2 spec §1.7).
 //
 // LOAD-BEARING, do not relax: `signet-login`'s root entry touches `document`
@@ -74,7 +76,7 @@ export async function signetLogin(o: SignetLoginOpts): Promise<SignetLoginResult
       appName: APP_NAME,
       ...(o.challenge !== undefined ? { challenge: o.challenge } : {}),
       preferredMethod: 'nostrconnect',
-      methods: ['nostrconnect', 'remote-signet', 'local-signet', 'bunker', 'nip07', 'amber'],
+      methods: ['nostrconnect', 'bunker'],
       advancedMethods: [],
       relayUrls: o.relayUrls,
       nostrConnectPerms: ['sign_event', 'nip44_encrypt', 'nip44_decrypt'],
@@ -139,4 +141,35 @@ export async function signetAttest(
   } catch {
     return null
   }
+}
+
+/** Fresh, explicit My Signet consent. Older generic signers cannot confirm it. */
+export async function signetAuthoriseFamily(signer: SignetSigner, familyPk: string): Promise<NostrEvent | null> {
+  try {
+    const challenge = bytesToHex(crypto.getRandomValues(new Uint8Array(32)))
+    const event = await signer.signEvent(authorityRequest(familyPk, challenge, Math.floor(Date.now() / 1000)))
+    return verifyFamilyAuthority(event, signer.pubkey, familyPk, challenge) ? event : null
+  } catch { return null }
+}
+export async function authoriseChild(familyPk: string, rootPk: string, relays: string[], identityHint: string, devicePk: string, role: ChildConsent['role']): Promise<{ consent: ChildConsent; proof: NostrEvent } | null> {
+  const session = await signetLogin({ relayUrls: relays, requireFullSigner: true })
+  if (!session || session.pubkey !== rootPk) return null
+  try {
+    const challenge = bytesToHex(crypto.getRandomValues(new Uint8Array(32)))
+    const proof = await session.signer.signEvent(authorityRequest(familyPk, challenge, Math.floor(Date.now() / 1000), { identityPk: identityHint, devicePk, role }))
+    // A legacy Signet QR can name the dormant real-identity record. The
+    // deliberate guardian consent supplies the canonical persona, not the hint.
+    const consent = verifyChildConsent(proof, rootPk, familyPk)
+    if (!consent || proof.tags.find(t => t[0] === 'challenge')?.[1] !== challenge || consent.devicePk !== devicePk || consent.role !== role) return null
+    return { consent, proof }
+  } catch { return null }
+}
+export async function confirmParentPresence(familyPk: string, rootPk: string, relays: string[]): Promise<boolean> {
+  const session = await signetLogin({ relayUrls: relays, requireFullSigner: true })
+  if (!session || session.pubkey !== rootPk) return false
+  try {
+    const challenge = bytesToHex(crypto.getRandomValues(new Uint8Array(32)))
+    const event = await session.signer.signEvent(parentPresenceRequest(familyPk,challenge,Math.floor(Date.now()/1000)))
+    return verifyParentPresence(event,rootPk,familyPk,challenge)
+  } catch { return false }
 }

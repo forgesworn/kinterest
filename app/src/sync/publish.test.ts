@@ -12,7 +12,9 @@ import type { RelayLike } from '../wire/relayClient'
 import type { StorageLike } from '../wire/outbox'
 import { handleWrap } from './ingress'
 import { compareStatus, ingestResyncEvents, resyncPage, statusFor } from './resync'
-import { sendConfig } from './publish'
+import { sendConfig, sendCorrection } from './publish'
+import { creditEntry } from '../domain/ledger'
+import { correctionEntries } from '../domain/corrections'
 
 const NOW = 1_800_000_000
 const keys = () => {
@@ -143,5 +145,31 @@ describe('a recovering guardian rebuilds the family docs from each child s view'
 
     // Neither child is ever served another s view back.
     expect(resyncPage(recovered, null, 0, alex.pk).events.filter((e) => e.kind === KIND_CONFIG)).toEqual([])
+  })
+})
+
+
+describe('correction delivery guarantees', () => {
+  it('reports no queued copy when storage and direct delivery both fail', async () => {
+    const original = creditEntry({ id: 'original', child: alex.pk, author: 'guardian', createdAt: NOW }, acct('a', alex.pk), 500)
+    const bundle = correctionEntries(original, { id: 'correction', child: alex.pk, author: 'guardian', createdAt: NOW + 1 }, 'Wrong amount', [350])
+    const result = await sendCorrection(bundle, {
+      selfSk: guardian.sk, peerPk: alex.pk, nowSec: NOW,
+      storage: { getItem: () => null, setItem: () => { throw new Error('Full') }, removeItem: () => {} },
+      relay: { publish: async () => 'rejected', subscribe: () => () => {} },
+    })
+    expect(result.sent).toBe(false)
+    expect(result.queued).toBe(false)
+  })
+
+  it('reports a durable retry when a relay is offline', async () => {
+    const original = creditEntry({ id: 'original', child: alex.pk, author: 'guardian', createdAt: NOW }, acct('a', alex.pk), 500)
+    const bundle = correctionEntries(original, { id: 'correction', child: alex.pk, author: 'guardian', createdAt: NOW + 1 }, 'Wrong amount', [350])
+    const result = await sendCorrection(bundle, {
+      selfSk: guardian.sk, peerPk: alex.pk, nowSec: NOW, storage: memStorage(),
+      relay: { publish: async () => 'rejected', subscribe: () => () => {} },
+    })
+    expect(result.sent).toBe(false)
+    expect(result.queued).toBe(true)
   })
 })

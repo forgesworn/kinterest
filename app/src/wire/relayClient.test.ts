@@ -314,3 +314,41 @@ describe('makePool: close', () => {
     expect(poolCloseMock).toHaveBeenCalledWith(['wss://a.test', 'wss://b.test'])
   })
 })
+
+
+describe('complete backups on a single relay', () => {
+  it('waits for every chunk on the same relay before its manifest, without waiting for a stalled relay', async () => {
+    const chunks = [makeEvent(), makeEvent()], manifest = makeEvent()
+    const accepted: string[] = []
+    publishMock.mockImplementation(([url], event) => {
+      if (url === 'wss://stalled.test') return [neverResolves()]
+      if (event.id === manifest.id) expect(accepted).toEqual(chunks.map(c => c.id))
+      accepted.push(event.id)
+      return [Promise.resolve('ok')]
+    })
+    const relay = makePool(['wss://stalled.test', 'wss://working.test'])
+    expect(await relay.publishBackup!(chunks, manifest)).toBe(true)
+    expect(accepted).toEqual([...chunks.map(c => c.id), manifest.id])
+  })
+
+  it('does not publish a manifest when chunks are split across relays', async () => {
+    const chunks = [makeEvent(), makeEvent()], manifest = makeEvent()
+    publishMock.mockImplementation(([url], event) => [
+      (url === 'wss://a.test' ? event.id === chunks[0]!.id : event.id === chunks[1]!.id)
+        ? Promise.resolve('ok') : Promise.reject(new Error('rejected')),
+    ])
+    expect(await makePool(['wss://a.test', 'wss://b.test']).publishBackup!(chunks, manifest)).toBe(false)
+    expect(publishMock.mock.calls.some(([, event]) => event.id === manifest.id)).toBe(false)
+  })
+
+  it('bounds the whole attempt even when chunks keep arriving slowly', async () => {
+    vi.useFakeTimers()
+    publishMock.mockImplementation(() => [new Promise(resolve => setTimeout(() => resolve('ok'), 9000))])
+    const chunks = Array.from({ length: 80 }, makeEvent), manifest = makeEvent()
+    const result = makePool(['wss://slow.test']).publishBackup!(chunks, manifest)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(await result).toBe(false)
+    expect(publishMock.mock.calls.some(([, event]) => event.id === manifest.id)).toBe(false)
+    await vi.advanceTimersByTimeAsync(10_000)
+  })
+})

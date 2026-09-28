@@ -1,19 +1,11 @@
+import { familyCheckpointSignature } from '../identity/familyBackup'
+import { publishFamilyBackup } from '../identity/familyBackup'
 import { dataStorage } from '../platform/dataStorage'
-// Background vault re-seal — the guardian's automatic republish of the
-// family vault after a roster change, and weekly so relays that expire
-// kind-1059 wraps never hold the only copy.
-//
-// Sealing needs no signer. The vault is gift-wrapped TO the family's My
-// Signet pubkey: the seal is signed with this device's own guardian key and
-// the wrap with a fresh ephemeral key, so the stored Signet pubkey is all
-// this path reads. It never restores a My Signet session, never opens a
-// signer or bunker connection, and never prompts: restoring a session can
-// show an extension permission prompt, wipe a stored login when that prompt
-// is dismissed, or open a new remote-signer connection. With no stored
-// Signet pubkey there is nothing to seal to, so it skips.
-//
-// The only connection it uses is the app's existing relay pool, through the
-// ordinary outbox.
+// Republish complete encrypted family checkpoints after changes and weekly.
+// Sealing uses the local guardian key and the saved My Signet public key;
+// ordinary backup never opens a signer or prompts for consent. A dedicated
+// durable job requires every chunk and its manifest on one accepting relay.
+// The optional send seam retains legacy identity-vault migration behaviour.
 
 import type { AppState } from '../state/types'
 import type { RelayLike } from '../wire/relayClient'
@@ -23,9 +15,7 @@ import type { VaultPayload } from '../wire/payloads'
 import { vaultPayloadFor, vaultPublishDue, vaultRosterOf, vaultRosterSignature } from '../identity/signetVault'
 import { guardianFromMnemonic } from '../identity/derive'
 
-/** Where this device records the roster signature of its last vault publish
- *  that left the outbox. Not a secret: a signature is child names, keys and
- *  relay URLs this device already stores in plain state. */
+/** Signature of the last acknowledged complete checkpoint and roster. */
 export const VAULT_PUBLISHED_KEY = 'kinjar.vault.publishedSignature.v1'
 export const VAULT_QUEUED_KEY = 'kinjar.vault.queuedPublish.v1'
 
@@ -82,13 +72,14 @@ export interface RepublishVaultOpts {
   loadMnemonic: () => Promise<string | null>
   /** The signature of a publish still under way (shared between calls). */
   inFlight: { current: string | null }
+  onError?: (message: string) => void
   send?: (payload: VaultPayload, opts: Parameters<typeof sendVault>[1]) => Promise<PublishResult>
 }
 
 /**
  * Seals and publishes the vault when `vaultPublishDue` says so. Returns the
- * unix-SECONDS stamp to record as `root.backedUpAt` when a vault left the
- * outbox, else null. Never throws.
+ * unix-SECONDS stamp for `root.backedUpAt` after the current complete
+ * checkpoint is acknowledged, else null. Never throws.
  */
 export async function republishVaultIfDue(o: RepublishVaultOpts): Promise<number | null> {
   const app = o.getApp()
@@ -99,7 +90,7 @@ export async function republishVaultIfDue(o: RepublishVaultOpts): Promise<number
   // up. Reconcile its queued id before deciding to seal another copy. A
   // swept/expired item cannot prove delivery and must be sealed again.
   try {
-    const pending = JSON.parse(o.record?.getItem(VAULT_QUEUED_KEY) || 'null')
+    const pending = o.send ? JSON.parse(o.record?.getItem(VAULT_QUEUED_KEY) || 'null') : null
     if (pending?.rootPk === root.pubkey && typeof pending.eventId === 'string'
       && typeof pending.signature === 'string' && Number.isSafeInteger(pending.queuedAt)
       && pending.queuedAt <= o.nowSec && !outboxEvents(o.storage).some(e => e.id === pending.eventId)) {
@@ -117,8 +108,9 @@ export async function republishVaultIfDue(o: RepublishVaultOpts): Promise<number
     backedUpAt: root.backedUpAt,
     nowSec: o.nowSec,
   })
+  if (o.inFlight.current !== null) return null
   if (due === 'none') return null
-  if (vaultQueued(root.pubkey, o.storage)) return null
+  if (o.send && vaultQueued(root.pubkey, o.storage)) return null
   o.inFlight.current = signature
   try {
     const mnemonic = await o.loadMnemonic()
@@ -128,6 +120,23 @@ export async function republishVaultIfDue(o: RepublishVaultOpts): Promise<number
     const fresh = o.getApp()
     const freshRoot = fresh.root
     if (freshRoot === null || freshRoot.kind !== 'signet' || freshRoot.pubkey !== root.pubkey) return null
+    if (!o.send) {
+      for(let attempt=0;attempt<3;attempt++) {
+        const current=o.getApp(), currentRoot=current.root
+        if(currentRoot?.kind!=='signet' || currentRoot.pubkey!==root.pubkey)return null
+        const outcome=await publishFamilyBackup(current,vaultPayloadFor(vaultRosterOf(current),mnemonic,guardianFromMnemonic(mnemonic).pk,currentRoot.authEvent,o.nowSec),{selfSk:o.guardianSk,rootPk:currentRoot.pubkey,relay:o.relay,storage:o.storage,nowSec:o.nowSec})
+        if(!outcome.sent)return null
+        const latest=o.getApp()
+        if(latest.root?.kind!=='signet' || latest.root.pubkey!==root.pubkey)return null
+        if(outcome.signature===familyCheckpointSignature(latest)) {
+          writeVaultPublished(vaultRosterSignature(vaultRosterOf(latest)),o.record)
+          return o.nowSec
+        }
+        // Drain an older immutable offline job, then capture current data now.
+        writeVaultPublished(`checkpoint:${outcome.signature}`,o.record)
+      }
+      return null
+    }
     const { sent, event } = await (o.send ?? sendVault)(
       vaultPayloadFor(vaultRosterOf(fresh), mnemonic, guardianFromMnemonic(mnemonic).pk, freshRoot.authEvent, o.nowSec),
       { selfSk: o.guardianSk, peerPk: freshRoot.pubkey, relay: o.relay, storage: o.storage, nowSec: o.nowSec },
@@ -143,7 +152,8 @@ export async function republishVaultIfDue(o: RepublishVaultOpts): Promise<number
     try { o.record?.setItem(VAULT_QUEUED_KEY, '') } catch { /* published signature still remembered */ }
     writeVaultPublished(vaultRosterSignature(vaultRosterOf(fresh)), o.record)
     return o.nowSec
-  } catch {
+  } catch (error) {
+    o.onError?.(error instanceof Error ? error.message : 'The family backup could not be saved. Keep this phone until backup succeeds.')
     return null
   } finally {
     if (o.inFlight.current === signature) o.inFlight.current = null

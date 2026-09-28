@@ -1,11 +1,15 @@
-import { dataStorage } from '../platform/dataStorage'
+import { flushSync } from 'react-dom'
+import { replaceChildPhone, devicesForChild } from '../identity/devices'
+import { snapshotOf } from '../store/store'
+import type { RequestPayload } from '../wire/payloads'
+import { flushDataStorage, dataStorage } from '../platform/dataStorage'
 // The guardian-side device-pairing screen: QR + SAS code for an existing
 // child, TTL countdown, re-mint on expiry or burn, success banner naming
 // the paired device. See internal plan 2026-08-11-parent-mode,
 // Task 3 — "Child-side scanning is Plan 4 — guardian side only" applies
 // here: this screen only ever shows a code and waits, it never scans one.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getPublicKey } from 'nostr-tools/pure'
 import { Banner, Button, Card, Screen } from '../components/ui'
 import { QRCode } from '../components/QRCode'
@@ -13,9 +17,9 @@ import { useApp } from '../store/store'
 import { beginPairingSession, reMintPairingSession } from '../store/store'
 import type { AnsweredPairClaim } from '../pairing/pairing'
 import { qrContent } from '../pairing/pairing'
-import { sasDigits } from '../pairing/sas'
-import { TOKEN_TTL_SECS } from '../pairing/tokens'
-import { sendPairOffer } from '../sync/publish'
+import { claimSasDigits, sasDigits } from '../pairing/sas'
+import { consumeToken, TOKEN_TTL_SECS } from '../pairing/tokens'
+import { sendPairOffer, sendConfig } from '../sync/publish'
 import { loadFamilyMnemonic } from '../identity/vault'
 
 /** Seconds remaining on a token minted at `mintedAt`, as of `nowSec`,
@@ -26,7 +30,7 @@ export function pairingRemainingSecs(mintedAt: number, nowSec: number): number {
 }
 
 export function PairDevice({ childPubkey, onDone }: { childPubkey: string; onDone: () => void }) {
-  const { state, dispatch, relay, guardianSk, onPairClaimAnsweredRef } = useApp()
+  const { state, dispatch, relay, guardianSk, onPairClaimAnsweredRef, onPairClaimPendingRef } = useApp()
   const child = state.app.children.find((c) => c.pubkey === childPubkey) ?? null
   const session = state.pairing
 
@@ -35,13 +39,62 @@ export function PairDevice({ childPubkey, onDone }: { childPubkey: string; onDon
   const [banner, setBanner] = useState<string | null>(null)
   const [pairedName, setPairedName] = useState<string | null>(null)
   const [sas, setSas] = useState<string | null>(null)
+  const [sasFor, setSasFor] = useState<string | null>(null)
+  const [pending, setPending] = useState<{ claim: RequestPayload; authorPk: string } | null>(null)
+  const claimKey = session && pending ? `${session.token.token}:${pending.authorPk}` : null
+  const [approving, setApproving] = useState(false)
+  const accepting = useRef(false)
+  const live = useRef(true)
+  const stateRef = useRef(state)
+  stateRef.current = state
+  useEffect(() => { live.current = true; return () => { live.current = false } }, [])
+  useEffect(() => {
+    onPairClaimPendingRef.current = (claim, authorPk) => setPending(old => old ?? { claim, authorPk })
+    return () => { onPairClaimPendingRef.current = null }
+  }, [onPairClaimPendingRef])
+  useEffect(() => { setPending(null) }, [session?.token.token])
+  async function approveClaim() {
+    const app = stateRef.current.app
+    const ceremony = stateRef.current.pairing
+    if (accepting.current || !claimKey || sasFor !== claimKey || !sas || !pending || !ceremony || !child?.signet || !guardianSk || app.root?.kind !== 'signet' || !app.guardianPubkey ||
+        !consumeToken(ceremony.token, String(pending.claim.params.token), Math.floor(Date.now() / 1000))) return
+    accepting.current = true; setApproving(true); setBanner(null)
+    const oldPhones = (app.docs.accounts.devices ?? []).filter(d => d.child === child.pubkey && d.role === 'child-phone' && app.docs.accounts.revoked?.[d.devicePk] === undefined).map(d => d.devicePk)
+    dispatch({ type: 'endPairing' })
+    try {
+      const { authoriseChild } = await import('../identity/signetLogin')
+      const authorised = await authoriseChild(app.guardianPubkey, app.root.pubkey, app.relays, child.signet.identityPk, pending.authorPk, 'child-phone')
+      if (!live.current) return
+      if (!authorised || authorised.consent.identityPk !== child.signet.identityPk) throw new Error('My Signet did not authorise this phone for the selected child.')
+      const nowSec = Math.floor(Date.now() / 1000)
+      const rootPk = app.root.pubkey
+      let saved = app
+      flushSync(() => dispatch({ type: 'updateApp', update: current => {
+        if (current.root?.kind !== 'signet' || current.root.pubkey !== rootPk) return current
+        saved = replaceChildPhone(current, child.pubkey, authorised.proof, guardianSk, nowSec)
+        return saved
+      } }))
+      const admission = saved.docs.accounts.devices?.find(d => d.devicePk === pending.authorPk)
+      if (!admission) throw new Error('This pairing was superseded. Start again.')
+      if (!await flushDataStorage()) throw new Error('The new phone could not be saved yet. Keep the app open and retry storage before continuing.')
+      // An offer contains authorisation and this child's snapshot, never their identity key.
+      await sendPairOffer({ v: 1, childSkHex: '', childIndex: child.index, name: child.name, relays: app.relays,
+        device: admission, snapshot: snapshotOf(saved, child.pubkey), root: { pubkey: app.root.pubkey, authEvent: app.root.authEvent } },
+        { selfSk: guardianSk, peerPk: pending.authorPk, relay, storage: dataStorage(), nowSec })
+      for (const peerPk of [...oldPhones, ...devicesForChild(saved, child.pubkey)]) {
+        await sendConfig('accounts', saved.docs.accounts, { selfSk: guardianSk, peerPk, relay, storage: dataStorage(), nowSec }).catch(() => {})
+      }
+      setPairedName(child.name); setPending(null)
+    } catch (e) { setBanner(e instanceof Error ? e.message : 'Could not pair this phone. Please try again.'); setPending(null) }
+    finally { accepting.current = false; if (live.current) setApproving(false) }
+  }
 
   // The family mnemonic — needed to derive the claiming device's key
   // (`beginPairingSession`'s `mnemonic` param); never rendered on this
   // screen (see Global Constraints on secrets).
   useEffect(() => {
     let cancelled = false
-    void loadFamilyMnemonic().then((m) => {
+    void Promise.resolve(child?.signet ? '' : null).then((m) => {
       if (!cancelled) setMnemonic(m)
     })
     return () => {
@@ -99,13 +152,14 @@ export function PairDevice({ childPubkey, onDone }: { childPubkey: string; onDon
       return
     }
     let cancelled = false
-    void sasDigits(getPublicKey(guardianSk), session.token.token).then((s) => {
-      if (!cancelled) setSas(s)
+    setSas(null); setSasFor(null)
+    void (pending && child?.signet ? claimSasDigits(getPublicKey(guardianSk), session.token.token, child.signet.identityPk, pending.authorPk) : sasDigits(getPublicKey(guardianSk), session.token.token)).then((s) => {
+      if (!cancelled) { setSas(s); setSasFor(claimKey) }
     })
     return () => {
       cancelled = true
     }
-  }, [session?.token.token, guardianSk])
+  }, [session?.token.token, guardianSk, pending, child?.signet])
 
   // Register this screen's handler for a successfully-answered pair.claim —
   // see store.tsx's AppContextValue doc comment: the generic provider
@@ -147,6 +201,8 @@ export function PairDevice({ childPubkey, onDone }: { childPubkey: string; onDon
     )
   }
 
+  if (!child.signet) return <Screen title="Link My Signet first" onBack={onDone}><p>Link this saved child to their My Signet dependant before pairing or replacing a phone.</p></Screen>
+
   const showingCode =
     pairedName === null && session !== null && session.childIndex === child.index && guardianSk !== null
 
@@ -157,7 +213,7 @@ export function PairDevice({ childPubkey, onDone }: { childPubkey: string; onDon
       {showingCode && session !== null && guardianSk !== null && (
         <Card>
           {(() => {
-            const content = qrContent({ guardianPk: getPublicKey(guardianSk), relays: session.relays, token: session.token.token })
+            const content = qrContent({ guardianPk: getPublicKey(guardianSk), relays: session.relays, token: session.token.token, childPk: child.signet?.identityPk })
             return (
               <>
                 <QRCode data={content} alt={`Pairing QR code for ${child.name}`} />
@@ -189,6 +245,13 @@ export function PairDevice({ childPubkey, onDone }: { childPubkey: string; onDon
           })()}
         </Card>
       )}
+      {pending && <Card>
+        <p>Compare this code with the child’s phone before approving this particular device.</p>
+        <p className="sas-code">{sas ?? '··· ···'}</p>
+        <p>If this replaces a lost phone or a forgotten PIN, the old phone credential will be revoked. Money and history stay with {child.name}.</p>
+        <Button variant="primary" block disabled={approving || !sas} onClick={() => void approveClaim()}>The codes match — authorise this phone with My Signet</Button>
+        <Button variant="quiet" block disabled={approving || !sas || sasFor !== claimKey} onClick={() => { setPending(null); if (session) dispatch({ type: 'beginPairing', session: reMintPairingSession(session, Math.floor(Date.now() / 1000)) }) }}>They don’t match — start again</Button>
+      </Card>}
       {!showingCode && pairedName === null && <Banner tone="info">Setting up a pairing code…</Banner>}
       <Button variant="quiet" block onClick={onDone}>
         {pairedName !== null ? 'Done' : 'Cancel'}

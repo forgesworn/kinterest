@@ -4,7 +4,7 @@ Kinterest is a shared family pocket-money ledger: a parent (guardian) device and
 one or more child devices, each running the same web app, syncing directly
 with each other over a public relay. There is no backend server, no real
 money, and no card ever involved — Kinterest only ever moves a number around in a
-ledger that everyone in the family can already see.
+ledger. A guardian holds the whole family ledger; each child receives their own records.
 
 This document describes the threat model this app is designed against, what
 it deliberately does not try to defend against, and how to report a security
@@ -70,11 +70,31 @@ assumes a stronger guarantee than the app actually provides:
   verified family binding; legacy unbound guardians must connect their saved
   family before parent screens, sync and scheduled payments become available.
   A saved binding permits offline use without a live signer connection. Child
-  devices still use Kinterest pairing and a PIN, pending the dependant design.
+  identities are selected through explicit My Signet dependant consent. The
+  child identity key stays in My Signet; Kinterest uses separate operational
+  device keys and a child PIN. Generic login events cannot authorise a family.
 - **One guardian installation is supported per family.** After restoring on
   a replacement phone, retire the old guardian installation. An old guardian
   still holding the family key can publish stale settings or a stale recovery
-  vault; recovery does not merge competing guardian histories.
+  checkpoint; recovery does not merge competing guardian histories.
+- **Parent and child roles on one phone.** Acting as a child exposes only that
+  child's asks, chores and audits through ordinary UI. A separate parent PIN
+  protects returning to parent screens and locks on backgrounding or reload.
+  Resetting it requires a fresh My Signet parent-presence approval. The full
+  family data and guardian key remain on that trusted parent phone: this is
+  an app-use boundary, not isolation against arbitrary script or device access.
+- **Pairing approval is specific to the claiming device.** Compare the code
+  on both phones before confirming. A photographed pairing QR alone cannot
+  obtain child identity keys or an approved snapshot. Replacement retires
+  previous child-phone keys; previously downloaded data cannot be erased
+  remotely from a device that stays offline.
+- **Backups require relay availability.** Complete family checkpoints are
+  encrypted, split into up to 256 chunks of 16 KiB and bound by their exact
+  event IDs and a digest. A manifest is published on a relay only after that
+  relay acknowledges every chunk. Recovery refuses missing or invalid chunks
+  in the latest checkpoint rather than choosing an older balance. A relay
+  may still delete acknowledged data later. Keep the current phone until
+  a current backup succeeds; a backup over 4 MiB fails visibly.
 - **Updates are forward-only.** The ledger and outbox are migrated atomically
   from localStorage to IndexedDB. Installing an older build afterwards will
   not read that database and may also be unable to read the current PIN blob.
@@ -85,7 +105,9 @@ assumes a stronger guarantee than the app actually provides:
 - **Deposit match uses gross deposits.** Spending later does not subtract
   from the qualifying deposit. A reversal before evaluation excludes the
   deposit; reversing it after its match was paid does not claw that match
-  back. These rules describe current behaviour, pending the corrections design.
+  back. Explicit corrections append a linked reversal and optional replacement,
+  require a reason and keep scheduled periods closed. They do not silently
+  recalculate previous interest or match.
 
 - **Background notifications are best-effort.** Android relay sockets run on
   native threads while its foreground service is active. Neither the browser's

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure'
 import { guardianNeedsSignet } from './guardianAccess'
-import { rootChallenge } from './signetRoot'
+import { authorityRequest } from './familyAuthority'
 import type { AppState } from '../state/types'
 
 const signetSk = generateSecretKey()
@@ -11,7 +11,7 @@ function bound(guardian = guardianPk): Pick<AppState, 'role' | 'root' | 'guardia
   return {
     role: 'guardian', guardianPubkey: guardianPk,
     root: { kind: 'signet', pubkey: getPublicKey(signetSk), backedUpAt: null,
-      authEvent: finalizeEvent({ kind: 21236, created_at: 1756800000, content: '', tags: [['challenge', rootChallenge(guardian)]] }, signetSk) },
+      authEvent: finalizeEvent({ ...authorityRequest(guardian, '1'.repeat(64), 1756800000), tags: authorityRequest(guardian, '1'.repeat(64), 1756800000).tags.map(t => t[0] === 'approval' ? ['approval', 'confirmed'] : t) }, signetSk) },
   }
 }
 

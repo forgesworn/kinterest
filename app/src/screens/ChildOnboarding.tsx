@@ -33,7 +33,7 @@ import { newKeypair } from '../identity/keys'
 import { isValidPinFormat, setPin as sealPin } from '../identity/pinLock'
 import { acceptPairOffer, buildPairClaim } from '../pairing/pairing'
 import type { PairOfferPayload } from '../wire/payloads'
-import { sasDigits } from '../pairing/sas'
+import { claimSasDigits, sasDigits } from '../pairing/sas'
 import { handlePairOfferWrap } from '../sync/ingress'
 import { startAsChildFromOffer } from '../state/onboarding'
 import { makePool } from '../wire/relayClient'
@@ -57,7 +57,7 @@ interface PendingOffer {
 }
 
 export function ChildOnboarding({ onCancel }: { onCancel: () => void }) {
-  const { dispatch, unlockChildSk } = useApp()
+  const { state, dispatch, unlockChildSk } = useApp()
   const [step, setStep] = useState<ChildOnboardingStep>(scanStep())
   const [pasteText, setPasteText] = useState('')
   const [sas, setSas] = useState<string | null>(null)
@@ -108,8 +108,11 @@ export function ChildOnboarding({ onCancel }: { onCancel: () => void }) {
     const unsubscribe = pool.subscribe({ kinds: [WRAP], '#p': [device.pk] }, (wrap) => {
       const offer = handlePairOfferWrap({ wrap, deviceSk: device.sk, expectedGuardianPk: waitingGuardianPk! })
       if (offer === null) return
-      const accepted = acceptPairOffer(offer, waitingGuardianPk!)
+      const accepted = acceptPairOffer(offer, waitingGuardianPk!, device.sk)
       if (accepted === null) return
+      if (state.app.role === 'child' && (state.app.guardianPubkey !== waitingGuardianPk || state.app.self.pubkey !== (accepted.ledgerChildPk ?? device.pk))) {
+        accepted.childSk.fill(0); setBanner('Ask your parent to replace the phone for this same child and family.'); return
+      }
       setPendingOffer({ offer, guardianPk: waitingGuardianPk!, childSk: accepted.childSk })
       setStep((prev) => offerAccepted(prev))
     })
@@ -131,7 +134,7 @@ export function ChildOnboarding({ onCancel }: { onCancel: () => void }) {
       return
     }
     let cancelled = false
-    void sasDigits(waitingGuardianPk, waitingToken).then((s) => {
+    void (step.kind === 'waiting' && step.childPk ? claimSasDigits(waitingGuardianPk, waitingToken, step.childPk, device.pk) : sasDigits(waitingGuardianPk, waitingToken)).then((s) => {
       if (!cancelled) setSas(s)
     })
     return () => {
@@ -164,7 +167,7 @@ export function ChildOnboarding({ onCancel }: { onCancel: () => void }) {
     const nowSec = Math.floor(Date.now() / 1000)
     dispatch({
       type: 'updateApp',
-      update: (app) => startAsChildFromOffer(app, pending.offer, pending.guardianPk, nowSec)?.state ?? app,
+      update: (app) => startAsChildFromOffer(app, pending.offer, pending.guardianPk, nowSec, pending.childSk)?.state ?? app,
     })
     unlockChildSk(pending.childSk)
   }
@@ -199,7 +202,7 @@ export function ChildOnboarding({ onCancel }: { onCancel: () => void }) {
       // review: this used to `setBanner(...)` right after dispatching,
       // which never actually rendered). The `rootRejected` step instead asks
       // for an explicit "Continue" before this device joins at all.
-      if (acceptPairOffer(pendingOffer.offer, pendingOffer.guardianPk)?.rootRejected === true) {
+      if (acceptPairOffer(pendingOffer.offer, pendingOffer.guardianPk, device.sk)?.rootRejected === true) {
         setStep(rootRejectedStep())
         return
       }

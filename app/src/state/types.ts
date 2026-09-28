@@ -1,3 +1,4 @@
+import type { ChildDevice, ChildIdentity } from '../identity/devices'
 import type { Account } from '../domain/types'
 import type { Entry } from '../domain/types'
 import type { AllowanceConfig } from '../domain/allowance'
@@ -14,6 +15,8 @@ export interface ChildProfile {
   pubkey: string
   name: string
   index: number
+  /** Stable My Signet persona; pubkey remains an immutable ledger alias on legacy families. */
+  signet?: ChildIdentity
   /** Unix SECONDS the guardian's own "pair.claim" ceremony last succeeded
    *  for this child (store.tsx's `onPairClaimAnswered`) — additive/optional
    *  so an existing snapshot/vault/persisted state that predates it parses
@@ -44,6 +47,8 @@ export interface ConfigDocs {
      *  the same LWW-by-issuedAt machinery every other policy change uses,
      *  and it is never removed — the entry IS the record of the revocation. */
     revoked?: Record<string, number>
+    devices?: ChildDevice[]
+    deviceRevision?: number
   }
   allowance: { v: 1; issuedAt: number; configs: AllowanceConfig[] }
   interest: { v: 1; issuedAt: number; configs: InterestConfig[] }
@@ -120,9 +125,13 @@ export interface AppState {
   v: 1
   role: Role
   guardianPubkey: string | null
-  self: { pubkey: string | null; childIndex: number | null }
+  self: { pubkey: string | null; childIndex: number | null; devicePk?: string }
   children: ChildProfile[]
   entries: Entry[]
+  /** Durable correction delivery intents, committed with their ledger rows. */
+  pendingCorrections?: Entry[][]
+  /** Highest complete family backup revision restored on this installation. */
+  backupRevision?: number
   acks: Record<string, number>
   ticks: ChoreTick[]
   audits: AuditResult[]

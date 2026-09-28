@@ -1,3 +1,4 @@
+import { childForDevice, devicesForChild, mergeDevices } from '../identity/devices'
 import { assertEntry, assertReversalOf } from '../domain/ledger'
 import { legitimatePeriodKeys, type AllowanceConfig } from '../domain/allowance'
 import type { Entry } from '../domain/types'
@@ -85,7 +86,7 @@ export function retainInnerEvents(m: Record<string, NostrEvent>): Record<string,
  *  — either way it is simply no longer a peer. */
 export function activeChildren(app: AppState): ChildProfile[] {
   const revoked = app.docs.accounts.revoked
-  return app.children.filter((c) => c.archived === undefined && (revoked === undefined || revoked[c.pubkey] === undefined))
+  return app.children.filter((c) => c.archived === undefined && (c.signet !== undefined || revoked === undefined || revoked[c.pubkey] === undefined))
 }
 
 /** The active child most in need of a first pot (account) right now, or
@@ -205,7 +206,7 @@ export function backfillPairedAt(app: AppState, nowSec: number): AppState {
  *  `screens/ChildDetail.tsx` sends over the FULL roster: the removed device
  *  is precisely the one that has to receive it. */
 export function configRecipients(app: AppState): string[] {
-  return activeChildren(app).map((c) => c.pubkey)
+  return activeChildren(app).flatMap((c) => devicesForChild(app, c.pubkey))
 }
 
 /** The child-side counterpart to `activeChildren` (v0.2 spec §4.5): the unix
@@ -218,7 +219,7 @@ export function configRecipients(app: AppState): string[] {
  *  with no self pubkey yet are never revoked by definition. */
 export function selfRevokedAt(app: AppState): number | null {
   if (app.role !== 'child' || app.self.pubkey === null) return null
-  return app.docs.accounts.revoked?.[app.self.pubkey] ?? null
+  return app.docs.accounts.revoked?.[app.self.devicePk ?? app.self.pubkey] ?? null
 }
 
 // Validates via assertEntry (throws propagate to the caller — the sync layer
@@ -284,7 +285,7 @@ export function applyConfigDoc<K extends keyof ConfigDocs>(s: AppState, kind: K,
   if (doc.issuedAt <= highWater) return s
   return {
     ...s,
-    docs: { ...s.docs, [kind]: doc },
+    docs: { ...s.docs, [kind]: kind === 'accounts' ? { ...doc, ...((s.docs.accounts.revoked || (doc as ConfigDocs['accounts']).revoked) ? { revoked: { ...(doc as ConfigDocs['accounts']).revoked, ...s.docs.accounts.revoked } } : {}), ...((s.docs.accounts.devices || (doc as ConfigDocs['accounts']).devices) ? { devices: mergeDevices(s.docs.accounts.devices ?? [], (doc as ConfigDocs['accounts']).devices ?? []), deviceRevision: Math.max(s.docs.accounts.deviceRevision ?? 0, (doc as ConfigDocs['accounts']).deviceRevision ?? 0) } : {}) } : doc },
     docHighWater: { ...s.docHighWater, [kind]: doc.issuedAt },
     docChildHighWater: {
       ...s.docChildHighWater,
@@ -339,12 +340,17 @@ export function mergeConfigDoc<K extends keyof ConfigDocs>(s: AppState, kind: K,
   const rowsFor = (rows: { child: string }[], c: string) => JSON.stringify(rows.filter((r) => r.child === c))
   const rowsChanged = [...taken].some((c) => rowsFor(currentRows, c) !== rowsFor(incomingRows, c))
   const revokedChanged = Object.keys(incomingRevoked).some((pk) => currentRevoked[pk] === undefined)
-  if (!rowsChanged && !revokedChanged && !provenanceChanged && doc.issuedAt <= highWater) return s
+  const devicesChanged = kind === 'accounts' && (mergeDevices(s.docs.accounts.devices ?? [], (doc as ConfigDocs['accounts']).devices ?? []).length !== (s.docs.accounts.devices ?? []).length || (doc as ConfigDocs['accounts']).deviceRevision! > (s.docs.accounts.deviceRevision ?? 0))
+  if (!rowsChanged && !revokedChanged && !devicesChanged && !provenanceChanged && doc.issuedAt <= highWater) return s
 
   const rows = [...currentRows.filter((r) => !taken.has(r.child)), ...incomingRows.filter((r) => taken.has(r.child))]
   const merged = { ...current, issuedAt: Math.max(current.issuedAt, doc.issuedAt), [key]: rows } as ConfigDocs[K]
   if (kind === 'accounts' && (revokedChanged || Object.keys(currentRevoked).length > 0)) {
     ;(merged as ConfigDocs['accounts']).revoked = { ...incomingRevoked, ...currentRevoked }
+  }
+  if (kind === 'accounts') {
+    ;(merged as ConfigDocs['accounts']).devices = mergeDevices(s.docs.accounts.devices ?? [], (doc as ConfigDocs['accounts']).devices ?? [])
+    ;(merged as ConfigDocs['accounts']).deviceRevision = Math.max(s.docs.accounts.deviceRevision ?? 0, (doc as ConfigDocs['accounts']).deviceRevision ?? 0)
   }
   return {
     ...s,
@@ -389,7 +395,7 @@ export function mergeConfigDoc<K extends keyof ConfigDocs>(s: AppState, kind: K,
  *  answered as a grant — see ingress.ts's module header); this function has
  *  no opinion on `request.op` beyond the provenance check. */
 export function upsertRequest(s: AppState, request: RequestPayload, authorPk: string, nowSec: number): AppState {
-  if (authorPk !== request.child) return s
+  if (authorPk !== request.child && childForDevice(s, authorPk) !== request.child) return s
   if (s.requests.some((r) => r.request.reqId === request.reqId)) return s
   const record: StoredRequest = { request, authorPk, status: 'pending', createdAt: nowSec }
   if (claimLegitimateNow(s, request, nowSec)) record.periodLegitimateAtReceipt = true
@@ -477,7 +483,7 @@ export function recordRequestDecision(
   nowSec: number,
   grantedAmountMinor?: number,
 ): AppState {
-  if (authorPk !== request.child) return s
+  if (authorPk !== request.child && childForDevice(s, authorPk) !== request.child) return s
   const idx = s.requests.findIndex((r) => r.request.reqId === request.reqId)
   if (idx !== -1 && s.requests[idx]!.status !== 'pending') return s // already decided — idempotent no-op
   const decided: StoredRequest = {

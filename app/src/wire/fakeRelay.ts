@@ -29,7 +29,7 @@ export interface FakeRelay extends RelayLike {
 }
 
 function matchesFilter(ev: NostrEvent, filter: SubscribeFilter): boolean {
-  if (!filter.kinds.includes(ev.kind)) return false
+  if (!filter.kinds.includes(ev.kind) || filter.ids && !filter.ids.includes(ev.id)) return false
   if (filter.since !== undefined && ev.created_at < filter.since) return false
   const wantP = filter['#p']
   if (wantP !== undefined) {

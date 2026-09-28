@@ -134,8 +134,8 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
   // the offending config keeps every OTHER child's allowance/interest
   // working normally; the bad one is retried (and can succeed once fixed,
   // or keep failing harmlessly) on the next tick.
-  // Revoked children (v0.2 §4.5) accrue nothing and are sent
-  // nothing: their device was removed, and a re-paired device is a new key.
+  // Unmapped legacy device revocations stop accrual. Once explicitly mapped,
+  // the immutable child alias remains active independently of retired phones.
   const revoked = state.docs.accounts.revoked ?? {}
   // Archived children (v0.3's "Remove child") accrue nothing either — an
   // archived child is off Home and the family lists, and must never keep
@@ -147,7 +147,7 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
   const archived = new Set(state.children.filter((c) => c.archived !== undefined).map((c) => c.pubkey))
 
   for (const cfg of state.docs.allowance.configs) {
-    if (revoked[cfg.child] !== undefined || archived.has(cfg.child)) continue
+    if ((revoked[cfg.child] !== undefined && !state.children.some(c => c.pubkey === cfg.child && c.signet)) || archived.has(cfg.child)) continue
     try {
       const account = accountFor(state, cfg.account)
       if (account === undefined) continue
@@ -172,7 +172,7 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
   }
 
   for (const cfg of state.docs.interest.configs) {
-    if (revoked[cfg.child] !== undefined || archived.has(cfg.child)) continue
+    if ((revoked[cfg.child] !== undefined && !state.children.some(c => c.pubkey === cfg.child && c.signet)) || archived.has(cfg.child)) continue
     try {
       const account = accountFor(state, cfg.account)
       if (account === undefined) continue

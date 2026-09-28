@@ -94,6 +94,8 @@ export function assertEntry(e: Entry): void {
     throw new RangeError(`${e.kind} entries need exactly 1 leg, got ${e.legs.length}`)
   if (e.reverses !== undefined && (typeof e.reverses !== 'string' || e.reverses === ''))
     throw new RangeError('reverses must be a non-empty string when present')
+  if (e.correctionOf !== undefined && (typeof e.correctionOf !== 'string' || !e.correctionOf || typeof e.correctionGroup !== 'string' || !e.correctionGroup || e.author !== 'guardian' || typeof e.note !== 'string' || !e.note.trim())) throw new RangeError('Invalid correction metadata')
+  if (e.correctionGroup !== undefined && e.correctionOf === undefined) throw new RangeError('Correction group needs an original')
   // Adjustment fields: optional, so an entry without them — any
   // stored or on-the-wire adjustment from before they were set — still
   // parses; when present they must be well-formed and on an adjustment.

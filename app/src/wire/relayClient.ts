@@ -21,6 +21,7 @@ export const PUBLISH_TIMEOUT_MS = 10_000
 
 export interface SubscribeFilter {
   kinds: number[]
+  ids?: string[]
   '#p'?: string[]
   since?: number
   // Matches nostr-tools' `Filter` shape so a `SubscribeFilter` can be passed
@@ -29,6 +30,14 @@ export interface SubscribeFilter {
 }
 
 export interface RelayLike {
+  /** Production family routing: ledger identity -> active operational devices. */
+  family?: {
+    childForPeer: (peer: string) => string;
+    recipients: (peer: string) => string[];
+  }
+
+  /** Backup generations must reach a complete set on the same relay. */
+  publishBackup?: (chunks: readonly NostrEvent[], manifest: NostrEvent) => Promise<boolean>
   publish(ev: NostrEvent): Promise<'accepted' | 'rejected'>
   subscribe(filter: SubscribeFilter, onEvent: (ev: NostrEvent) => void): () => void
   /** Tears down every underlying connection this `RelayLike` opened.
@@ -89,7 +98,29 @@ export function makePool(urls: string[], onlineTarget: OnlineTarget | undefined 
     ? new AbstractSimplePool({ verifyEvent, websocketImplementation: nativeSocket, enablePing: false, maxWaitForConnection: PUBLISH_TIMEOUT_MS })
     : new SimplePool({ enablePing: true })
 
+  async function publishTo(url: string, event: NostrEvent): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([Promise.all(pool.publish([url],event)).then(()=>true,()=>false),new Promise<boolean>(resolve=>{timer=setTimeout(()=>resolve(false),PUBLISH_TIMEOUT_MS)})])
+    } catch { return false } finally { if(timer)clearTimeout(timer) }
+  }
   return {
+    async publishBackup(chunks,manifest) {
+      if (!urls.length) return false
+      const deadline=Date.now()+60_000
+      const tasks=urls.map(async url=>{
+        for(let index=0;index<chunks.length;index+=8) {
+          if(Date.now()>=deadline)throw new Error('Backup publication timed out')
+          const accepted=await Promise.all(chunks.slice(index,index+8).map(chunk=>publishTo(url,chunk)))
+          if(accepted.some(ok=>!ok))throw new Error('Backup chunk rejected')
+        }
+        if(Date.now()>=deadline || !await publishTo(url,manifest))throw new Error('Backup manifest rejected')
+        return true
+      })
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try { return await Promise.race([Promise.any(tasks).catch(()=>false),new Promise<boolean>(resolve=>{timer=setTimeout(()=>resolve(false),60_000)})]) }
+      finally { if(timer)clearTimeout(timer) }
+    },
     publish(ev: NostrEvent): Promise<'accepted' | 'rejected'> {
       if (urls.length === 0) return Promise.resolve('rejected')
 

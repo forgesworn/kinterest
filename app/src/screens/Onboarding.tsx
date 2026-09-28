@@ -1,3 +1,4 @@
+import { SignetChildPicker } from './SignetChildPicker'
 import { dataStorage } from '../platform/dataStorage'
 // The onboarding screen — drives screens/onboardingFlow.ts's pure step
 // machine and turns each step into real identity: deriving keys, sealing
@@ -208,7 +209,7 @@ export function Onboarding({
     if (connected.full) {
       const nowSec = Math.floor(Date.now() / 1000)
       const sent = await publishVault(connected.root, mnemonic, nowSec)
-      dispatchRoot(sent ? { ...connected.root, backedUpAt: nowSec } : connected.root)
+      dispatchRoot(connected.root)
       if (!sent) setSignetNote(BACKUP_QUEUED)
     } else {
       dispatchRoot(connected.root)
@@ -288,11 +289,14 @@ export function Onboarding({
       // Authentic backups for more than one family were found.
       // One may have been planted via a phished Signet login, so nothing is
       // restored and the user is offered their recovery words instead.
+      if (got === 'conflicting-backups') { setStep(signetFailed(recovering, 'Two family backups disagree at the same revision. Keep the old parent phone and resolve the backup before recovering.')); return }
+      if (got === 'incomplete-backup') { setStep(signetFailed(recovering, 'Your latest family backup is incomplete or unavailable. Try recovery again; keep the old parent phone until it has finished backing up.')); return }
       if (got === 'conflicting-vaults') {
         setStep(signetFailed(recovering, CONFLICTING_VAULTS))
         return
       }
 
+      if (!got.root) { setStep(signetFailed(recovering, 'Approve the family authorisation in an updated My Signet to complete recovery.')); return }
       const committed = await commitGuardian(got.vault.mnemonic)
       if (!committed) {
         setStep(signetFailed(recovering, 'Something went wrong restoring your family — please try again.'))
@@ -302,11 +306,13 @@ export function Onboarding({
         type: 'updateApp',
         update: (app): AppState => ({
           ...app,
+          ...(got.checkpoint ?? {}),
           // The roster travels in the vault, so a recovered guardian can
           // ask every child to resync at once instead of waiting an hour for
           // each of them to call in.
-          children: got.vault.children.length > 0 ? got.vault.children : app.children,
-          relays: got.vault.relays.length > 0 ? got.vault.relays : app.relays,
+          children: got.checkpoint?.children ?? (got.vault.children.length > 0 ? got.vault.children : app.children),
+          relays: got.checkpoint?.relays ?? (got.vault.relays.length > 0 ? got.vault.relays : app.relays),
+          docs: got.checkpoint?.docs ?? { ...app.docs, accounts: { ...app.docs.accounts, ...(got.vault.devices ? { devices: got.vault.devices, deviceRevision: got.vault.deviceRevision, revoked: { ...app.docs.accounts.revoked, ...got.vault.revokedDevices } } : {}) } },
           root: got.root ?? { kind: 'phrase' },
         }),
       })
@@ -533,34 +539,5 @@ export function Onboarding({
     )
   }
 
-  // step.kind === 'addChild' — title/copy differ between the genuine
-  // first-run ceremony and "Add a child" reached later from GuardianShell's
-  // own route, which mounts this same step against a roster
-  // that already has children on it.
-  return (
-    <Screen title={state.app.children.length === 0 ? 'Add your first child' : 'Add a child'}>
-      {/* A My Signet sign-in/recovery that succeeded but
-          couldn't seal the backup (an auth-only session, spec §1.8 step 7),
-          or didn't complete at all, previously set this note and moved
-          straight here without ever showing it — this was the next step
-          reached, not the one the note was actually rendered on. */}
-      {signetNote && <Banner tone="info">{signetNote}</Banner>}
-      <p>What's their name?</p>
-      <input
-        className="text-input"
-        value={childName}
-        onChange={(e) => setChildName(e.target.value)}
-        aria-label="Child's name"
-        placeholder="Child's name"
-      />
-      <Button
-        variant="primary"
-        block
-        onClick={() => void handleAddChildSubmit()}
-        disabled={busy || childName.trim() === '' || familyMnemonic === null}
-      >
-        Add child
-      </Button>
-    </Screen>
-  )
+  return <SignetChildPicker onDone={onAddChildDone} />
 }

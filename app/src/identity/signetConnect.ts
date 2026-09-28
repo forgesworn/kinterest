@@ -1,3 +1,5 @@
+import { recoverFamilyCheckpoint } from './familyBackup'
+import { verifyFamilyAuthority } from './familyAuthority'
 // The two My Signet journeys, in one place: connecting a family root, and
 // recovering a family from one (v0.2 spec §1.6, §1.8).
 //
@@ -18,7 +20,7 @@ import { collectVaultCandidates, pickFamilyVault } from './signetVault'
 import { unwrapWithSigner } from '../wire/giftwrap'
 import type { RelayLike } from '../wire/relayClient'
 import type { VaultPayload } from '../wire/payloads'
-import type { RootRecord } from '../state/types'
+import type { AppState, RootRecord } from '../state/types'
 
 export type SignetRoot = Extract<RootRecord, { kind: 'signet' }>
 
@@ -65,12 +67,14 @@ export async function connectSignetRoot(o: ConnectRootOpts): Promise<ConnectedRo
     requireFullSigner: false,
   })
   if (r === null) return null
-  if (!verifyRootAttestation(r.authEvent, r.pubkey, o.guardianPk)) return null
+  const { signetAuthoriseFamily } = await import('./signetLogin')
+  const authEvent = await signetAuthoriseFamily(r.signer, o.guardianPk)
+  if (authEvent === null || !verifyFamilyAuthority(authEvent, r.pubkey, o.guardianPk)) return null
   return {
     root: {
       kind: 'signet',
       pubkey: r.pubkey,
-      authEvent: r.authEvent,
+      authEvent,
       ...(r.displayName !== undefined ? { displayName: r.displayName } : {}),
       backedUpAt: null,
     },
@@ -107,9 +111,11 @@ export interface RecoverOpts {
  *  offer was tried. */
 /** `conflicting-vaults`: authentic vaults for more than one family (guardian
  *  key) were found, so none is picked — one may be planted. */
-export type RecoverFailure = 'cancelled' | 'needs-full-signer' | 'no-vault' | 'too-many-candidates' | 'conflicting-vaults'
+export type RecoverFailure = 'cancelled' | 'needs-full-signer' | 'no-vault' | 'too-many-candidates' | 'conflicting-backups' | 'incomplete-backup'
+  | 'conflicting-vaults'
 
 export interface RecoveredFamily {
+  checkpoint?: Partial<AppState>
   vault: VaultPayload
   /** The root to store. `backedUpAt` is the vault's own `createdAt` — that IS
    *  when this family was last backed up. `null` when the session could not
@@ -155,7 +161,7 @@ export function recoveryMiss(truncated: boolean): 'no-vault' | 'too-many-candida
  * before anything else can fail.
  */
 export async function recoverFamilyFromSignet(o: RecoverOpts): Promise<RecoveredFamily | RecoverFailure> {
-  const { signetLogin, signetAttest } = await import('./signetLogin')
+  const { signetLogin } = await import('./signetLogin')
   const session = await signetLogin({ relayUrls: o.relayUrls, requireFullSigner: false })
 
   const refused = classifyRecoveryLogin(session)
@@ -186,13 +192,25 @@ export async function recoverFamilyFromSignet(o: RecoverOpts): Promise<Recovered
   // resolved by recency: see `pickFamilyVault`.
   const picked = pickFamilyVault(hunt.candidates, session.pubkey, validateMnemonic, (m) => guardianFromMnemonic(m).pk)
   if (picked.kind === 'conflicting-vaults') return 'conflicting-vaults'
+  if (picked.kind === 'conflicting-backups') return 'conflicting-backups'
   if (picked.kind === 'none') return recoveryMiss(hunt.truncated)
   const { vault } = picked
+  let checkpoint: Partial<AppState> | undefined
+  if (vault.checkpoint) {
+    const temporary = guardianFromMnemonic(vault.mnemonic).sk
+    try {
+      const recovered = await recoverFamilyCheckpoint(vault.checkpoint,temporary,o.relay,20_000,session.pubkey)
+      if (!recovered) return 'incomplete-backup'
+      checkpoint = recovered
+    } finally { temporary.fill(0) }
+  }
 
-  const authEvent = await signetAttest(session.signer, rootChallenge(vault.guardianPk), o.nowSec)
-  const verified = authEvent !== null && verifyRootAttestation(authEvent, session.pubkey, vault.guardianPk)
+  const { signetAuthoriseFamily } = await import('./signetLogin')
+  const authEvent = await signetAuthoriseFamily(session.signer, vault.guardianPk)
+  const verified = authEvent !== null && verifyFamilyAuthority(authEvent, session.pubkey, vault.guardianPk)
 
   return {
+    ...(checkpoint ? { checkpoint } : {}),
     vault,
     root: verified
       ? {
@@ -200,7 +218,7 @@ export async function recoverFamilyFromSignet(o: RecoverOpts): Promise<Recovered
           pubkey: session.pubkey,
           authEvent: authEvent as NostrEvent,
           ...(session.displayName !== undefined ? { displayName: session.displayName } : {}),
-          backedUpAt: vault.createdAt,
+          backedUpAt: checkpoint ? vault.createdAt : null,
         }
       : null,
   }

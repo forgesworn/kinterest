@@ -35,3 +35,8 @@ export async function sasDigits(guardianPk: string, token: string): Promise<stri
   const s = String(n).padStart(6, '0')
   return `${s.slice(0, 3)} ${s.slice(3)}`
 }
+
+/** Binds the approval to the particular claiming device, not just the QR. */
+export async function claimSasDigits(guardianPk: string, token: string, childPk: string, devicePk: string): Promise<string> {
+  return sasDigits(guardianPk, `claim-v2:${token}:${childPk}:${devicePk}`)
+}

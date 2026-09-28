@@ -1,3 +1,4 @@
+import { verifyFamilyAuthority } from './familyAuthority'
 // The family's My Signet root, verified (v0.2 spec §1.3).
 //
 // PURE: no DOM, no I/O, no clock, and — load-bearing — nothing from
@@ -77,6 +78,7 @@ export function rootChallenge(guardianPk: string): string {
  * family's guardianPk) from passing check 5 on an impersonator's device.
  */
 export function verifyRootAttestation(authEvent: unknown, expectedSignetPk: string, guardianPk: string): boolean {
+  if (verifyFamilyAuthority(authEvent, expectedSignetPk, guardianPk)) return true
   try {
     if (typeof authEvent !== 'object' || authEvent === null || Array.isArray(authEvent)) return false
     const ev = authEvent as Record<string, unknown>

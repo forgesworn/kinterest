@@ -529,11 +529,13 @@ describe('vaultRosterOf', () => {
       relays: ['wss://a'],
       docs: { ...base.docs, accounts: { ...base.docs.accounts, revoked: { ['d'.repeat(64)]: 500 } } },
     }
-    expect(vaultRosterOf(app)).toEqual({
+    expect(vaultRosterOf(app)).toMatchObject({
       children: app.children,
       relays: ['wss://a'],
       revoked: { ['d'.repeat(64)]: 500 },
     })
+    expect(vaultRosterOf(app).checkpointSignature).toMatch(/^[0-9a-f]{64}$/)
+    expect(vaultRosterOf(app).checkpointSignature).not.toBe(vaultRosterOf(base).checkpointSignature)
     expect(vaultRosterOf(base).revoked).toBeUndefined()
   })
 })

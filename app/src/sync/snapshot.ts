@@ -1,3 +1,4 @@
+import { childForDevice, validDevice } from '../identity/devices'
 // sync/snapshot.ts — what a SNAPSHOT or CONFIG sent to one child device may
 // carry.
 //
@@ -39,11 +40,14 @@ export function scopeDoc<K extends keyof ConfigDocs>(docKind: K, doc: ConfigDocs
     case 'accounts': {
       const d = doc as ConfigDocs['accounts']
       const revokedAt = d.revoked?.[childPk]
+      const devices = (d.devices ?? []).filter(row => row.child === childPk)
+      const revokedDevices = Object.fromEntries(Object.entries(d.revoked ?? {}).filter(([key]) => key === childPk || devices.some(row => row.devicePk === key)))
       const scoped: ConfigDocs['accounts'] = {
         v: d.v,
         issuedAt: d.issuedAt,
         accounts: d.accounts.filter((a) => a.child === childPk),
-        ...(revokedAt !== undefined ? { revoked: { [childPk]: revokedAt } } : {}),
+        ...(Object.keys(revokedDevices).length ? { revoked: revokedDevices } : {}),
+        ...(d.devices ? { devices, deviceRevision: d.deviceRevision } : {}),
       }
       return scoped as ConfigDocs[K]
     }
@@ -99,10 +103,13 @@ export function scopeDocs(docs: ConfigDocs, childPk: string): ConfigDocs {
  * offer. Nothing in the result belongs to any other child.
  */
 export function scopeSnapshotState(app: AppState, childPk: string): SnapshotState {
+  childPk = childForDevice(app, childPk) ?? childPk
   return {
     children: app.children.filter((c) => c.pubkey === childPk),
     entries: app.entries.filter((e) => e.child === childPk),
     docs: scopeDocs(app.docs, childPk),
+    ticks: app.ticks.filter(t => app.docs.chores.chores.some(c => c.id === t.chore && c.child === childPk)),
+    audits: app.audits.filter(a => a.child === childPk),
   }
 }
 
@@ -140,7 +147,7 @@ export function grantFor(record: StoredRequest): GrantPayload | null {
  */
 export function grantsFor(app: AppState, childPk: string): GrantPayload[] {
   return app.requests
-    .filter((r) => r.authorPk === childPk && r.request.child === childPk && r.status !== 'pending')
+    .filter((r) => r.request.child === childPk && r.status !== 'pending' && (r.authorPk === childPk || app.docs.accounts.devices?.some(d => d.devicePk === r.authorPk && d.child === childPk && app.root?.kind === 'signet' && app.guardianPubkey && validDevice(d, app.guardianPubkey, app.root.pubkey))))
     .sort((a, b) => (b.decidedAt ?? b.createdAt) - (a.decidedAt ?? a.createdAt))
     .slice(0, MAX_SNAPSHOT_GRANTS)
     .map(grantFor)

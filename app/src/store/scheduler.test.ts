@@ -11,6 +11,8 @@ import { balances, creditEntry, transferEntry } from '../domain/ledger'
 import { reanchorConfigs } from '../domain/reanchor'
 import { dayKey } from '../domain/period'
 import { runSchedulers } from './scheduler'
+import { correctionEntries, appendCorrection } from '../domain/corrections'
+import { generateSecretKey, finalizeEvent } from 'nostr-tools/pure'
 
 const ACCOUNT_ID = 'a-ledger'
 const CHILD = 'sam'
@@ -816,4 +818,25 @@ describe('zero-match evaluation checkpoints', () => {
     expect(caughtUp.entries[0]!.id).toContain('2026-08-10')
     expect(caughtUp.entries[0]!.legs[0]!.amountMinor).toBe(100)
   })
+})
+
+
+it('continues scheduled money after mapping a revoked legacy device alias to a Signet child', () => {
+  const state = baseState({ docs: { ...baseState().docs, allowance: { v: 1, issuedAt: 1, configs: [allowanceCfg] } } })
+  state.docs.accounts.revoked = { [CHILD]: NOW - 1 }
+  state.children = [{ pubkey: CHILD, name: 'Test child', index: 0, signet: {
+    identityPk: '1'.repeat(64), selectionProof: finalizeEvent({ kind: 30078, created_at: NOW, tags: [], content: '' }, generateSecretKey()),
+  } }]
+  expect(runSchedulers(state, NOW).entries).toHaveLength(3)
+  expect(runSchedulers({ ...state, children: state.children.map(c => ({ ...c, archived: NOW })) }, NOW).entries).toEqual([])
+})
+
+it('does not repay an explicitly corrected scheduled period', () => {
+  const state = baseState({ docs: { ...baseState().docs, allowance: { v: 1, issuedAt: 1, configs: [allowanceCfg] } } })
+  const paid = runSchedulers(state, NOW).entries
+  const original = paid[0]!
+  state.entries = appendCorrection(paid, state.docs.accounts.accounts,
+    correctionEntries(original, { id: 'fixed-period', child: CHILD, author: 'guardian', createdAt: NOW }, 'Wrong amount', [350]))
+  expect(runSchedulers(state, NOW).entries).toEqual([])
+  expect(runSchedulers(state, NOW).claims).toEqual([])
 })

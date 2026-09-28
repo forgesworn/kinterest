@@ -1,3 +1,4 @@
+import { sendVault } from '../sync/publish'
 import { describe, expect, it, vi } from 'vitest'
 import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from 'nostr-tools/pure'
 import { emptyState } from '../state/state'
@@ -54,7 +55,7 @@ function relay(result: 'accepted' | 'rejected'): RelayLike & { published: NostrE
 }
 
 function opts(app: AppState, r: RelayLike, storage = memStorage(), record = memStorage()) {
-  return { getApp: () => app, guardianSk, relay: r, storage, record, nowSec: NOW, loadMnemonic: async () => mnemonic, inFlight: { current: null } }
+  return { send:sendVault, getApp: () => app, guardianSk, relay: r, storage, record, nowSec: NOW, loadMnemonic: async () => mnemonic, inFlight: { current: null } }
 }
 
 describe('republishVaultIfDue', () => {

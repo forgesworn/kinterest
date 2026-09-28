@@ -37,6 +37,7 @@ import { selfRevokedAt } from './state/state'
 
 const GuardianShell = lazy(() => import('./screens/GuardianShell'))
 const GuardianSignetGate = lazy(() => import('./screens/ChildSettings').then(m => ({ default: m.GuardianSignetGate })))
+const ParentAccess = lazy(() => import('./screens/ParentAccess'))
 const ChildShell = lazy(() => import('./screens/ChildShell'))
 
 export function App() {
@@ -66,7 +67,7 @@ function AppShell() {
     )
   }
   if (guardianNeedsSignet(app)) return <Suspense fallback={null}><GuardianSignetGate /></Suspense>
-  if (app.role === 'guardian' && app.children.length === 0) return <Onboarding initialStep={addChildStep()} />
+
 
   // A child device its guardian has removed (v0.2 spec §4.5). Gated on state,
   // not on a one-shot navigation from the store's `revoked` effect handler:
@@ -87,7 +88,7 @@ function AppShell() {
   // splash risks being MORE visible than the gap it's covering for.
   return (
     <Suspense fallback={null}>
-      {app.role === 'guardian' ? <GuardianShell /> : <ChildShell />}
+      {app.role === 'guardian' ? <ParentAccess>{app.children.length === 0 ? <Onboarding initialStep={addChildStep()} /> : <GuardianShell />}</ParentAccess> : <ChildShell />}
     </Suspense>
   )
 }

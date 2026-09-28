@@ -40,7 +40,8 @@ function isSelfShape(x: unknown): x is AppState['self'] {
   return (
     isPlainObject(x) &&
     (x.pubkey === null || typeof x.pubkey === 'string') &&
-    (x.childIndex === null || typeof x.childIndex === 'number')
+    (x.childIndex === null || typeof x.childIndex === 'number') &&
+    (x.devicePk === undefined || typeof x.devicePk === 'string' && /^[0-9a-f]{64}$/.test(x.devicePk))
   )
 }
 
@@ -161,7 +162,7 @@ function sanitiseRoot(x: unknown): RootRecord | null {
   // Full event shape, `sig` included — see `wire/payloads.ts`'s
   // `parseRootAttestation`. A record missing a field cannot be re-verified
   // where it is displayed as proof, so it is not worth carrying.
-  if (!isNostrEventShape(ev) || ev.kind !== KIND_SIGNET_AUTH) return null
+  if (!isNostrEventShape(ev) || ![KIND_SIGNET_AUTH, 30078].includes(ev.kind)) return null
   if (!HEX64.test(ev.id) || !HEX64.test(ev.pubkey)) return null
   const backedUpAt = Number.isSafeInteger(x.backedUpAt) ? (x.backedUpAt as number) : null
   const displayName = typeof x.displayName === 'string' && x.displayName.length <= 64 ? x.displayName : undefined
@@ -325,6 +326,10 @@ function sanitiseState(raw: Record<string, unknown>, dropped: unknown[] = []): A
     ...empty,
     ...raw,
     entries,
+    ...(Array.isArray(raw.pendingCorrections) ? { pendingCorrections: raw.pendingCorrections.filter((bundle): bundle is Entry[] => {
+      if (!Array.isArray(bundle) || bundle.length < 1 || bundle.length > 2) return false
+      return bundle.every(e => { try { assertEntry(e as Entry); return entries.some(old => JSON.stringify(old) === JSON.stringify(e)) } catch { return false } })
+    }) } : {}),
     ticks,
     audits,
     requests,

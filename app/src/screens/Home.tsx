@@ -1,3 +1,4 @@
+import { ChildAvatar } from '../components/ChildAvatar'
 // The guardian's family overview — one card per child. See
 // internal plan 2026-08-11-parent-mode, Task 4.
 //
@@ -256,7 +257,7 @@ function ChildCard({
       }}
     >
       <div className="child-card-top">
-        <span className="child-card-name">{child.name}</span>
+        <ChildAvatar child={child} /><span className="child-card-name">{child.name}</span>
         {pending > 0 && <Pill tone="amber">{pending} request{pending === 1 ? '' : 's'}</Pill>}
       </div>
       <div className="child-card-total">
