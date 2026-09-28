@@ -98,3 +98,24 @@ it('retries a completed new-child admission without duplicating identity or gran
   const app = admitSignetChild(family(), proof, guardianSk, now)
   expect(admitSignetChild(app, proof, guardianSk, now + 1)).toBe(app)
 })
+
+
+it('upgrades a replacement phone’s cached legacy profile only from verified child and device proofs', () => {
+  const alias = getPublicKey(generateSecretKey()), shared = getPublicKey(generateSecretKey()), phoneSk = generateSecretKey(), phonePk = getPublicKey(phoneSk)
+  const legacy = { pubkey: alias, name: 'Saved child', index: 3 }
+  const mapped = admitSignetChild({ ...family(), children: [legacy] }, consent(shared, 'shared-phone'), guardianSk, now, alias)
+  const paired = replaceChildPhone(mapped, alias, consent(phonePk, 'child-phone'), guardianSk, now + 1)
+  const saved: typeof paired = { ...paired, role: 'child', self: { pubkey: alias, childIndex: 3, devicePk: phonePk }, children: [legacy] }
+  const snapshot = buildSnapshotPayload(scopeSnapshotState(paired, alias))
+  const upgraded = applySnapshot(saved, snapshot, now + 1)
+  expect(upgraded.children[0]?.name).toBe('Test child')
+  expect(upgraded.children[0]?.signet?.identityPk).toBe(identity)
+  expect(upgraded.self).toEqual(saved.self)
+  expect(upgraded.entries).toEqual(saved.entries)
+  expect(childForDevice(upgraded, phonePk)).toBe(alias)
+  expect(applySnapshot(upgraded, { ...snapshot, state: { ...snapshot.state, children: [legacy] } }, now + 2).children).toEqual(upgraded.children)
+  const forged = { ...snapshot, state: { ...snapshot.state, children: [{ ...paired.children[0]!, signet: { ...paired.children[0]!.signet!, selectionProof: { ...paired.children[0]!.signet!.selectionProof, sig: '0'.repeat(128) } } }] } }
+  expect(applySnapshot(saved, forged, now + 1).children).toEqual([legacy])
+  const revoked = { ...saved, docs: { ...saved.docs, accounts: { ...saved.docs.accounts, revoked: { ...saved.docs.accounts.revoked, [phonePk]: now + 1 } } } }
+  expect(applySnapshot(revoked, snapshot, now + 1).children).toEqual([legacy])
+})

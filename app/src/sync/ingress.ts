@@ -1,5 +1,6 @@
 import { appendCorrection } from '../domain/corrections'
-import { childForDevice } from '../identity/devices'
+import { verifyChildConsent } from '../identity/familyAuthority'
+import { childForDevice, validDevice } from '../identity/devices'
 // Inbound wire dispatch — every gift-wrapped event this app receives is
 // unwrapped and folded into `AppState` here. See
 // internal plan 2026-08-10-wire-identity-pairing, Task 7.
@@ -88,10 +89,21 @@ function markSeen(state: AppState, id: string): AppState {
  *  child, so applying an out-of-order/stale snapshot can't roll the child
  *  list backwards (unlike entries/docs, ChildProfile carries no ordering
  *  field to test "newer than what we already merged in"). */
-function mergeChildren(existing: ChildProfile[], incoming: ChildProfile[]): ChildProfile[] {
+function mergeChildren(existing: ChildProfile[], incoming: ChildProfile[], app: AppState): ChildProfile[] {
+  // A legacy phone may retain its old cached profile after replacement.
+  // Upgrade only its own alias, using both the current signed device grant
+  // and My Signet's verified selection proof; stale snapshots cannot undo it.
+  const upgraded = existing.map(child => {
+    if (app.role !== 'child' || child.pubkey !== app.self.pubkey || child.signet || child.archived !== undefined || !app.self.devicePk || app.root?.kind !== 'signet' || !app.guardianPubkey) return child
+    const selected = incoming.find(c => c.pubkey === child.pubkey)?.signet
+    const consent = selected && verifyChildConsent(selected.selectionProof, app.root.pubkey, app.guardianPubkey)
+    const grant = app.docs.accounts.devices?.find(d => d.child === child.pubkey && d.devicePk === app.self.devicePk)
+    if (!selected || !consent || selected.identityPk !== consent.identityPk || !grant || grant.identityPk !== consent.identityPk || app.docs.accounts.revoked?.[grant.devicePk] !== undefined || !validDevice(grant, app.guardianPubkey, app.root.pubkey)) return child
+    return { ...child, name: consent.name, signet: { identityPk: consent.identityPk, selectionProof: selected.selectionProof, ...(consent.avatar ? { avatar: consent.avatar } : {}) } }
+  })
   const known = new Set(existing.map((c) => c.pubkey))
   const additions = incoming.filter((c) => !known.has(c.pubkey))
-  return additions.length === 0 ? existing : [...existing, ...additions]
+  return additions.length === 0 && upgraded.every((c, i) => c === existing[i]) ? existing : [...upgraded, ...additions]
 }
 
 const DOC_KINDS = ['accounts', 'allowance', 'interest', 'chores'] as const
@@ -203,7 +215,7 @@ export function applySnapshot(state: AppState, snapshot: PairingSnapshotPayload,
     if (doc.issuedAt > nowSec + MAX_ISSUED_AT_SKEW_SECS) continue
     next = applyConfigDoc(next, kind, doc)
   }
-  next = { ...next, children: mergeChildren(next.children, snapshot.state.children) }
+  next = { ...next, children: mergeChildren(next.children, snapshot.state.children, next) }
   // The guardian authenticates historical activity in its scoped snapshot.
   const own = state.role === 'child' ? state.self.pubkey : null
   for (const tick of snapshot.state.ticks ?? []) {
