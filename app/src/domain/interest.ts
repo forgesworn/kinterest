@@ -285,7 +285,7 @@ function isMatchPayout(e: Entry, accountId: string, reversedIds: ReadonlySet<str
  * period was already evaluated). A period whose match came to 0 mints no
  * entry and would otherwise stay open for ever.
  */
-export function matchDue(cfg: InterestConfig, existing: Entry[], nowSec: number): string[] {
+export function matchDue(cfg: InterestConfig, existing: Entry[], nowSec: number, evaluatedThroughDay?: string): string[] {
   if (cfg.paused) return []
   if (cfg.matchBps === undefined || !(cfg.matchBps > 0)) return []
   const today = dayKey(nowSec, cfg.tz)
@@ -305,6 +305,8 @@ export function matchDue(cfg: InterestConfig, existing: Entry[], nowSec: number)
     const beforeFirst = addDays(days[0]!, -1)
     if (beforeFirst > fromExclusive) fromExclusive = beforeFirst
   }
+  if (evaluatedThroughDay !== undefined && evaluatedThroughDay <= today && evaluatedThroughDay > fromExclusive)
+    fromExclusive = evaluatedThroughDay
   const due = dueDays({ cadence: cfg.cadence, day: cfg.day, fromExclusive, toInclusive: today })
   const paid = new Set(matches.map((e) => e.periodKey as string))
   return due.filter((d) => !paid.has(periodKeyOf(cfg, d)))

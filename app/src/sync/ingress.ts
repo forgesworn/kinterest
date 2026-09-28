@@ -289,7 +289,7 @@ function applySnapshotGrants(state: AppState, grants: readonly GrantPayload[] | 
   for (const grant of grants) {
     const known = next.requests.find((r) => r.request.reqId === grant.reqId)
     if (known !== undefined && known.status !== 'pending') continue
-    next = recordGrantResult(next, grant, selfPk, nowSec)
+    next = recordGrantResult(next, grant, selfPk, Math.min(grant.ts, nowSec))
   }
   return next
 }

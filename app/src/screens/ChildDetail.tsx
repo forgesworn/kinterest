@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 // One child's accounts, unified feed, and quick-action entry points. See
 // internal plan 2026-08-11-parent-mode, Task 4.
 //
@@ -170,7 +171,7 @@ export function ChildDetail({
       for (const c of roster) {
         // Sequential, not Promise.all-ed — every send shares one outbox; see
         // store.tsx#publishConfigDoc's own send loop.
-        await sendConfig('accounts', doc, { selfSk: sk, peerPk: c.pubkey, relay, storage: window.localStorage, nowSec }).catch(() => {})
+        await sendConfig('accounts', doc, { selfSk: sk, peerPk: c.pubkey, relay, storage: dataStorage(), nowSec }).catch(() => {})
       }
       onBack()
     })()
@@ -241,7 +242,7 @@ export function ChildDetail({
     const nowSec = Math.floor(Date.now() / 1000)
     void (async () => {
       for (const c of roster) {
-        await sendConfig('accounts', revokeDoc, { selfSk: sk, peerPk: c.pubkey, relay, storage: window.localStorage, nowSec }).catch(() => {})
+        await sendConfig('accounts', revokeDoc, { selfSk: sk, peerPk: c.pubkey, relay, storage: dataStorage(), nowSec }).catch(() => {})
       }
       onBack()
     })()

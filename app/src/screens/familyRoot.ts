@@ -65,6 +65,6 @@ export function rootCardModel(root: RootRecord | null, formatDate: (unixSec: num
     showBackupButton: true,
     backupButtonLabel: backedUp ? 'Back up again' : 'Back up now',
     showConnectButton: false,
-    showDisconnectButton: true,
+    showDisconnectButton: false,
   }
 }

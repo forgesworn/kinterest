@@ -4,7 +4,7 @@ import type { AllowanceConfig } from '../domain/allowance'
 import type { InterestConfig } from '../domain/interest'
 import type { Account } from '../domain/types'
 import type { StoredRequest } from '../state/types'
-import { approxTotal, familyChildren, nextDates, pendingRequestCount } from './Home'
+import { familyHoldings, familyHoldingSummary, approxTotal, familyChildren, nextDates, pendingRequestCount } from './Home'
 
 // Pure-logic coverage only — Home.tsx's screen half is a thin `useApp()` +
 // render shell, matching PairDevice.tsx's own split (pairingRemainingSecs
@@ -148,5 +148,20 @@ describe('familyChildren', () => {
 
   it('empty family -> empty list', () => {
     expect(familyChildren([])).toEqual([])
+  })
+})
+
+
+describe('parent family holdings', () => {
+  it('counts ledger pots, including outstanding archived pots, but excludes money held elsewhere', () => {
+    const accounts = [spending, { ...spending, id: 'old', archived: true }, { ...spending, id: 'cash', custody: 'physical' as const }, { ...spending, id: 'bank', custody: 'external' as const }]
+    expect(familyHoldingSummary(accounts, new Map([['acc-spend', 101], ['old', 299], ['cash', 500], ['bank', 800]]))).toBe("You're holding £4.00 for the family")
+  })
+  it('shows separate exact currencies without conversion', () => {
+    expect(familyHoldingSummary([spending, { ...spending, id: 'eur', currency: 'EUR' }], new Map([['acc-spend', 100], ['eur', 250]]))).toBe("You're holding £1.00 and €2.50 for the family")
+  })
+  it('shows zero for a family without ledger pots and refuses an unsafe total', () => {
+    expect(familyHoldingSummary([], new Map())).toBe("You're holding £0.00 for the family")
+    expect(() => familyHoldings([spending, { ...spending, id: 'other' }], new Map([['acc-spend', Number.MAX_SAFE_INTEGER], ['other', 1]]))).toThrow()
   })
 })

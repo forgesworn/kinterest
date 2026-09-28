@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 // The five money-moving bottom sheets: Add money / Take money / Transfer /
 // Exchange / Settle up. See internal plan 2026-08-11-parent-mode,
 // Task 4 — "exchange records BOTH sides with last-used-rate suggestion from
@@ -84,7 +85,7 @@ async function submitEntry(entry: Entry, nowSec: number, opts: SubmitOpts): Prom
     selfSk: opts.guardianSk,
     peerPk: entry.child,
     relay: opts.relay,
-    storage: window.localStorage,
+    storage: dataStorage(),
     nowSec,
   }).catch(() => {})
   // A failed send leaves the entry durably queued in the outbox (see

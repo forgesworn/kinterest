@@ -21,6 +21,9 @@
  *  than the page" gap `CarrierBridge#version`'s own doc comment describes),
  *  and that must degrade gracefully rather than throw. */
 interface KinjarShellBridge {
+  relayOpen?: (id: string, url: string) => void
+  relaySend?: (id: string, text: string) => boolean
+  relayClose?: (id: string) => void
   version?: () => string
   /** Foreground relay-keepalive service (v0.2 spec §3.2/§3.3). Started once
    *  a role is set and an engine is live; stopped on teardown and when the

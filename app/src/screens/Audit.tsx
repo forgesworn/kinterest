@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 // The child's audit ceremony: pick a physical pot, count its coins/notes,
 // compare the count against what the ledger says that pot should hold, and
 // send the result to the guardian. See
@@ -136,7 +137,7 @@ export function Audit({ onBack }: { onBack: () => void }): ReactElement {
         result.expectedMinor,
       )
       dispatch({ type: 'updateApp', update: (a) => recordAudit(a, audit) })
-      await sendAudit(audit, { selfSk: childSk, peerPk: app.guardianPubkey, relay, storage: window.localStorage, nowSec }).catch(() => {})
+      await sendAudit(audit, { selfSk: childSk, peerPk: app.guardianPubkey, relay, storage: dataStorage(), nowSec }).catch(() => {})
       // A failed send leaves it durably queued in the outbox (sync/publish.ts)
       // — not lost. The local record has already been made either way, same
       // "still applied locally — optimistic" shape as every other submit

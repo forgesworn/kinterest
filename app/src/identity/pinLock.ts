@@ -269,14 +269,32 @@ export interface UnlockWithPinOpts {
  * the backoff tamper-proof — see this module's header and SECURITY.md for
  * the same limit stated plainly for a non-technical reader.
  */
+export type PinUnlockResult =
+  | { kind: 'unlocked'; sk: Uint8Array }
+  | { kind: 'wrong'; backoff: BackoffState }
+  | { kind: 'locked'; backoff: BackoffState }
+
+/** Compatibility helper for callers that only need the key. The lock UI
+ * uses the detailed result so a deferred attempt never counts as a bad PIN. */
 export async function unlockWithPin(pin: string, opts?: UnlockWithPinOpts): Promise<Uint8Array | null> {
+  const result = await unlockWithPinResult(pin, opts)
+  return result.kind === 'unlocked' ? result.sk : null
+}
+
+export async function unlockWithPinResult(pin: string, opts?: UnlockWithPinOpts): Promise<PinUnlockResult> {
   const storage = opts?.storage ?? defaultBackoffStorage()
   const nowSec = opts?.nowSec ?? Math.floor(Date.now() / 1000)
+  const wrong = (base: BackoffState): PinUnlockResult => {
+    const failures = base.consecutiveFailures + 1
+    const backoff = { consecutiveFailures: failures, lockedUntilSec: nextLockedUntil(failures, nowSec) }
+    saveBackoffState(storage, backoff)
+    return { kind: 'wrong', backoff }
+  }
   const stored = await vaultLoad(CHILD_PIN_WRAP_NAME)
-  if (stored === null) return null
+  if (stored === null) return wrong(loadBackoffState(storage))
   const text = new TextDecoder().decode(stored)
   const parsed = parseWrapBlob(text)
-  if (parsed === null) return null
+  if (parsed === null) return wrong(loadBackoffState(storage))
 
   const merged = maxBackoffState(loadBackoffState(storage), {
     consecutiveFailures: parsed.failures,
@@ -288,7 +306,10 @@ export async function unlockWithPin(pin: string, opts?: UnlockWithPinOpts): Prom
     saveBackoffState(storage, merged)
     await rewriteEmbeddedBackoff(parsed, merged.consecutiveFailures, clamped)
   }
-  if (!canAttempt(merged.lockedUntilSec, nowSec)) return null
+  if (!canAttempt(merged.lockedUntilSec, nowSec)) {
+    saveBackoffState(storage, merged)
+    return { kind: 'locked', backoff: merged }
+  }
 
   try {
     const key = await deriveAesKey(pin, parsed.salt)
@@ -301,7 +322,7 @@ export async function unlockWithPin(pin: string, opts?: UnlockWithPinOpts): Prom
     // clearing itself). Best-effort: a failed rewrite here is no worse than
     // this hardening not existing at all.
     await rewriteEmbeddedBackoff(parsed, 0, 0)
-    return sk
+    return { kind: 'unlocked', sk }
   } catch {
     // Wrong PIN (GCM tag mismatch) or a tampered/corrupt blob — same `null`
     // either way, see this function's own doc comment. Escalate the embedded
@@ -310,7 +331,7 @@ export async function unlockWithPin(pin: string, opts?: UnlockWithPinOpts): Prom
     // function itself now enforces.
     const failures = merged.consecutiveFailures + 1
     await rewriteEmbeddedBackoff(parsed, failures, nextLockedUntil(failures, nowSec))
-    return null
+    return wrong(merged)
   }
 }
 

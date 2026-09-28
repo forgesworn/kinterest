@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 import type { NostrEvent } from 'nostr-tools/pure'
 import { assertEntry } from '../domain/ledger'
 import type { Entry } from '../domain/types'
@@ -12,39 +13,15 @@ const STORAGE_KEY = 'kinjar.state.v1'
 // members without depending on "dom" lib types, so this compiles the same
 // whether or not DOM lib is present. vitest runs with environment 'node',
 // where globalThis.localStorage does not exist, so callers under test must
-// inject a fake; browser callers get the real thing via the default.
+// inject a fake; browser callers get the IndexedDB mirror via the default.
 export interface StorageLike {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
   removeItem(key: string): void
 }
 
-function noopStorage(): StorageLike {
-  const map = new Map<string, string>()
-  return {
-    getItem: (key) => map.get(key) ?? null,
-    setItem: (key, value) => {
-      map.set(key, value)
-    },
-    removeItem: (key) => {
-      map.delete(key)
-    },
-  }
-}
-
-// Reading `globalThis.localStorage` can itself throw (some browsers raise a
-// SecurityError just accessing the property in restricted/privacy contexts),
-// as well as simply not exist (vitest's node environment, where the property
-// is undefined rather than throwing). Either way, fall back to an in-memory
-// no-op store rather than letting default-parameter evaluation throw.
 function defaultStorage(): StorageLike {
-  try {
-    const ls = (globalThis as { localStorage?: StorageLike }).localStorage
-    if (ls) return ls
-  } catch {
-    // fall through to no-op
-  }
-  return noopStorage()
+  return dataStorage()
 }
 
 function looksLikeAppState(x: unknown): x is Record<string, unknown> {
@@ -362,6 +339,15 @@ function sanitiseState(raw: Record<string, unknown>, dropped: unknown[] = []): A
     seenEventIds,
     root,
     innerEvents,
+    matchEvaluations: isPlainObject(raw.matchEvaluations)
+      ? Object.fromEntries(Object.entries(raw.matchEvaluations).filter(([, value]) =>
+          isPlainObject(value) && typeof value.config === 'string' && typeof value.ledger === 'string' && typeof value.throughDay === 'string' && DAY_KEY.test(value.throughDay)))
+      : undefined,
+    docChildHighWater: isPlainObject(raw.docChildHighWater)
+      ? Object.fromEntries(Object.entries(raw.docChildHighWater).filter(([kind, times]) =>
+          ['accounts', 'allowance', 'interest', 'chores'].includes(kind) && isNumberRecord(times)
+          && Object.values(times).every(t => Number.isSafeInteger(t) && t >= 0)))
+      : undefined,
   } as AppState
 }
 

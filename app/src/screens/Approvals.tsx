@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 // The guardian's requests queue — spend.request and allowance.claim asks
 // from paired children, grouped by child. See
 // internal plan 2026-08-11-parent-mode, Task 5, and the charter
@@ -100,7 +101,7 @@ async function submitDecision(app: AppState, input: GrantDecisionInput, nowSec: 
       selfSk: opts.guardianSk,
       peerPk: build.entry.child,
       relay: opts.relay,
-      storage: window.localStorage,
+      storage: dataStorage(),
       nowSec,
     }).catch(() => {})
   }
@@ -108,7 +109,7 @@ async function submitDecision(app: AppState, input: GrantDecisionInput, nowSec: 
     selfSk: opts.guardianSk,
     peerPk: input.request.child,
     relay: opts.relay,
-    storage: window.localStorage,
+    storage: dataStorage(),
     nowSec,
   }).catch(() => {})
   // A failed send leaves the GRANT/entry durably queued in the outbox (see

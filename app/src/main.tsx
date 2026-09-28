@@ -2,6 +2,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { isShell } from './platform/shell'
+import { DataStorageOpenElsewhere, DataStorageUnsupported, initialiseDataStorage } from './platform/dataStorage'
 import './theme.css'
 
 // Register the minimal service worker (public/sw.js) — web build only.
@@ -67,10 +68,29 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, Error
   }
 }
 
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </React.StrictMode>,
-)
+const root = createRoot(document.getElementById('root')!)
+
+async function start(): Promise<void> {
+  root.render(<div className="screen"><main className="screen-body">Opening your family…</main></div>)
+  try {
+    await initialiseDataStorage()
+    root.render(
+      <React.StrictMode>
+        <ErrorBoundary><App /></ErrorBoundary>
+      </React.StrictMode>,
+    )
+  } catch (error) {
+    // Never boot an empty family after a failed read of an existing ledger.
+    root.render(
+      <div className="screen"><main className="screen-body"><div className="card">
+        <p>{error instanceof DataStorageOpenElsewhere
+          ? 'Kinterest is open in another tab. Close that tab, then try again here.'
+          : error instanceof DataStorageUnsupported
+            ? 'This browser can’t safely open your family. Use an up-to-date browser or the Android app.'
+            : 'This phone couldn’t open your saved family. Free up some space and try again.'}</p>
+        <button onClick={() => void start()}>Try again</button>
+      </div></main></div>,
+    )
+  }
+}
+void start()

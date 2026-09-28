@@ -820,3 +820,17 @@ describe('mergeConfigDoc (a guardian folding children s views of its docs)', () 
     expect(merged.docs.accounts.revoked).toEqual({ alex: 5, sam: 7 })
   })
 })
+
+
+describe('config recovery provenance', () => {
+  it('recovers a child s newer view even after a sibling raises the global high-water', () => {
+    const row = (child: string, name: string) => ({ id: child, child, name, cadence: 'daily' as const })
+    let state = mergeConfigDoc(emptyState(), 'chores', { v: 1, issuedAt: 120, chores: [row('a', 'old-a'), row('c', 'old-c')] })
+    state = mergeConfigDoc(state, 'chores', { v: 1, issuedAt: 200, chores: [row('b', 'new-b')] })
+    state = mergeConfigDoc(state, 'chores', { v: 1, issuedAt: 150, chores: [row('c', 'new-c')] })
+    expect(state.docs.chores.chores.find(c => c.child === 'c')?.name).toBe('new-c')
+    expect(state.docHighWater.chores).toBe(200)
+    expect(state.docChildHighWater?.chores?.c).toBe(150)
+    expect(mergeConfigDoc(state, 'chores', { v: 1, issuedAt: 120, chores: [row('c', 'old-c')] })).toBe(state)
+  })
+})

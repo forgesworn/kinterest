@@ -3,7 +3,7 @@ import { finalizeEvent, generateSecretKey, getPublicKey, type NostrEvent } from 
 import { emptyState } from '../state/state'
 import type { AppState } from '../state/types'
 import type { RelayLike } from '../wire/relayClient'
-import { outboxEvents, type StorageLike } from '../wire/outbox'
+import { flush, outboxEvents, type StorageLike } from '../wire/outbox'
 import { generateMnemonic } from '../identity/derive'
 import { readVaultPublished, republishVaultIfDue, vaultQueued, writeVaultPublished } from './vaultRepublish'
 
@@ -114,4 +114,28 @@ describe('republishVaultIfDue', () => {
     expect(() => writeVaultPublished('sig', blocked)).not.toThrow()
     expect(readVaultPublished(blocked)).toBe('sig')
   })
+})
+
+
+it('records a queued vault accepted by a later flush without sealing it again', async () => {
+  const app = guardianApp()
+  const r = relay('rejected')
+  const o = opts(app, r)
+  expect(await republishVaultIfDue(o)).toBeNull()
+  const successful = relay('accepted')
+  await flush(successful, NOW + 10, o.storage)
+  expect(await republishVaultIfDue({ ...o, relay: successful, nowSec: NOW + 20 })).toBe(NOW)
+  expect(successful.published).toHaveLength(1)
+  expect(readVaultPublished(o.record)).not.toBeNull()
+})
+
+
+it('does not call a rejected direct publish backed up when the outbox write failed', async () => {
+  const storage = { getItem: () => null, removeItem: () => {}, setItem: () => { throw new Error('quota') } }
+  const r = relay('rejected')
+  const o = opts(guardianApp(), r, storage)
+  expect(await republishVaultIfDue(o)).toBeNull()
+  expect(await republishVaultIfDue({ ...o, nowSec: NOW + 20 })).toBeNull()
+  expect(readVaultPublished(o.record)).toBeNull()
+  expect(r.published).toHaveLength(2)
 })

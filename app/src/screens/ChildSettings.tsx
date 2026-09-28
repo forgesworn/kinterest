@@ -1,3 +1,5 @@
+import { guardianNeedsSignet } from '../identity/guardianAccess'
+import { dataStorage } from '../platform/dataStorage'
 // One child's settings: accounts, pocket money (allowance), interest,
 // chores, "Show recovery words", relays + outbox, and the "Pair a device"
 // entry point. See internal plan 2026-08-11-parent-mode, Task 6.
@@ -920,13 +922,12 @@ function formatBackupDate(unixSec: number): string {
 function FamilyRootCard(): ReactElement {
   const { state, dispatch, relay, guardianSk } = useApp()
   const app = state.app
-  const model = rootCardModel(app.root, formatBackupDate)
+  const model = rootCardModel(guardianNeedsSignet(app) ? null : app.root, formatBackupDate)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
 
-  function setRoot(root: SignetRoot | { kind: 'phrase' }): void {
+  function setRoot(root: SignetRoot): void {
     dispatch({ type: 'updateApp', update: (a) => ({ ...a, root }) })
   }
 
@@ -943,6 +944,10 @@ function FamilyRootCard(): ReactElement {
         return
       }
       const { pk } = guardianFromMnemonic(mnemonic)
+      if (pk !== app.guardianPubkey) {
+        setError('The saved family key does not match this family. Nothing has been changed.')
+        return
+      }
       const { connectSignetRoot } = await import('../identity/signetConnect')
       const connected = await connectSignetRoot({ guardianPk: pk, relayUrls: app.relays })
       if (connected === null) {
@@ -974,7 +979,7 @@ function FamilyRootCard(): ReactElement {
     try {
       const { sent } = await sendVault(
         vaultPayloadFor(vaultRosterOf(app), mnemonic, guardianFromMnemonic(mnemonic).pk, root.authEvent, nowSec),
-        { selfSk: guardianSk, peerPk: root.pubkey, relay, storage: window.localStorage, nowSec },
+        { selfSk: guardianSk, peerPk: root.pubkey, relay, storage: dataStorage(), nowSec },
       )
       // The store's automatic re-seal reads this, so a manual backup counts.
       if (sent) writeVaultPublished(vaultRosterSignature(vaultRosterOf(app)))
@@ -1007,42 +1012,6 @@ function FamilyRootCard(): ReactElement {
     }
   }
 
-  /** The mnemonic is NEVER deleted here — disconnecting drops the root
-   *  record, not the family's only way back. */
-  async function disconnect(): Promise<void> {
-    setBusy(true)
-    setConfirmingDisconnect(false)
-    try {
-      setRoot({ kind: 'phrase' })
-      const { signetLogout } = await import('../identity/signetLogin')
-      await signetLogout()
-    } catch {
-      // The root is already dropped locally; only the sign-out of the stored
-      // session failed to load.
-      setNote('Disconnected here. If My Signet still lists this app, remove it there.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (confirmingDisconnect) {
-    return (
-      <Card>
-        <Banner tone="info">
-          Your family stays exactly as it is. You will need your recovery words to move to a new phone.
-        </Banner>
-        <div className="settings-row-actions">
-          <Button variant="primary" onClick={() => void disconnect()} disabled={busy}>
-            Disconnect My Signet
-          </Button>
-          <Button variant="quiet" onClick={() => setConfirmingDisconnect(false)} disabled={busy}>
-            Cancel
-          </Button>
-        </div>
-      </Card>
-    )
-  }
-
   return (
     <Card>
       <p className="card-sub">{model.subtitle}</p>
@@ -1067,11 +1036,7 @@ function FamilyRootCard(): ReactElement {
           </p>
         </>
       )}
-      {model.showDisconnectButton && (
-        <Button variant="quiet" block onClick={() => setConfirmingDisconnect(true)} disabled={busy}>
-          Disconnect My Signet
-        </Button>
-      )}
+
     </Card>
   )
 }
@@ -1085,7 +1050,7 @@ function RelayCard({ relays }: { relays: string[] }): ReactElement {
   // guardian opens settings, and `outboxEvents` is a cheap synchronous
   // localStorage read (wire/outbox.ts), the same source Task 7's relay
   // status pill will eventually read.
-  const pending = outboxEvents(window.localStorage).length
+  const pending = outboxEvents(dataStorage()).length
   return (
     <Card>
       {relays.length === 0 ? (
@@ -1179,7 +1144,7 @@ export function ChildSettings({
             selfSk: sk,
             peerPk,
             relay,
-            storage: window.localStorage,
+            storage: dataStorage(),
             nowSec,
           }).catch(() => {})
           // A failed send leaves the CONFIG durably queued in the outbox
@@ -1281,6 +1246,16 @@ export function ChildSettings({
 
       <h2 className="settings-section-heading">Relays</h2>
       <RelayCard relays={app.relays} />
+    </Screen>
+  )
+}
+
+/** Connect-only migration gate: never replaces the existing family identity. */
+export function GuardianSignetGate(): ReactElement {
+  return (
+    <Screen title="Connect My Signet">
+      <p>My Signet is required to use Kinterest as a parent. Connect this existing family to continue; your children and money stay saved.</p>
+      <FamilyRootCard />
     </Screen>
   )
 }

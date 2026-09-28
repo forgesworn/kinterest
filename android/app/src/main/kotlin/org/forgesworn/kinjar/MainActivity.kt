@@ -23,6 +23,7 @@ import org.forgesworn.kinjar.service.Notifier
 import org.forgesworn.kinjar.service.RelayService
 import org.forgesworn.kinjar.web.BundledConsole
 import org.forgesworn.kinjar.web.KinjarShellBridge
+import org.forgesworn.kinjar.web.NativeRelaySockets
 import org.forgesworn.kinjar.web.UrlGate
 
 /**
@@ -41,6 +42,8 @@ import org.forgesworn.kinjar.web.UrlGate
 class MainActivity : ComponentActivity() {
 
     private lateinit var webView: WebView
+    private lateinit var relaySockets: NativeRelaySockets
+    @Volatile private var resumed = false
     private var pendingCameraRequest: PermissionRequest? = null
     private var notificationsPermissionRequested = false
 
@@ -86,6 +89,18 @@ class MainActivity : ComponentActivity() {
         // shell.ts's shellInfo() already treats the same as a missing
         // version() method entirely.
         val pkg = runCatching { packageManager.getPackageInfo(packageName, 0) }.getOrNull()
+        relaySockets = NativeRelaySockets(
+            allowed = { resumed || RelayService.isRunning() },
+            deliver = { detail ->
+                runOnUiThread {
+                    if (!isDestroyed) webView.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('kinjar-relay-socket', {detail: $detail}));",
+                        null,
+                    )
+                }
+            },
+        )
+        RelayService.onTransportStop = { relaySockets.stop() }
         webView.addJavascriptInterface(
             KinjarShellBridge(
                 versionName = pkg?.versionName ?: "",
@@ -93,11 +108,18 @@ class MainActivity : ComponentActivity() {
                 onStartRelayService = { RelayService.start(this) },
                 onStopRelayService = { RelayService.stop(this) },
                 onNotify = { title, body, tag -> Notifier.notify(this, title, body, tag) },
+                sockets = relaySockets,
             ),
             KinjarShellBridge.JS_NAME,
         )
 
         webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                // A new JS page resets socket ids and listeners. The old
+                // page's subscriptions must not survive a reload/navigation.
+                relaySockets.stop()
+                super.onPageStarted(view, url, favicon)
+            }
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest,
@@ -247,17 +269,26 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        resumed = true
         maybeRequestNotificationsPermission()
         // Android 15 stops the dataSync service after 6 h
         // (RelayService.onTimeout); bring it back now that we're foreground,
         // if the web side had asked for it.
         RelayService.restartIfWanted(this)
+        webView.evaluateJavascript("window.dispatchEvent(new Event('online'));", null)
+    }
+
+    override fun onPause() {
+        resumed = false
+        super.onPause()
     }
 
     /** The service exists only to keep this WebView's JS
      *  running, so it must not outlive it. With configChanges declared,
      *  onDestroy means the Activity is really going, not being recreated. */
     override fun onDestroy() {
+        RelayService.onTransportStop = null
+        relaySockets.destroy()
         RelayService.stop(this)
         webView.destroy()
         super.onDestroy()

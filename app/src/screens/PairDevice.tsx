@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 // The guardian-side device-pairing screen: QR + SAS code for an existing
 // child, TTL countdown, re-mint on expiry or burn, success banner naming
 // the paired device. See internal plan 2026-08-11-parent-mode,
@@ -118,7 +119,7 @@ export function PairDevice({ childPubkey, onDone }: { childPubkey: string; onDon
         selfSk: guardianSk,
         peerPk: answered.recipientPk,
         relay,
-        storage: window.localStorage,
+        storage: dataStorage(),
         nowSec: Math.floor(Date.now() / 1000),
       }).catch(() => {})
       setBanner(null)

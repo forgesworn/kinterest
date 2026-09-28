@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 // A small, always-visible indicator of how many gift-wrapped events are
 // still sitting in the durable outbox (wire/outbox.ts) waiting to reach a
 // relay — Plan 3 Task 7's "relay status pill (outbox pending count from
@@ -23,7 +24,7 @@ import { Pill } from './ui'
 const POLL_MS = 3000
 
 function pendingCount(): number {
-  return outboxEvents(window.localStorage).length
+  return outboxEvents(dataStorage()).length
 }
 
 export function RelayStatusPill(): ReactElement {

@@ -129,6 +129,12 @@ export interface AppState {
   requests: StoredRequest[]
   docs: ConfigDocs
   docHighWater: Record<string, number>
+  /** Guardian recovery: per-kind, per-child source timestamps, unix SECONDS.
+   * A newer sibling view must not pin another child's older rows. */
+  docChildHighWater?: Record<string, Record<string, number>>
+  /** Local scheduler cache: last evaluated deposit-match due day (YYYY-MM-DD),
+   * tied to the exact config. No money entry is minted for a zero payout. */
+  matchEvaluations?: Record<string, { config: string; ledger: string; throughDay: string }>
   relays: string[]
   seenEventIds: string[]
   /** null = never established (pre-v0.2 state, or a role-unset device). */

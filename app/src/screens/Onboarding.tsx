@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 // The onboarding screen — drives screens/onboardingFlow.ts's pure step
 // machine and turns each step into real identity: deriving keys, sealing
 // the family mnemonic into the vault, dispatching into the store, and
@@ -69,7 +70,7 @@ const ROOT_NOT_REBOUND = 'Your family is back. Reconnect My Signet from Settings
 // not turn into a nag to go and write them down. The family is already set
 // up and vaulted by this point regardless.
 const SIGNIN_INCOMPLETE =
-  'My Signet sign-in didn’t finish, but your family is set up. Connect My Signet again anytime from Settings.'
+  'My Signet sign-in didn’t finish. Sign in to continue setting up your family.'
 const RECOVERY_CANCELLED = 'Sign-in wasn’t completed — you can try again.'
 // Framed as optional, not a requirement — plenty of guardians will never
 // have looked at Settings' "Show recovery words" before hitting this.
@@ -118,8 +119,7 @@ export function Onboarding({
   const [step, setStep] = useState<OnboardingStep>(initialStep)
   const [busy, setBusy] = useState(false)
   // A calm, non-blocking note after a sign-in that worked but could not seal
-  // the backup (an auth-only session — spec §1.8 step 7), or that did not
-  // complete at all.
+  // the backup (an auth-only session — spec §1.8 step 7).
   const [signetNote, setSignetNote] = useState<string | null>(null)
   const [restoreInput, setRestoreInput] = useState('')
   // Set only by "Use recovery words instead" on a `signetRecovering`
@@ -152,7 +152,7 @@ export function Onboarding({
    *  here (via `guardianFromMnemonic`, for the vault) and again fresh
    *  inside the updater is safe and side-effect-free either way. Returns
    *  whether it succeeded. */
-  async function commitGuardian(mnemonic: string): Promise<boolean> {
+  async function vaultGuardian(mnemonic: string): Promise<boolean> {
     const { sk } = guardianFromMnemonic(mnemonic)
     try {
       await vaultStore(GUARDIAN_SK_NAME, sk)
@@ -160,6 +160,11 @@ export function Onboarding({
     } catch {
       return false
     }
+    return true
+  }
+
+  async function commitGuardian(mnemonic: string): Promise<boolean> {
+    if (!await vaultGuardian(mnemonic)) return false
     dispatch({ type: 'updateApp', update: (app) => startAsGuardian(app, mnemonic)?.state ?? app })
     setFamilyMnemonic(mnemonic)
     return true
@@ -177,7 +182,7 @@ export function Onboarding({
       const { sk, pk } = guardianFromMnemonic(mnemonic)
       const { sent } = await sendVault(
         vaultPayloadFor(vaultRosterOf(state.app), mnemonic, pk, root.authEvent, nowSec),
-        { selfSk: sk, peerPk: root.pubkey, relay, storage: window.localStorage, nowSec },
+        { selfSk: sk, peerPk: root.pubkey, relay, storage: dataStorage(), nowSec },
       )
       return sent
     } catch {
@@ -227,7 +232,7 @@ export function Onboarding({
       const existing = await loadFamilyMnemonic()
       const mnemonic = existing ?? generateMnemonic()
       const { pk } = guardianFromMnemonic(mnemonic)
-      const committed = await commitGuardian(mnemonic)
+      const committed = await vaultGuardian(mnemonic)
       if (!committed) {
         setStep(signetFailed(connecting, 'Something went wrong setting up your family — please try again.'))
         return
@@ -235,13 +240,11 @@ export function Onboarding({
 
       const connected = await connectAndSealSignetRoot(mnemonic, pk)
       if (connected === null) {
-        // The family is already set up and vaulted by this point — silently,
-        // with no mnemonic ever shown — so there is nothing left to recover
-        // from here. Carry on to the family home; Settings offers
-        // "Connect My Signet" again whenever the guardian wants to retry.
-        dispatchRoot(null)
-        setSignetNote(SIGNIN_INCOMPLETE)
-        setStep(addChildStep())
+        setStep(signetFailed(connecting, SIGNIN_INCOMPLETE))
+        return
+      }
+      if (!await commitGuardian(mnemonic)) {
+        setStep(signetFailed(connecting, 'Something went wrong saving your family — please try again.'))
         return
       }
       setStep(signetSucceeded(connecting))
@@ -315,12 +318,12 @@ export function Onboarding({
       // the periodic flush carries it out — including against the recovered
       // relay list, once this dispatch has rebuilt the pool.
       const { sk } = guardianFromMnemonic(got.vault.mnemonic)
-      for (const restored of got.vault.children) {
+      for (const restored of got.root === null ? [] : got.vault.children) {
         void sendResyncRequest(buildResyncRequestPayload(null), {
           selfSk: sk,
           peerPk: restored.pubkey,
           relay,
-          storage: window.localStorage,
+          storage: dataStorage(),
           nowSec,
         }).catch(() => {})
       }
@@ -362,22 +365,20 @@ export function Onboarding({
       // (and wrong) key from text that was only ever checked in its
       // normalised form.
       const mnemonic = normalizeMnemonicInput(restoreInput)
-      const ok = await commitGuardian(mnemonic)
+      const ok = await vaultGuardian(mnemonic)
       if (!ok) {
         setStep({ kind: 'restoreEntry', error: 'Something went wrong restoring your family — please try again.' })
         return
       }
-      if (restoreSignetBound) {
-        // Reached via "Use recovery words instead" from a My Signet
-        // recovery that could not find/pick a vault — recovery words are a
-        // fallback WITHIN Signet recovery, not a way around it, so bind the
-        // restored family back to that same signed-in session.
-        const { pk } = guardianFromMnemonic(mnemonic)
-        const connected = await connectAndSealSignetRoot(mnemonic, pk)
-        if (connected === null) {
-          dispatchRoot(null)
-          setSignetNote(SIGNIN_INCOMPLETE)
-        }
+      const { pk } = guardianFromMnemonic(mnemonic)
+      const connected = await connectAndSealSignetRoot(mnemonic, pk)
+      if (connected === null) {
+        setStep({ kind: 'restoreEntry', error: SIGNIN_INCOMPLETE })
+        return
+      }
+      if (!await commitGuardian(mnemonic)) {
+        setStep({ kind: 'restoreEntry', error: 'Something went wrong saving your family — please try again.' })
+        return
       }
       setStep(next)
     } finally {

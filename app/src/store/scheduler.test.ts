@@ -788,3 +788,32 @@ describe('runSchedulers: deposit match fuzz', () => {
     }
   })
 })
+
+describe('zero-match evaluation checkpoints', () => {
+  const at = (day: number) => Date.UTC(2026, 7, day, 12) / 1000
+  const cfg: InterestConfig = { child: CHILD, account: ACCOUNT_ID, rateBps: 0, matchBps: 5000, matchCapMinor: 100, cadence: 'weekly', day: 1, tz: 'UTC', startDay: '2026-08-01' }
+  const configured = () => {
+    const state = baseState()
+    return { ...state, docs: { ...state.docs, interest: { v: 1 as const, issuedAt: 1, configs: [cfg] } } }
+  }
+  it('closes empty periods without a zero-value money entry and does not repeat them', () => {
+    const state = configured()
+    const first = runSchedulers(state, at(10))
+    expect(first.entries).toEqual([])
+    expect(first.matchEvaluations?.[ACCOUNT_ID]?.throughDay).toBe('2026-08-10')
+    const second = runSchedulers({ ...state, matchEvaluations: first.matchEvaluations }, at(10))
+    expect(second.entries).toEqual([])
+    expect(second.matchEvaluations).toBeUndefined()
+  })
+  it('invalidates the checkpoint when an older deposit is recovered, preserving that period s cap', () => {
+    const state = configured()
+    const first = runSchedulers(state, at(10))
+    let recovered: AppState = { ...state, matchEvaluations: first.matchEvaluations }
+    const account = state.docs.accounts.accounts[0]!
+    recovered = addEntry(recovered, creditEntry({ id: 'recovered-deposit', child: CHILD, author: 'guardian', createdAt: at(9) }, account, 200))
+    const caughtUp = runSchedulers(recovered, at(11))
+    expect(caughtUp.entries).toHaveLength(1)
+    expect(caughtUp.entries[0]!.id).toContain('2026-08-10')
+    expect(caughtUp.entries[0]!.legs[0]!.amountMinor).toBe(100)
+  })
+})

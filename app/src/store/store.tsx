@@ -1,3 +1,5 @@
+import { guardianNeedsSignet } from '../identity/guardianAccess'
+import { dataStorage, flushDataStorage, dataStorageHasError, onDataStorageError } from '../platform/dataStorage'
 // The guardian app's central store — see
 // internal plan 2026-08-11-parent-mode, Task 2.
 //
@@ -1062,8 +1064,21 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   // non-fatal `storageError` flag, which clears on the next good save.
   const [storageError, setStorageError] = useState(false)
   useEffect(() => {
-    setStorageError(!saveState(state.app))
+    const saved = saveState(state.app)
+    let cancelled = false
+    void flushDataStorage().then(ok => {
+      if (!cancelled) setStorageError(!saved || !ok || dataStorageHasError())
+    })
+    return () => { cancelled = true }
   }, [state.app])
+
+  useEffect(() => {
+    const unsubscribe = onDataStorageError(() => setStorageError(dataStorageHasError()))
+    const retry = () => { void flushDataStorage().then(ok => setStorageError(!ok)) }
+    window.addEventListener('focus', retry)
+    const timer = window.setInterval(retry, 30_000)
+    return () => { unsubscribe(); window.removeEventListener('focus', retry); window.clearInterval(timer) }
+  }, [])
 
   // Load the guardian's own signing key once role is 'guardian' — needed by
   // both the engine effect and the scheduler effect below.
@@ -1150,6 +1165,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   // than each opening its own `SimplePool` against the same relay URLs) —
   // recreated only when the relay list itself changes.
   const relay = useMemo<RelayLike>(() => makePool(state.app.relays), [relaysKey])
+  const guardianBlocked = useMemo(() => guardianNeedsSignet(state.app), [state.app.role, state.app.root, state.app.guardianPubkey])
 
   // How many pages of a resync exchange each peer has served us, keyed by
   // peer pubkey and reset whenever WE start a fresh exchange. This is the
@@ -1215,7 +1231,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       // discipline every other action in this file follows.
       const nowSec = Math.floor(Date.now() / 1000)
       const peerPk = effect.authorPk
-      const storage: StorageLike = window.localStorage
+      const storage: StorageLike = dataStorage()
       const wire = { selfSk, peerPk, relay, storage, nowSec }
       const app = stateRef.current.app
 
@@ -1328,7 +1344,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   const vaultSignature = signetRootPk === '' ? '' : vaultRosterSignature(vaultRosterOf(state.app))
 
   useEffect(() => {
-    if (state.app.role !== 'guardian' || signetRootPk === '' || guardianSk === null) return
+    if (state.app.role !== 'guardian' || guardianBlocked || signetRootPk === '' || guardianSk === null) return
     let cancelled = false
     const sk = guardianSk
 
@@ -1338,8 +1354,8 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
         getApp: () => stateRef.current.app,
         guardianSk: sk,
         relay,
-        storage: window.localStorage,
-        record: window.localStorage,
+        storage: dataStorage(),
+        record: dataStorage(),
         nowSec,
         loadMnemonic: loadFamilyMnemonic,
         inFlight: inFlightVaultSigRef,
@@ -1366,7 +1382,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     // `vaultSignature` (the relay list is part of the signature), which
     // restarts the debounce.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultSignature, signetRootPk, state.app.role, guardianSk])
+  }, [vaultSignature, signetRootPk, state.app.role, guardianBlocked, guardianSk])
 
   // Task E4 (v0.2 spec §3.2/§3.3) — the Android foreground relay-keepalive
   // service. ONE effect, keyed on role alone (`shouldRunRelayService`), and
@@ -1380,19 +1396,19 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   // service is told to stop before the sync it exists to keep alive is torn
   // down, never the other way round.
   useEffect(() => {
-    if (!shouldRunRelayService(state.app.role)) return
+    if (guardianBlocked || !shouldRunRelayService(state.app.role)) return
     startRelayService()
     return () => {
       stopRelayService()
     }
-  }, [state.app.role])
+  }, [state.app.role, guardianBlocked])
 
   // Multi-peer engine: restart whenever the guardian's peer set changes.
   // Guardian-only for Task 2 — child-side single-peer sync (engine.ts) is
   // wired up in Plan 4 (child-mode).
   useEffect(() => {
-    if (state.app.role !== 'guardian' || guardianSk === null) return
-    const storage: StorageLike = window.localStorage
+    if (state.app.role !== 'guardian' || guardianBlocked || guardianSk === null) return
+    const storage: StorageLike = dataStorage()
 
     const tokenStore: PairTokenStore = {
       get: () => pairingRef.current?.token ?? null,
@@ -1511,7 +1527,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     // than the array itself (a fresh array each render would otherwise
     // restart the engine every render for no reason).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.app.role, peerPksKey, guardianSk, relay])
+  }, [state.app.role, guardianBlocked, peerPksKey, guardianSk, relay])
 
   // Single-peer child engine (sync/engine.ts) — Task 1 of Plan 4
   // (child-mode). Mirrors the guardian effect above in every respect it can:
@@ -1523,7 +1539,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   // rather than assumed never to change).
   useEffect(() => {
     if (state.app.role !== 'child' || childSk === null || state.app.guardianPubkey === null) return
-    const storage: StorageLike = window.localStorage
+    const storage: StorageLike = dataStorage()
     const guardianPubkey = state.app.guardianPubkey
     const selfPk = getPublicKey(childSk)
     // Re-bound after the null guard above so the hoisted `beat()` below sees
@@ -1702,16 +1718,18 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   // below). That effect drains the Map once the commit reflecting this
   // update has landed, and only then fires the sends.
   useEffect(() => {
-    if (state.app.role !== 'guardian' || guardianSk === null) return
+    if (state.app.role !== 'guardian' || guardianBlocked || guardianSk === null) return
 
     function runOnce(): void {
       const nowSec = Math.floor(Date.now() / 1000)
       dispatch({
         type: 'updateApp',
         update: (app) => {
-          const { entries, claims } = runSchedulers(app, nowSec)
+          if (guardianNeedsSignet(app)) return app
+          const { entries, claims, matchEvaluations } = runSchedulers(app, nowSec)
           for (const entry of entries) duePayoutsRef.current.set(entry.id, entry)
           let next = entries.reduce((acc, entry) => addEntry(acc, entry), app)
+          if (matchEvaluations) next = { ...next, matchEvaluations }
           // Gated allowance periods (choresGate/auditGate) surface as
           // locally-synthesised allowance.claim requests rather than
           // auto-paid entries (scheduler.ts's own module header) — fold
@@ -1735,7 +1753,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       window.clearInterval(interval)
       window.removeEventListener('focus', runOnce)
     }
-  }, [state.app.role, guardianSk])
+  }, [state.app.role, guardianBlocked, guardianSk])
 
   // Drains whatever the scheduler's updater (above) most recently
   // accumulated — runs after EVERY commit (any `state.app` change, not only
@@ -1747,7 +1765,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     if (duePayoutsRef.current.size === 0 || guardianSk === null) return
     const entries = [...duePayoutsRef.current.values()]
     duePayoutsRef.current.clear()
-    const storage: StorageLike = window.localStorage
+    const storage: StorageLike = dataStorage()
     const nowSec = Math.floor(Date.now() / 1000)
     // Never seal a payout to a removed device — the scheduler
     // already skips revoked children; this also covers a payout stashed
@@ -1803,7 +1821,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     const pending = [...raisedClaimsRef.current.values()]
     raisedClaimsRef.current.clear()
     const peerPk = state.app.guardianPubkey
-    const storage: StorageLike = window.localStorage
+    const storage: StorageLike = dataStorage()
     const nowSec = Math.floor(Date.now() / 1000)
     for (const payload of pending) {
       // Only send what actually landed in state — a StrictMode double-invoke

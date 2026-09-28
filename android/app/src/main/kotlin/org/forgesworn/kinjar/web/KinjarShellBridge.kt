@@ -25,6 +25,7 @@ class KinjarShellBridge(
     private val onStartRelayService: () -> Unit,
     private val onStopRelayService: () -> Unit,
     private val onNotify: (title: String, body: String, tag: String) -> Unit,
+    private val sockets: NativeRelaySockets,
 ) {
     @JavascriptInterface
     fun version(): String =
@@ -44,6 +45,15 @@ class KinjarShellBridge(
     fun notify(title: String, body: String, tag: String) {
         runCatching { onNotify(title, body, tag) }
     }
+
+    @JavascriptInterface
+    fun relayOpen(id: String, url: String) { sockets.open(id, url) }
+
+    @JavascriptInterface
+    fun relaySend(id: String, text: String): Boolean = sockets.send(id, text)
+
+    @JavascriptInterface
+    fun relayClose(id: String) { sockets.close(id) }
 
     companion object { const val JS_NAME = "KinjarShell" }
 }

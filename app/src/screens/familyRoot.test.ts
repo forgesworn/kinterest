@@ -23,7 +23,7 @@ describe('rootCardModel', () => {
     )
     expect(m.subtitle).toBe('Signed in as Alex')
     expect(m.backupLine).toBe('Backed up to My Signet ✓ 2 September 2026')
-    expect(m.showDisconnectButton).toBe(true)
+    expect(m.showDisconnectButton).toBe(false)
     expect(m.showConnectButton).toBe(false)
     // Fix round 1: backing up again must ALWAYS be reachable. A re-publish
     // that silently failed (a roster change made offline, say) otherwise has

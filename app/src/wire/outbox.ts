@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 // Durable send queue — see internal plan 2026-08-10-wire-identity-pairing,
 // Task 5. Every gift-wrapped event this app sends goes through here first:
 // `enqueue` persists it to localStorage (name-free key, matching
@@ -43,27 +44,8 @@ export interface StorageLike {
   removeItem(key: string): void
 }
 
-function noopStorage(): StorageLike {
-  const map = new Map<string, string>()
-  return {
-    getItem: (key) => map.get(key) ?? null,
-    setItem: (key, value) => {
-      map.set(key, value)
-    },
-    removeItem: (key) => {
-      map.delete(key)
-    },
-  }
-}
-
 function defaultStorage(): StorageLike {
-  try {
-    const ls = (globalThis as { localStorage?: StorageLike }).localStorage
-    if (ls) return ls
-  } catch {
-    // fall through to no-op
-  }
-  return noopStorage()
+  return dataStorage()
 }
 
 function isNostrEventShape(x: unknown): x is NostrEvent {

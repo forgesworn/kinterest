@@ -25,10 +25,9 @@ import {
   clampLockedUntil,
   clearBackoffState,
   loadBackoffState,
-  nextLockedUntil,
   pinIsSet,
   saveBackoffState,
-  unlockWithPin,
+  unlockWithPinResult,
 } from '../identity/pinLock'
 
 const MIN_PIN_LENGTH = 4
@@ -77,23 +76,25 @@ export function ChildLock() {
 
   async function handleUnlock() {
     if (locked || busy || pin.length < MIN_PIN_LENGTH) return
-    const attemptNowSec = Math.floor(Date.now() / 1000)
     setBusy(true)
     setError(null)
     try {
-      const sk = await unlockWithPin(pin)
+      const result = await unlockWithPinResult(pin)
       setPin('')
-      if (sk === null) {
-        const failures = backoff.consecutiveFailures + 1
-        const next = { consecutiveFailures: failures, lockedUntilSec: nextLockedUntil(failures, attemptNowSec) }
-        setBackoff(next)
-        saveBackoffState(window.localStorage, next)
+      if (result.kind === 'locked') {
+        setBackoff(result.backoff)
+        setNowSec(Math.floor(Date.now() / 1000))
+        return
+      }
+      if (result.kind === 'wrong') {
+        setBackoff(result.backoff)
+        setNowSec(Math.floor(Date.now() / 1000))
         setError("That PIN didn't match — try again.")
         return
       }
       setBackoff({ consecutiveFailures: 0, lockedUntilSec: 0 })
       clearBackoffState(window.localStorage)
-      unlockChildSk(sk)
+      unlockChildSk(result.sk)
     } finally {
       setBusy(false)
     }

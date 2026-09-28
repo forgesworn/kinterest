@@ -45,7 +45,7 @@ assumes a stronger guarantee than the app actually provides:
 
 - **The ledger itself is stored in the clear.** Each paired device keeps its
   copy of the family ledger as plain, unencrypted data in the browser's own
-  local storage. Anyone who can read a device's browser storage — through
+  IndexedDB. Anyone who can read a device's browser storage — through
   that browser's own developer tools, or a backup of the browser's profile —
   can read the whole ledger for that device.
 - **A child's PIN gates signing, not reading.** The PIN on a child device
@@ -66,7 +66,29 @@ assumes a stronger guarantee than the app actually provides:
   the guardian sends that device a full catch-up, and each settings list is
   replaced the next time the guardian changes it; until then, the old copy
   remains readable in that device's storage.
-- **Background notifications are best-effort.** Neither the browser's
+- **My Signet is required for guardians.** New setup and recovery require a
+  verified family binding; legacy unbound guardians must connect their saved
+  family before parent screens, sync and scheduled payments become available.
+  A saved binding permits offline use without a live signer connection. Child
+  devices still use Kinterest pairing and a PIN, pending the dependant design.
+- **One guardian installation is supported per family.** After restoring on
+  a replacement phone, retire the old guardian installation. An old guardian
+  still holding the family key can publish stale settings or a stale recovery
+  vault; recovery does not merge competing guardian histories.
+- **Updates are forward-only.** The ledger and outbox are migrated atomically
+  from localStorage to IndexedDB. Installing an older build afterwards will
+  not read that database and may also be unable to read the current PIN blob.
+  Use the current build and My Signet recovery instead of downgrading.
+- **One browser tab writes a family at a time.** A second tab asks you to close
+  the first before opening the saved family. This prevents competing cached
+  ledgers or outboxes from overwriting one another.
+- **Deposit match uses gross deposits.** Spending later does not subtract
+  from the qualifying deposit. A reversal before evaluation excludes the
+  deposit; reversing it after its match was paid does not claw that match
+  back. These rules describe current behaviour, pending the corrections design.
+
+- **Background notifications are best-effort.** Android relay sockets run on
+  native threads while its foreground service is active. Neither the browser's
   Notification API nor the Android app's own background delivery is
   guaranteed to fire every time — a notification may be delayed, or simply
   not arrive, depending on the device, battery settings, and how long the

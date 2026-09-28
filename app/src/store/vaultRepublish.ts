@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 // Background vault re-seal — the guardian's automatic republish of the
 // family vault after a roster change, and weekly so relays that expire
 // kind-1059 wraps never hold the only copy.
@@ -16,7 +17,7 @@
 
 import type { AppState } from '../state/types'
 import type { RelayLike } from '../wire/relayClient'
-import { outboxEvents, type StorageLike } from '../wire/outbox'
+import { outboxEvents, STALE_SWEEP_SECS, type StorageLike } from '../wire/outbox'
 import { sendVault, type PublishResult } from '../sync/publish'
 import type { VaultPayload } from '../wire/payloads'
 import { vaultPayloadFor, vaultPublishDue, vaultRosterOf, vaultRosterSignature } from '../identity/signetVault'
@@ -26,6 +27,7 @@ import { guardianFromMnemonic } from '../identity/derive'
  *  that left the outbox. Not a secret: a signature is child names, keys and
  *  relay URLs this device already stores in plain state. */
 export const VAULT_PUBLISHED_KEY = 'kinjar.vault.publishedSignature.v1'
+export const VAULT_QUEUED_KEY = 'kinjar.vault.queuedPublish.v1'
 
 // The last signature this process wrote, per storage. A write that fails
 // (storage full or blocked) is still remembered here, so the next check does
@@ -35,7 +37,7 @@ const writtenInMemory = new WeakMap<object, string>()
 
 /** The recorded signature, or null (never recorded, or storage blocked and
  *  nothing written by this process). */
-export function readVaultPublished(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): string | null {
+export function readVaultPublished(storage: Pick<Storage, 'getItem'> | undefined = dataStorage()): string | null {
   const remembered = writtenInMemory.get(storage ?? DEFAULT_STORAGE_KEY)
   if (remembered !== undefined) return remembered
   try {
@@ -47,7 +49,7 @@ export function readVaultPublished(storage: Pick<Storage, 'getItem'> | undefined
 
 /** Records a publish that left the outbox. Never throws: a failed durable
  *  write is still remembered for the life of this process. */
-export function writeVaultPublished(signature: string, storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
+export function writeVaultPublished(signature: string, storage: Pick<Storage, 'setItem'> | undefined = dataStorage()): void {
   writtenInMemory.set(storage ?? DEFAULT_STORAGE_KEY, signature)
   try {
     storage?.setItem(VAULT_PUBLISHED_KEY, signature)
@@ -93,6 +95,21 @@ export async function republishVaultIfDue(o: RepublishVaultOpts): Promise<number
   const root = app.root
   if (app.role !== 'guardian' || root === null || root.kind !== 'signet' || root.pubkey === '') return null
   const signature = vaultRosterSignature(vaultRosterOf(app))
+  // A vault accepted by an unrelated outbox flush still counts as backed
+  // up. Reconcile its queued id before deciding to seal another copy. A
+  // swept/expired item cannot prove delivery and must be sealed again.
+  try {
+    const pending = JSON.parse(o.record?.getItem(VAULT_QUEUED_KEY) || 'null')
+    if (pending?.rootPk === root.pubkey && typeof pending.eventId === 'string'
+      && typeof pending.signature === 'string' && Number.isSafeInteger(pending.queuedAt)
+      && pending.queuedAt <= o.nowSec && !outboxEvents(o.storage).some(e => e.id === pending.eventId)) {
+      o.record?.setItem(VAULT_QUEUED_KEY, '')
+      if (o.nowSec - pending.queuedAt < STALE_SWEEP_SECS) {
+        writeVaultPublished(pending.signature, o.record)
+        if (pending.signature === signature) return pending.queuedAt
+      }
+    }
+  } catch { /* Failed metadata reads/writes do not prevent a backup. */ }
   const due = vaultPublishDue({
     signature,
     lastPublished: readVaultPublished(o.record),
@@ -111,11 +128,19 @@ export async function republishVaultIfDue(o: RepublishVaultOpts): Promise<number
     const fresh = o.getApp()
     const freshRoot = fresh.root
     if (freshRoot === null || freshRoot.kind !== 'signet' || freshRoot.pubkey !== root.pubkey) return null
-    const { sent } = await (o.send ?? sendVault)(
+    const { sent, event } = await (o.send ?? sendVault)(
       vaultPayloadFor(vaultRosterOf(fresh), mnemonic, guardianFromMnemonic(mnemonic).pk, freshRoot.authEvent, o.nowSec),
       { selfSk: o.guardianSk, peerPk: freshRoot.pubkey, relay: o.relay, storage: o.storage, nowSec: o.nowSec },
     )
-    if (!sent) return null
+    if (!sent) {
+      try {
+        if (outboxEvents(o.storage).some(queued => queued.id === event.id))
+          o.record?.setItem(VAULT_QUEUED_KEY, JSON.stringify({ eventId: event.id, rootPk: freshRoot.pubkey,
+            signature: vaultRosterSignature(vaultRosterOf(fresh)), queuedAt: o.nowSec }))
+      } catch { /* The queued encrypted vault itself is still retried. */ }
+      return null
+    }
+    try { o.record?.setItem(VAULT_QUEUED_KEY, '') } catch { /* published signature still remembered */ }
     writeVaultPublished(vaultRosterSignature(vaultRosterOf(fresh)), o.record)
     return o.nowSec
   } catch {

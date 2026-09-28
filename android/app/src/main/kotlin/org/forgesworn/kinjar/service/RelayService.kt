@@ -46,11 +46,11 @@ import java.util.concurrent.TimeUnit
  *    on failure rather than leaving a non-foregrounded service running past
  *    its grace window.
  *
- * Honest limitation, recorded in scripts/dev-note.md: this keeps the
- * *process* foregrounded; it does not itself hold the relay socket. A
- * WebView in a stopped Activity still has its JS timers throttled by
- * Android, so background delivery is best-effort and must be checked
- * on-device before it is claimed to work.
+ * NativeRelaySockets owns transport on native threads while this service
+ * is running. Timeout, task removal and destruction close those sockets;
+ * decryption and authentication remain in the web sync layer. Delivery is
+ * still best-effort if Android stops the service/process or WebView work.
+
  */
 class RelayService : Service() {
 
@@ -106,6 +106,8 @@ class RelayService : Service() {
     // boundary (fix round 2, item M2).
     @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     override fun onTimeout(startId: Int, fgsType: Int) {
+        running = false
+        onTransportStop?.invoke()
         runCatching { wakeLock?.release() }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -117,6 +119,7 @@ class RelayService : Service() {
      *  loads the page afresh and it asks again once a role is set. */
     override fun onTaskRemoved(rootIntent: Intent?) {
         wanted = false
+        onTransportStop?.invoke()
         runCatching { wakeLock?.release() }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -125,6 +128,7 @@ class RelayService : Service() {
 
     override fun onDestroy() {
         running = false
+        onTransportStop?.invoke()
         runCatching { wakeLock?.release() }
         super.onDestroy()
     }
@@ -132,6 +136,9 @@ class RelayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        @Volatile var onTransportStop: (() -> Unit)? = null
+        fun isRunning(): Boolean = running
+
         const val ACTION_STOP = "org.forgesworn.kinjar.STOP"
 
         /** The Android 15+ dataSync FGS cap the system enforces (6h

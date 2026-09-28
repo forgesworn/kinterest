@@ -1,3 +1,5 @@
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
 // The allowance/interest scheduler — see
 // internal plan 2026-08-11-parent-mode, Task 2 ("the scheduler
 // execution... executed by the guardian app when due; catch-up on launch",
@@ -44,6 +46,7 @@ export interface SchedulerResult {
    *  child's own `allowance.claim` would carry — see module header. Never
    *  produced for interest (interest has no gate concept). */
   claims: RequestPayload[]
+  matchEvaluations?: AppState['matchEvaluations']
 }
 
 function accountFor(state: AppState, id: string): Account | undefined {
@@ -111,6 +114,10 @@ function gatedClaim(cfg: AllowanceConfig, dueDay: string, periodKey: string, now
 export function runSchedulers(state: AppState, nowSec: number): SchedulerResult {
   const entries: Entry[] = []
   const claims: RequestPayload[] = []
+  const matchEvaluations = { ...state.matchEvaluations }
+  const evaluatedAccounts = new Set<string>()
+  const ledgerSignature = (entries: Entry[]) => bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(entries.map(e => e.id)))))
+  const ledger = ledgerSignature(state.entries)
 
   // Each config's own body runs inside its own try/catch — deliberately
   // PER-CONFIG rather than one try/catch around the whole loop. Found by
@@ -169,8 +176,11 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
     try {
       const account = accountFor(state, cfg.account)
       if (account === undefined) continue
-      const interestDays = new Set(interestDue(cfg, [...state.entries, ...entries], nowSec))
-      const matchDays = new Set(matchDue(cfg, [...state.entries, ...entries], nowSec))
+      const config = JSON.stringify(cfg)
+      const previous = matchEvaluations[cfg.account]
+      const evaluatedThrough = previous?.config === config && previous.ledger === ledger ? previous.throughDay : undefined
+      const interestDays = new Set(cfg.rateBps > 0 ? interestDue(cfg, [...state.entries, ...entries], nowSec) : [])
+      const matchDays = new Set(matchDue(cfg, [...state.entries, ...entries], nowSec, evaluatedThrough))
       const dueDays = [...new Set([...interestDays, ...matchDays])].sort()
       if (dueDays.length === 0) continue
 
@@ -186,6 +196,8 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
           const meta = { id: schedulerEntryId(cfg.child, cfg.account, dueDay, 'match'), child: cfg.child, createdAt: nowSec, author: 'guardian' as const }
           const match = matchEntry(cfg, account, dueDay, deposited, meta)
           if (match !== null) entries.push(match)
+          matchEvaluations[cfg.account] = { config, ledger, throughDay: dueDay }
+          evaluatedAccounts.add(cfg.account)
         }
         if (!interestDays.has(dueDay)) continue
         // Interest is computed on the balance AS OF this period's due day,
@@ -204,7 +216,14 @@ export function runSchedulers(state: AppState, nowSec: number): SchedulerResult 
     }
   }
 
-  return { entries, claims }
+  if (evaluatedAccounts.size > 0) {
+    // Include payouts proposed in this same tick. Any later ledger change
+    // (including an older deposit healed during recovery) invalidates the
+    // cache, so its own due period and cap are evaluated again.
+    const finalLedger = ledgerSignature([...state.entries, ...entries])
+    for (const account of evaluatedAccounts) matchEvaluations[account]!.ledger = finalLedger
+  }
+  return { entries, claims, ...(evaluatedAccounts.size > 0 ? { matchEvaluations } : {}) }
 }
 
 /** Deterministic id: same (child, account, due day, kind) always produces

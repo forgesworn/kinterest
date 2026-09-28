@@ -1,3 +1,4 @@
+import { IndexedDataStorage, flushDataStorage } from '../platform/dataStorage'
 // Outbound wire traffic — every gift-wrapped event this app sends goes
 // through one of these named helpers. See
 // internal plan 2026-08-10-wire-identity-pairing, Task 7.
@@ -92,6 +93,9 @@ async function send(innerKind: number, payload: unknown, opts: PublishOpts): Pro
     const result = await opts.relay.publish(event).catch(() => 'rejected' as const)
     return { event, sent: result === 'accepted' }
   }
+  // Commit the offline queue before publishing; a failed write is retained
+  // in memory and reported by the storage banner while relay delivery proceeds.
+  if (opts.storage instanceof IndexedDataStorage) await flushDataStorage(opts.storage)
   await flush(opts.relay, opts.nowSec, opts.storage)
   const stillQueued = outboxEvents(opts.storage).some((e) => e.id === event.id)
   return { event, sent: !stillQueued }

@@ -286,6 +286,14 @@ export function applyConfigDoc<K extends keyof ConfigDocs>(s: AppState, kind: K,
     ...s,
     docs: { ...s.docs, [kind]: doc },
     docHighWater: { ...s.docHighWater, [kind]: doc.issuedAt },
+    docChildHighWater: {
+      ...s.docChildHighWater,
+      [kind]: Object.fromEntries([...new Set([
+        ...s.children.map(c => c.pubkey),
+        ...((doc as unknown as Record<string, { child: string }[]>)[ROWS_KEY[kind]] ?? []).map(r => r.child),
+        ...Object.keys(s.docChildHighWater?.[kind] ?? {}),
+      ])].map(c => [c, doc.issuedAt])),
+    },
   }
 }
 
@@ -301,8 +309,8 @@ const ROWS_KEY = { accounts: 'accounts', allowance: 'configs', interest: 'config
  * one `issuedAt`. Plain LWW would keep the first view and drop every
  * sibling's. Instead, per child named in `doc`:
  *   - the incoming rows replace that child's rows when `doc.issuedAt` is at
- *     least the high-water, or when the guardian holds no rows for that
- *     child at all (an older view is better than none);
+ *     least that child's source timestamp (an older view is better than
+ *     none, but a newer sibling never changes this child's timestamp);
  *   - otherwise they are ignored.
  * Rows for children the doc does not name are kept. `revoked` is a union
  * (a revocation is never undone); the guardian's own value wins a conflict.
@@ -321,11 +329,17 @@ export function mergeConfigDoc<K extends keyof ConfigDocs>(s: AppState, kind: K,
 
   const named = new Set<string>(incomingRows.map((r) => r.child))
   const held = new Set<string>(currentRows.map((r) => r.child))
-  const taken = new Set([...named].filter((c) => doc.issuedAt >= highWater || !held.has(c)))
+  const childHighWater = { ...s.docChildHighWater?.[kind] }
+  // For an older saved state, seed the provenance before any merge raises
+  // the doc-wide stamp. Thereafter each sibling advances independently.
+  for (const child of held) childHighWater[child] ??= current.issuedAt
+  const taken = new Set([...named].filter(c => doc.issuedAt >= (childHighWater[c] ?? 0)))
+  const provenanceChanged = [...taken].some(c => childHighWater[c] !== doc.issuedAt)
+  for (const child of taken) childHighWater[child] = doc.issuedAt
   const rowsFor = (rows: { child: string }[], c: string) => JSON.stringify(rows.filter((r) => r.child === c))
   const rowsChanged = [...taken].some((c) => rowsFor(currentRows, c) !== rowsFor(incomingRows, c))
   const revokedChanged = Object.keys(incomingRevoked).some((pk) => currentRevoked[pk] === undefined)
-  if (!rowsChanged && !revokedChanged && doc.issuedAt <= highWater) return s
+  if (!rowsChanged && !revokedChanged && !provenanceChanged && doc.issuedAt <= highWater) return s
 
   const rows = [...currentRows.filter((r) => !taken.has(r.child)), ...incomingRows.filter((r) => taken.has(r.child))]
   const merged = { ...current, issuedAt: Math.max(current.issuedAt, doc.issuedAt), [key]: rows } as ConfigDocs[K]
@@ -336,6 +350,7 @@ export function mergeConfigDoc<K extends keyof ConfigDocs>(s: AppState, kind: K,
     ...s,
     docs: { ...s.docs, [kind]: merged },
     docHighWater: { ...s.docHighWater, [kind]: Math.max(highWater, doc.issuedAt) },
+    docChildHighWater: { ...s.docChildHighWater, [kind]: childHighWater },
   }
 }
 

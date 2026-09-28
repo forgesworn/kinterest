@@ -32,9 +32,11 @@ import { Onboarding } from './screens/Onboarding'
 import { ChildOnboarding } from './screens/ChildOnboarding'
 import { Unpaired } from './screens/Unpaired'
 import { addChildStep } from './screens/onboardingFlow'
+import { guardianNeedsSignet } from './identity/guardianAccess'
 import { selfRevokedAt } from './state/state'
 
 const GuardianShell = lazy(() => import('./screens/GuardianShell'))
+const GuardianSignetGate = lazy(() => import('./screens/ChildSettings').then(m => ({ default: m.GuardianSignetGate })))
 const ChildShell = lazy(() => import('./screens/ChildShell'))
 
 export function App() {
@@ -63,6 +65,7 @@ function AppShell() {
       <Onboarding onJoinFamily={() => setJoiningFamily(true)} />
     )
   }
+  if (guardianNeedsSignet(app)) return <Suspense fallback={null}><GuardianSignetGate /></Suspense>
   if (app.role === 'guardian' && app.children.length === 0) return <Onboarding initialStep={addChildStep()} />
 
   // A child device its guardian has removed (v0.2 spec §4.5). Gated on state,

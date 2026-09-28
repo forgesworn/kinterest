@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 // The child's own "ask for money" screen: a form (pot, amount, what-for
 // note, optional link) that sends a spend.request to the pinned guardian,
 // plus the pending/answered list underneath — the SAME `state.requests`
@@ -117,7 +118,7 @@ export function Ask({ onBack }: { onBack: () => void }): ReactElement {
         selfSk: childSk,
         peerPk: app.guardianPubkey,
         relay,
-        storage: window.localStorage,
+        storage: dataStorage(),
         nowSec,
       }).catch(() => {})
       // A failed send leaves it durably queued in the outbox (sync/publish.ts)

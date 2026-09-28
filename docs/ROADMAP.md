@@ -1,6 +1,6 @@
 # Kinterest — roadmap & status
 
-*Last updated 2026-09-27. Still in the dogfooding phase, not yet launched.*
+*Last updated 2026-09-28. Still in the dogfooding phase, not yet launched.*
 
 ## Where it is now (v0.2)
 
@@ -83,6 +83,41 @@ Also in v0.3 (all on `main`, tested on two real phones):
   Approvals.
 - **Web:** optional browser notifications; PIN lockout harder to reset.
 - `SECURITY.md` describes the threat model and known limits.
+
+## Reliability and storage follow-up (2026-09-28)
+
+- Parents require a verified My Signet family binding. Cancelled setup or
+  word recovery stays unfinished; existing unbound families must connect
+  their saved identity before using parent screens, sync or scheduled payments.
+  Ordinary offline use works with the saved binding. Disconnecting into a
+  recovery-words-only family is no longer offered.
+- Parent Home shows exact money held for the family by currency. It counts
+  ledger pots, including outstanding archived balances; physical cash and
+  external accounts are held elsewhere and excluded.
+- The ledger, sealed outbox, quarantine and recovery publish records use
+  IndexedDB. First migration commits before legacy copies are removed; a
+  failed read blocks startup, failed writes retain data for retry, and one
+  browser tab owns the writer at a time.
+- Android relay sockets use native threads, with the existing web code still
+  decrypting and verifying every event. Reloading the page clears old sockets;
+  service timeout and task removal stop background transport.
+- Recovery tracks config recency per child, avoiding a newer sibling's view
+  pinning another child's stale settings. Healed grant history uses the
+  guardian's decision timestamp.
+- Empty match periods are checkpointed without creating zero-value ledger
+  entries. A config or ledger change invalidates the checkpoint, including
+  historical deposits arriving during recovery.
+- PIN lockouts report their actual countdown instead of describing a deferred
+  attempt as a wrong PIN. A vault sent by a later outbox flush is recognised
+  without sealing another copy.
+- The My Signet locked family-add prompt bug is reported upstream.
+
+The live Android ask check passed: a background parent received a notification,
+tapping it opened Approvals, and dismissing it returned to the child without
+moving money. The Android six-hour service timeout still needs a dedicated
+device test.
+Dependant identities, acting as the child, PIN recovery policy and correction
+semantics still require the design session before implementation.
 
 ## v0.2.1 — audit fixes (2026-09-27)
 
@@ -184,9 +219,8 @@ parent as "bank manager" for a lost PIN).
    never re-paid (latent), and a reversed older interest period stays closed
    once a later payout exists. Decide semantics, add a guardian "correct this"
    path.
-7. **Storage.** Settings-record pruning is done; next, move
-    from whole-state localStorage writes to IndexedDB. A save failure now
-    shows a banner rather than crashing.
+7. **Storage.** IndexedDB migration and settings-record pruning are done.
+   Failed writes show a banner and are retried without discarding live data.
 
 ## Later — ideas captured
 
@@ -210,21 +244,19 @@ parent as "bank manager" for a lost PIN).
   dependant (like switching persona). Depends on adopting Signet dependant
   pairing (item 12, above).
 
-Deferred minors from the audit (logged in the session's audit notes, not
-urgent): PIN backoff lives in localStorage and can be reset by anyone with
-script access; synthetic grant rows can drop on reload; `dayKey` relies on the
-`en-CA` locale; non-ULID scheduler ids; a daily chore added mid-period blocks
-completion; adjustment entries lack some spec fields.
+Remaining design decisions include adjustment semantics, correction/reversal
+policy, and handling a guardian clock that pinned a child's config high-water
+in the future. An unchanged deferred entry can still trigger bounded catch-up
+requests every 30 minutes; that policy belongs with the clock-reset design.
 
 ## Known limitations to keep in mind while dogfooding
 
-- **localStorage holds the whole family ledger in plaintext on every paired
-  device.** The PIN gates *signing*, not *reading*; per-child UI filtering is
+- **IndexedDB holds each device's ledger in plaintext.** The PIN gates *signing*, not *reading*; per-child UI filtering is
   a convention, not a security boundary. Snapshots and configs are now
   scoped to each child, but a device that ran an older build may still hold
   sibling data until it is replaced (see SECURITY.md).
-- `innerEvents` CONFIG entries are retained without pruning — a very
-  long-lived family could eventually approach `localStorage`'s ~5 MB budget.
-- Background notification delivery is best-effort: the relay service keeps
-  the *process* foregrounded, not necessarily the socket, and a stopped
-  Activity's WebView still has its JS timers throttled — verify on-device.
+- The ledger remains unbounded. Superseded CONFIG records are pruned, but a
+  long-lived family can still approach the device's storage budget.
+- Background notification delivery is best-effort: native relay sockets
+  improve transport while the foreground service is active, but Android can
+  stop the service or process. The six-hour timeout test remains outstanding.

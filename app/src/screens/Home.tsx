@@ -29,7 +29,7 @@
 import type { ReactElement } from 'react'
 import { balances } from '../domain/ledger'
 import { addDays, dayKey, dueDays } from '../domain/period'
-import { currencyOrThrow } from '../domain/money'
+import { assertMinor, currencyOrThrow, formatMinor } from '../domain/money'
 import type { Account, Entry } from '../domain/types'
 import type { AllowanceConfig } from '../domain/allowance'
 import type { InterestConfig } from '../domain/interest'
@@ -191,6 +191,31 @@ export function familyChildren(children: ChildProfile[]): ChildProfile[] {
   return children.filter((c) => c.archived === undefined)
 }
 
+/** Money the parent holds on behalf of children. Physical cash and external
+ * accounts are held elsewhere. Keep outstanding ledger balances even when
+ * a pot/child is archived: hiding a row does not settle what is owed.
+ * Currencies stay separate; this summary never guesses an exchange rate. */
+export function familyHoldings(accounts: Account[], entryBalances: Map<string, number>): { currency: string; minor: number }[] {
+  const totals = new Map<string, bigint>()
+  for (const account of accounts) {
+    if (account.custody !== 'ledger') continue
+    const minor = entryBalances.get(account.id) ?? 0
+    assertMinor(minor)
+    totals.set(account.currency, (totals.get(account.currency) ?? 0n) + BigInt(minor))
+  }
+  return [...totals].map(([currency, total]) => {
+    const minor = Number(total)
+    assertMinor(minor)
+    return { currency, minor }
+  })
+}
+
+export function familyHoldingSummary(accounts: Account[], entryBalances: Map<string, number>): string {
+  const holdings = familyHoldings(accounts, entryBalances)
+  const amounts = holdings.length === 0 ? ['£0.00'] : holdings.map(h => formatMinor(h.currency, h.minor))
+  return `You're holding ${new Intl.ListFormat('en-GB', { style: 'long', type: 'conjunction' }).format(amounts)} for the family`
+}
+
 // ============================================================================
 // Screen
 // ============================================================================
@@ -307,19 +332,21 @@ export function Home({
   const pendingTotal = app.requests.filter((r) => r.status === 'pending').length
   const action = <HomeActions pendingTotal={pendingTotal} onApprovals={onApprovals} onAddChild={onAddChild} />
   const listedChildren = familyChildren(app.children)
+  const entryBalances = balances(app.entries)
+  const holdingSummary = familyHoldingSummary(app.docs.accounts.accounts, entryBalances)
 
   if (listedChildren.length === 0) {
     return (
       <Screen title="Kinterest" action={action}>
+        <p>{holdingSummary}</p>
         <EmptyState title="No children yet">Add your first child to get started.</EmptyState>
       </Screen>
     )
   }
 
-  const entryBalances = balances(app.entries)
-
   return (
     <Screen title="Kinterest" action={action}>
+      <p>{holdingSummary}</p>
       {listedChildren.map((child) => (
         <ChildCard
           key={child.pubkey}

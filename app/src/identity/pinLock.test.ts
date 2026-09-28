@@ -16,6 +16,7 @@ import {
   saveBackoffState,
   setPin,
   unlockWithPin,
+  unlockWithPinResult,
   type StorageLike,
   clampLockedUntil,
   MAX_BACKOFF_SECS,
@@ -437,5 +438,19 @@ describe('a lockout recorded under a clock set far ahead', () => {
     storage.removeItem('kin-jar-child-backoff') // only the embedded counter remains
     expect(await unlockWithPin('123456', { storage, nowSec: 1_000 })).toBeNull()
     expect(await unlockWithPin('123456', { storage, nowSec: 1_000 + MAX_BACKOFF_SECS })).toEqual(SK)
+  })
+})
+
+
+describe('PIN lockout result for the screen', () => {
+  it('reports an embedded lockout without treating the correct PIN as another failure', async () => {
+    await setPin('123456', SK)
+    const storage = makeFakeStorage()
+    for (let i = 0; i < 2; i++) await unlockWithPin('000000', { storage, nowSec: 1000 })
+    const cleared = makeFakeStorage()
+    const locked = await unlockWithPinResult('123456', { storage: cleared, nowSec: 1001 })
+    expect(locked).toEqual({ kind: 'locked', backoff: { consecutiveFailures: 2, lockedUntilSec: 1005 } })
+    expect(loadBackoffState(cleared).consecutiveFailures).toBe(2)
+    expect(await unlockWithPinResult('123456', { storage: cleared, nowSec: 1006 })).toEqual({ kind: 'unlocked', sk: SK })
   })
 })

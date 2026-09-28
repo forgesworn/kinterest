@@ -10,6 +10,9 @@
 // bounds the worst case so airplane mode (or a wedged relay) can never leave
 // a caller waiting forever; it must never read as success.
 
+import { AbstractSimplePool } from 'nostr-tools/abstract-pool'
+import { verifyEvent } from 'nostr-tools/pure'
+import { shellWebSocket } from '../platform/nativeWebSocket'
 import { SimplePool } from 'nostr-tools/pool'
 import type { NostrEvent } from 'nostr-tools/pure'
 
@@ -81,7 +84,10 @@ export function makePool(urls: string[], onlineTarget: OnlineTarget | undefined 
   // deliberately backdated by up to two days, so that `since` would silently
   // skip every wrap published during the outage. `subscribe` below does its
   // own resubscribing, with the original filter.
-  const pool = new SimplePool({ enablePing: true })
+  const nativeSocket = shellWebSocket()
+  const pool = nativeSocket
+    ? new AbstractSimplePool({ verifyEvent, websocketImplementation: nativeSocket, enablePing: false, maxWaitForConnection: PUBLISH_TIMEOUT_MS })
+    : new SimplePool({ enablePing: true })
 
   return {
     publish(ev: NostrEvent): Promise<'accepted' | 'rejected'> {

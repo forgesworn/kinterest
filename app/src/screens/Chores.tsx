@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 // The child's chores screen: today's dailies + the weekly list and a
 // "N of M days to pocket money" gate-progress readout. See
 // internal plan 2026-08-11-child-mode, Task 4, and ./chores.ts
@@ -73,7 +74,7 @@ export function Chores({ onBack }: { onBack: () => void }): ReactElement {
       const nowSec = nowSecOnce()
       const tick: ChoreTick = { id, chore: chore.id, day, at: nowSec }
       dispatch({ type: 'updateApp', update: (a) => recordTick(a, tick) })
-      await sendTick(tick, { selfSk: childSk, peerPk: app.guardianPubkey, relay, storage: window.localStorage, nowSec }).catch(() => {})
+      await sendTick(tick, { selfSk: childSk, peerPk: app.guardianPubkey, relay, storage: dataStorage(), nowSec }).catch(() => {})
     } finally {
       setBusyChore(null)
     }

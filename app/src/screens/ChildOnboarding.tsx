@@ -1,3 +1,4 @@
+import { dataStorage } from '../platform/dataStorage'
 // The child device's own pairing ceremony: "Join your family" -> scan the
 // guardian's QR (camera, or paste as a fallback) -> a waiting screen showing
 // the SAS code -> the guardian's PAIR_OFFER arrives -> set a PIN (twice) ->
@@ -98,7 +99,7 @@ export function ChildOnboarding({ onCancel }: { onCancel: () => void }) {
         selfSk: device.sk,
         peerPk: waitingGuardianPk!,
         relay: pool,
-        storage: window.localStorage,
+        storage: dataStorage(),
         nowSec,
       }).catch(() => {})
     }
