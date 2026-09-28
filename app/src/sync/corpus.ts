@@ -15,7 +15,9 @@
 //     device that cannot read it either still needs the doc it can read.
 //
 // Only a doc this build can parse, superseded by a LATER `issuedAt` of the
-// same kind that this build can also parse, is dropped. Ties are kept.
+// same kind that this build can also parse, is dropped. Ties are kept. A doc
+// dated beyond the receiver's clock-skew bound is kept but prunes nothing:
+// every receiver defers it, so the older doc is the one they all apply.
 //
 // Replay order matters once older docs are gone: an old ENTRY may name an
 // account that only the newest accounts doc now describes, and that doc may
@@ -43,16 +45,19 @@ function configStamp(ev: NostrEvent): { docKind: string; issuedAt: number } | nu
 
 /**
  * Drops CONFIG events superseded by a later `issuedAt` of the same doc kind
- * (see this module's header for what is kept, and why). Pure; the input
- * object is returned as-is when nothing is dropped.
+ * (see this module's header for what is kept, and why). A doc whose
+ * `issuedAt` is beyond `maxIssuedAt` (unix SECONDS: the receiver's clock plus
+ * its skew bound) never supersedes anything. Pure; the input object is
+ * returned as-is when nothing is dropped.
  */
-export function pruneSupersededConfigs(m: Record<string, NostrEvent>): Record<string, NostrEvent> {
+export function pruneSupersededConfigs(m: Record<string, NostrEvent>, maxIssuedAt = Infinity): Record<string, NostrEvent> {
   const newest = new Map<string, number>()
   const stamps = new Map<string, { docKind: string; issuedAt: number }>()
   for (const [key, ev] of Object.entries(m)) {
     const stamp = configStamp(ev)
     if (stamp === null) continue
     stamps.set(key, stamp)
+    if (stamp.issuedAt > maxIssuedAt) continue
     if (stamp.issuedAt > (newest.get(stamp.docKind) ?? -1)) newest.set(stamp.docKind, stamp.issuedAt)
   }
 
@@ -60,7 +65,8 @@ export function pruneSupersededConfigs(m: Record<string, NostrEvent>): Record<st
   const kept: Record<string, NostrEvent> = {}
   for (const [key, ev] of Object.entries(m)) {
     const stamp = stamps.get(key)
-    if (stamp !== undefined && stamp.issuedAt < newest.get(stamp.docKind)!) {
+    const newestKind = stamp === undefined ? undefined : newest.get(stamp.docKind)
+    if (stamp !== undefined && newestKind !== undefined && stamp.issuedAt < newestKind) {
       dropped = true
       continue
     }
@@ -70,7 +76,8 @@ export function pruneSupersededConfigs(m: Record<string, NostrEvent>): Record<st
 }
 
 /** The corpus bound every insert applies: the per-kind retention rules of
- *  `retainInnerEvents`, then CONFIG pruning. Pure. */
-export function retainCorpus(m: Record<string, NostrEvent>): Record<string, NostrEvent> {
-  return pruneSupersededConfigs(retainInnerEvents(m))
+ *  `retainInnerEvents`, then CONFIG pruning (`maxIssuedAt` as for
+ *  `pruneSupersededConfigs`). Pure. */
+export function retainCorpus(m: Record<string, NostrEvent>, maxIssuedAt = Infinity): Record<string, NostrEvent> {
+  return pruneSupersededConfigs(retainInnerEvents(m), maxIssuedAt)
 }

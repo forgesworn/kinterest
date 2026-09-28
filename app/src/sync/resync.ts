@@ -33,7 +33,7 @@ import {
   type StatusPayload,
 } from '../wire/payloads'
 import type { AppState } from '../state/types'
-import { dispatchInner, toStoredEvent, MAX_SEEN_EVENT_IDS, type Effect } from './ingress'
+import { dispatchInner, toStoredEvent, MAX_ISSUED_AT_SKEW_SECS, MAX_SEEN_EVENT_IDS, type Effect } from './ingress'
 import { retainCorpus } from './corpus'
 
 // ---------------------------------------------------------------------------
@@ -323,7 +323,7 @@ export function ingestResyncEvents(state: AppState, events: unknown[], opts: Ing
     accepted += 1
   }
 
-  if (corpusChanged) next = { ...next, innerEvents: retainCorpus(next.innerEvents) }
+  if (corpusChanged) next = { ...next, innerEvents: retainCorpus(next.innerEvents, opts.nowSec + MAX_ISSUED_AT_SKEW_SECS) }
 
   return { state: next, accepted, rejected, effects }
 }

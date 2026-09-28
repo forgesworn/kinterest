@@ -416,7 +416,7 @@ export function handleWrap(
     innerEvents: retainCorpus({
       ...seen.innerEvents,
       [unwrapped.inner.id]: toStoredEvent(unwrapped.inner),
-    }),
+    }, nowSec + MAX_ISSUED_AT_SKEW_SECS),
   }
   return { state: next, effects: dispatched.effects }
 }

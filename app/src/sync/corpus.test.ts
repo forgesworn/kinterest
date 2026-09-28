@@ -8,6 +8,7 @@ import { emptyState } from '../state/state'
 import type { AppState } from '../state/types'
 import { pruneSupersededConfigs, retainCorpus } from './corpus'
 import { ingestResyncEvents, resyncPage } from './resync'
+import { MAX_ISSUED_AT_SKEW_SECS } from './ingress'
 
 const guardianSk = generateSecretKey()
 const guardianPk = getPublicKey(guardianSk)
@@ -66,5 +67,22 @@ describe('resync stays lossless over a pruned corpus', () => {
     expect(result.rejected).toEqual([])
     expect(result.state.entries.map((e) => e.id).sort()).toEqual(['e1', 'e2', 'e3'])
     expect(result.state.docs.accounts.issuedAt).toBe(500)
+  })
+})
+
+describe('a doc beyond the clock-skew bound prunes nothing', () => {
+  it('replay still yields the doc every device actually applied', () => {
+    const NOW = 1_800_000_000
+    const good = accountsDoc(NOW - 100, ['a1'])
+    const skewed = accountsDoc(NOW + 3 * 86400, ['a1']) // a guardian clock three days fast, once
+    const bound = NOW + MAX_ISSUED_AT_SKEW_SECS
+    const kept = retainCorpus(byId(good, skewed), bound)
+    expect(Object.keys(kept).sort()).toEqual([good.id, skewed.id].sort())
+    const serving: AppState = { ...emptyState(), role: 'child', guardianPubkey: guardianPk, innerEvents: kept }
+    const fresh: AppState = { ...emptyState(), role: 'guardian', guardianPubkey: guardianPk, self: { pubkey: guardianPk, childIndex: null } }
+    const r = ingestResyncEvents(fresh, resyncPage(serving, null, 0).events, { peerPk: childPk, nowSec: NOW })
+    expect(r.state.docs.accounts.accounts.map((a) => a.id)).toEqual(['a1'])
+    // Once the clock has caught up, the later doc supersedes as usual.
+    expect(Object.keys(retainCorpus(byId(good, skewed), NOW + 3 * 86400))).toEqual([skewed.id])
   })
 })
