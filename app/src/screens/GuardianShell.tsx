@@ -13,7 +13,7 @@
 // together with this, and vice versa. Plan:
 // internal plan 2026-08-11-android-apk, Task 1.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
 import { Home } from './Home'
 import { ChildDetail } from './ChildDetail'
@@ -26,6 +26,7 @@ import { NotificationOptIn } from '../components/NotificationOptIn'
 import { Banner, Button } from '../components/ui'
 import { useApp } from '../store/store'
 import { childNeedingFirstPot } from '../state/state'
+import { consumeInitialPendingRoute, onPendingRoute } from '../platform/pendingRoute'
 import { addChildStep } from './onboardingFlow'
 import {
   addChildRoute,
@@ -74,9 +75,35 @@ function GuardianRoutes(): ReactElement {
   // child — see childNeedingFirstPot's own doc comment on why the "add
   // another child" path needs its own separate wiring instead, below).
   const [route, setRoute] = useState<Route>(() => {
+    // v0.3: a tap on the "New ask from … — tap to decide" notification
+    // (cold start — platform/pendingRoute.ts's own header on the
+    // cold/warm split) takes priority over the ordinary first-pot redirect
+    // below. An explicit tap is a stronger signal of guardian intent than
+    // an automatic "you just added a child" nudge, and the two are in
+    // practice mutually exclusive anyway — a family with a pending ask
+    // already has a child, almost certainly with a pot.
+    if (consumeInitialPendingRoute() === 'approvals') return approvalsRoute()
     const needsFirstPot = childNeedingFirstPot(state.app)
     return needsFirstPot !== null ? childSettingsRoute(needsFirstPot.pubkey) : homeRoute()
   })
+
+  // Warm start (v0.3): the Activity and this page are already running
+  // (MainActivity's singleTask launchMode means a second notification tap
+  // never re-runs the lazy initializer above) — `onPendingRoute` is the
+  // native shell's own event for that case. A guardian device has no
+  // PIN/lock concept of its own today (store.tsx's `locked` only ever
+  // tracks a CHILD device's session; App.tsx's own role/children/revoked
+  // gate is the entire reason GuardianShell mounts at all), so there is
+  // nothing to wait on here: the moment this effect is live, the shell is
+  // exactly as "unlocked" as it is ever going to get. A future guardian
+  // lock only has to gate this subscription the same way.
+  useEffect(
+    () =>
+      onPendingRoute((r) => {
+        if (r === 'approvals') setRoute(approvalsRoute())
+      }),
+    [],
+  )
 
   switch (route.screen) {
     case 'home':

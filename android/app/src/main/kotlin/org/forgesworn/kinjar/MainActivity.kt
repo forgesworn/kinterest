@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -197,7 +198,51 @@ class MainActivity : ComponentActivity() {
             }
         })
 
-        webView.loadUrl(UrlGate.CONSOLE_ORIGIN + "/")
+        // v0.3, cold start: a routed notification tap (Notifier.EXTRA_ROUTE)
+        // lands as a `#route=…` fragment on the very first load, before any
+        // page JS has run — app/src/platform/pendingRoute.ts's
+        // `consumeInitialPendingRoute` reads it once at app start. UrlGate's
+        // own `decide()` only ever looks at scheme+host, so the fragment
+        // changes nothing about whether/how this navigates.
+        webView.loadUrl(UrlGate.CONSOLE_ORIGIN + "/" + routeFragment(intent))
+    }
+
+    /** "" with no routed extra on [intent], else `#route=<value>` — see
+     *  [onCreate]'s own comment and [onNewIntent], the warm-start
+     *  counterpart. [Uri.encode] rather than a bare interpolation: the
+     *  extra is always one of this app's own fixed route values today
+     *  ([Notifier.ROUTE_APPROVALS]), but nothing here needs to assume that
+     *  stays true to build a well-formed fragment. */
+    private fun routeFragment(intent: Intent?): String {
+        val route = intent?.getStringExtra(Notifier.EXTRA_ROUTE) ?: return ""
+        return "#route=" + Uri.encode(route)
+    }
+
+    /**
+     * v0.3, warm start: `singleTask` launchMode means a second notification
+     * tap while this Activity is already running never reaches [onCreate] —
+     * it lands here instead, with the WebView (and the web app's in-memory
+     * state) still exactly as it was. Re-navigating via `loadUrl` would
+     * reload the page and throw that state away, so this dispatches a DOM
+     * event instead, exactly the way [onStop] already does for
+     * lockPolicy.ts's `NATIVE_STOP_EVENT` — `platform/pendingRoute.ts`'s
+     * `onPendingRoute` is the listener half.
+     *
+     * [setIntent] matters even though nothing here re-reads `getIntent()`
+     * later: without it, a THIRD tap arriving before the second is ever
+     * consumed would still see the FIRST intent's extras if anything else
+     * in this Activity ever went looking (Android's own documented contract
+     * for `onNewIntent`).
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val route = intent.getStringExtra(Notifier.EXTRA_ROUTE) ?: return
+        webView.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('kinjar-pending-route', { detail: { route: '" +
+                route.replace("'", "") + "' } }));",
+            null,
+        )
     }
 
     override fun onResume() {

@@ -26,6 +26,13 @@ object Notifier {
     private val CH_FAMILY_LEGACY = listOf("family", "family.v2")
     const val SERVICE_NOTIF_ID = 1
 
+    /** The launch Intent extra a routed notification's [contentIntent] carries
+     *  (v0.3) — MainActivity reads it on both cold start (`onCreate`) and warm
+     *  start (`onNewIntent`); see that file's own header. Its only value today
+     *  is [ROUTE_APPROVALS]. */
+    const val EXTRA_ROUTE = "route"
+    const val ROUTE_APPROVALS = "approvals"
+
     fun ensureChannels(ctx: Context) {
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(
@@ -81,7 +88,7 @@ object Notifier {
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
-            .setContentIntent(contentIntent(ctx, requestCode = tag.hashCode()))
+            .setContentIntent(contentIntent(ctx, requestCode = tag.hashCode(), route = routeFor(tag)))
             .setAutoCancel(true)
             .setVisibility(Notification.VISIBILITY_SECRET)
             .build()
@@ -92,11 +99,25 @@ object Notifier {
         nm.notify(tag, tag.hashCode(), n)
     }
 
-    private fun contentIntent(ctx: Context, requestCode: Int): PendingIntent =
+    /** Which route a tap on this notification should open, beyond the
+     *  default (MainActivity's ordinary launch page) — `null` for every
+     *  notification but the "ask" ones. `"ask:${reqId}"` is
+     *  `app/src/platform/notifications.ts`'s own tag for a decidable
+     *  spend.request/allowance.claim (the web copy: "New ask from … — tap
+     *  to decide"/"Pocket money claim from … — tap to review") — exactly
+     *  the case where landing back on Home first, then a further tap to
+     *  Approvals, wastes the whole reason someone tapped the notification
+     *  at all. Every other tag (grant:/audit:/tick:/entry:/chores/pair)
+     *  keeps opening on the app's ordinary start screen. */
+    private fun routeFor(tag: String): String? = if (tag.startsWith("ask:")) ROUTE_APPROVALS else null
+
+    private fun contentIntent(ctx: Context, requestCode: Int, route: String? = null): PendingIntent =
         PendingIntent.getActivity(
             ctx,
             requestCode,
-            Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            Intent(ctx, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .apply { if (route != null) putExtra(EXTRA_ROUTE, route) },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 }
