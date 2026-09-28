@@ -81,6 +81,7 @@ function GuardianRoutes(): ReactElement {
           childPubkey={route.childPubkey}
           onBack={() => setRoute(goBack(route))}
           onSettings={() => setRoute(childSettingsRoute(route.childPubkey))}
+          onPairDevice={() => setRoute(pairDeviceRoute(route.childPubkey))}
         />
       )
     case 'childSettings':

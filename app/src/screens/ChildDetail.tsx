@@ -90,10 +90,16 @@ export function ChildDetail({
   childPubkey,
   onBack,
   onSettings,
+  onPairDevice,
 }: {
   childPubkey: string
   onBack: () => void
   onSettings: () => void
+  /** "Pair their phone" — the same PairDevice ceremony ChildSettings.tsx's
+   *  own "Pair a device" opens, reachable from here too (v0.3) so a
+   *  freshly-added, not-yet-paired child doesn't need a detour through
+   *  Settings first. */
+  onPairDevice: () => void
 }): ReactElement {
   const { state, dispatch, relay, guardianSk } = useApp()
   const { app } = state
@@ -325,6 +331,13 @@ export function ChildDetail({
         <Card>
           <Button variant="quiet" block disabled={guardianSk === null || removing} onClick={() => setConfirmingRemoval(true)}>
             {removing ? 'Removing…' : 'Remove this device'}
+          </Button>
+        </Card>
+      )}
+      {revokedDeviceAt === undefined && !hasPairedDevice && (
+        <Card>
+          <Button variant="primary" block onClick={onPairDevice}>
+            Pair their phone
           </Button>
         </Card>
       )}
