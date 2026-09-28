@@ -543,7 +543,7 @@ describe('recordGrantResult synthetic rows take their op from the GRANT (audit D
   })
 })
 
-describe('addEntry checks reversals against their original (review R7)', () => {
+describe('addEntry checks reversals against their original', () => {
   const acct = { id: 'acc1', child: CHILD, name: 'Pot', currency: 'GBP', custody: 'ledger' as const }
   const orig = creditEntry({ id: 'o', child: CHILD, createdAt: 1, author: 'guardian' }, acct, 500)
   const bogus: Entry = { ...reverseEntry(orig, { id: 'r', child: CHILD, createdAt: 2, author: 'guardian' }), legs: [{ account: 'acc1', currency: 'GBP', amountMinor: -1 }] }
@@ -553,6 +553,13 @@ describe('addEntry checks reversals against their original (review R7)', () => {
   it('accepts a true reversal', () => {
     const good = reverseEntry(orig, { id: 'r', child: CHILD, createdAt: 2, author: 'guardian' })
     expect(addEntry(addEntry(emptyState(), orig), good).entries).toHaveLength(2)
+  })
+  it('refuses a second reversal of the same original under another id, and replays the first as a no-op', () => {
+    const first = reverseEntry(orig, { id: 'r', child: CHILD, createdAt: 2, author: 'guardian' })
+    const second = reverseEntry(orig, { id: 'r2', child: CHILD, createdAt: 3, author: 'guardian' })
+    const s = addEntry(addEntry(emptyState(), orig), first)
+    expect(() => addEntry(s, second)).toThrow(RangeError)
+    expect(addEntry(s, first)).toBe(s)
   })
 })
 

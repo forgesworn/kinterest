@@ -133,6 +133,10 @@ export function addEntry(s: AppState, e: Entry): AppState {
   if (e.reverses !== undefined) {
     const original = s.entries.find((x) => x.id === e.reverses)
     if (original !== undefined) assertReversalOf(original, e)
+    // One reversal per original: a second one, under another id, would fold
+    // in too and refund the entry twice.
+    if (s.entries.some((x) => x.reverses === e.reverses))
+      throw new RangeError(`entry ${e.reverses} has already been reversed`)
   }
   return { ...s, entries: [...s.entries, e] }
 }
