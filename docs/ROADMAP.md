@@ -1,6 +1,6 @@
 # Kinterest — roadmap & status
 
-*Updated 2026-09-28. The first-release build is in validation; it has not been launched.*
+*Updated 2026-09-29. The first-release build and short device checks are complete; it has not been launched.*
 
 ## First release
 
@@ -56,9 +56,11 @@ and child archival. A real ask-notification tap cannot escape child mode.
 A fresh browser session recovered the complete family checkpoint, preserving
 balances, correction history, child profiles and archives, activity, requests,
 device grants and revocations. This check used the family's configured relay
-and kept My Signet in the foreground. The new phone-less child and first-pot
-ceremony still needs its final live check. The six-hour Android service test
-is deferred.
+and kept My Signet in the foreground. Adding a new phone-less child opened
+the first-account form immediately; their shared-phone view and corrected
+balance also passed a separate checkpoint recovery. Scoped child-phone sync
+kept that other child’s data separate. The six-hour Android service test is
+deferred.
 
 Build locally with `android/scripts/build-apk.sh`. The debug APK is at
 `android/app/build/outputs/apk/debug/app-debug.apk`. The Android package remains
