@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kinterest — Spend, save, or learn.</title>
+  <meta name="description" content="Pocket money on a shared ledger — every choice visible to you both. No card, no bank, no real money ever touching the app. Coming soon, Android first.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css?v=1">
+  <meta name="theme-color" content="#241b12">
+</head>
+<body>
+
+
+  <!-- The DNA flame, defined once. Never redrawn — group transforms only. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <g id="flame">
+        <path fill="currentColor" fill-rule="evenodd" d="M24 6c5 6.5 8 10.5 8 15.5a8 8 0 0 1-16 0C16 16.5 19 12.5 24 6Z M24 13c2.8 3.7 4.5 5.9 4.5 8.7a4.5 4.5 0 0 1-9 0c0-2.8 1.7-5.1 4.5-8.7Z"/>
+      </g>
+      <g id="flame-norm">
+        <g transform="translate(-17.872,-7.479) scale(1.7447)"><use href="#flame"/></g>
+      </g>
+      <g id="bud-norm">
+        <g transform="translate(-17.698,-9.223) scale(1.7447)">
+          <g transform="translate(-2.5,1)"><use href="#flame"/></g>
+          <g transform="translate(31.5,14) rotate(22) scale(0.4) translate(-24,-17.75)"><use href="#flame"/></g>
+        </g>
+      </g>
+    </defs>
+  </svg>
+
+  <a class="skip" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Main">
+    <div class="nav__in">
+      <a class="nav__brand" href="#top">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><use href="#flame-norm"/></svg>
+        Kinterest
+      </a>
+      <ul class="nav__links" role="list">
+        <li><a href="#how">How it works</a></li>
+        <li><a href="#ledger">The ledger</a></li>
+        <li><a href="#compare">Side by side</a></li>
+        <li><a href="#faq">Questions</a></li>
+      </ul>
+      <a class="btn btn--gold btn--sm" href="https://kindred.software">Meet the Kindred family</a>
+    </div>
+  </nav>
+
+  <!-- ============ HERO ============ -->
+  <header class="hero" id="top">
+    <div class="hero__glow" aria-hidden="true"></div>
+    <div class="hero__in">
+      <svg class="hero__flame" viewBox="0 0 48 48" role="img" aria-label="The Kindred flame"><use href="#flame-norm"/></svg>
+      <p class="eyebrow eyebrow--dark">Kinterest · part of the Kindred family</p>
+      <h1 class="hero__line">Spend, save, or&nbsp;learn.</h1>
+      <p class="hero__long">Pocket money on a shared ledger — every choice visible to you&nbsp;both.</p>
+      <p class="hero__sell">Pocket money they can see, plan and grow, on one ledger you both share. No card, no bank, no real money ever touching the app — just the&nbsp;habits.</p>
+      <div class="hero__ctas">
+        <a class="btn btn--gold" href="https://github.com/forgesworn/kinterest">Build it from the source</a>
+      </div>
+      <p class="hero__note"><span class="pill pill--soon-d">Open source</span> Build the Android app yourself today. No store date&nbsp;yet.</p>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!-- ============ THE BIND ============ -->
+    <section class="band band--paper">
+      <div class="wrap wrap--narrow">
+        <p class="eyebrow">The bind</p>
+        <h2 class="big">Pocket money is where they learn what money is worth. Most of it&nbsp;vanishes.</h2>
+        <p class="lede">The cash disappears into pockets and into memory. Children's debit cards teach tapping, not thinking. And the IOUs in a parent's head — "I'll pay you back", "I'll sort it at the weekend" — are invisible to the child who is owed&nbsp;them.</p>
+        <p class="lede">Nobody sees the same picture. So nobody can plan, and nobody can learn from it. Kinterest puts the whole of it in one place — <strong>a ledger you can both open, not a number in one person's&nbsp;head.</strong></p>
+      </div>
+    </section>
+
+    <!-- ============ PROMISES ============ -->
+    <section class="band band--soft" id="how">
+      <div class="wrap">
+        <p class="eyebrow">How Kinterest works</p>
+        <h2 class="h2">Four promises, one shared&nbsp;ledger.</h2>
+        <ol class="promises" role="list">
+          <li class="promise">
+            <span class="promise__n" aria-hidden="true">1</span>
+            <h3>One ledger, two signatures.</h3>
+            <p>You and your child look at the same ledger. Every entry is co-signed and can only be added to, never rewritten. No silent edits: a correction is a visible reversal, with a reason you can both&nbsp;read.</p>
+          </li>
+          <li class="promise">
+            <span class="promise__n" aria-hidden="true">2</span>
+            <h3>They ask, you answer.</h3>
+            <p>Your child asks to spend. You see what for and how much, and you approve it — or not this time. Only then does the ledger&nbsp;update.</p>
+          </li>
+          <li class="promise">
+            <span class="promise__n" aria-hidden="true">3</span>
+            <h3>Saving you can watch grow.</h3>
+            <p>You set the interest and pay it on a weekly interest day. Projections show the point of waiting — "leave it four more weeks and…" — and you can add a match on what they put&nbsp;in.</p>
+          </li>
+          <li class="promise">
+            <span class="promise__n" aria-hidden="true">4</span>
+            <h3>No real money, ever.</h3>
+            <p>No card. No bank link. No payments. Not in the first version, not&nbsp;ever. It's a ledger: you hand over the actual money however you already&nbsp;do.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============ THE LEDGER ============ -->
+    <section class="band band--dark" id="ledger">
+      <div class="wrap">
+        <p class="eyebrow eyebrow--dark">The ledger</p>
+        <h2 class="h2 h3--dark">Ask, answer, and watch it&nbsp;grow.</h2>
+        <p class="sub sub--dark">A week with Kinterest looks a lot like the pocket money you already&nbsp;give.</p>
+
+        <!-- the demo: the moment that sells it -->
+        <div class="ask">
+          <div class="ask__copy">
+            <h3 class="h3 h3--dark">Every choice, on the record — for both of&nbsp;you.</h3>
+            <p>Sam finds a book and asks to spend. Mum sees what it is, what it costs and what's left, and answers from her own phone. Approve it and the ledger updates for both of you. Say "Not this time" and nothing moves — and Sam can see&nbsp;that too.</p>
+            <p class="dim">No "I'll pay you back". No sums in anyone's&nbsp;head.</p>
+          </div>
+          <div class="ask__demo" aria-label="Example: a child asks to spend £4.50 on a book and a parent approves it">
+            <div class="screen screen--lock">
+              <svg class="screen__flame" viewBox="0 0 48 48" aria-hidden="true"><use href="#flame-norm"/></svg>
+              <p class="screen__t">Ask to&nbsp;spend</p>
+              <p class="screen__s">Mum sees what it is and what it&nbsp;costs.</p>
+              <div class="screen__ask">£4.50 · The Wild Robot&nbsp;(book)</div>
+              <span class="screen__btn">Send to Mum</span>
+            </div>
+            <div class="arrow" aria-hidden="true">→</div>
+            <div class="screen screen--phone">
+              <p class="screen__app">Kinterest</p>
+              <p class="screen__t screen__t--sm">Sam asks to spend&nbsp;£4.50</p>
+              <p class="screen__quote">The Wild Robot (book)</p>
+              <div class="screen__grants">
+                <span>Approve</span><span>Not this time</span>
+              </div>
+              <p class="screen__ledger">Balance after: £18.20 · Interest day:&nbsp;Saturday</p>
+            </div>
+          </div>
+        </div>
+
+        <ul class="feats" role="list">
+          <li><h3>An interest day you set</h3><p>Pick the day of the week and the rate you're happy to pay. Interest lands on the same day every week, so it's something to look forward&nbsp;to.</p></li>
+          <li><h3>Projections</h3><p>"Leave it four more weeks and…" — they see what waiting looks like before they decide to spend or&nbsp;keep.</p></li>
+          <li><h3>An optional deposit match</h3><p>"Every £1 you save, I'll add 50p." Switch it on if you'd like to, leave it off if you&nbsp;wouldn't.</p></li>
+          <li><h3>An account for each child</h3><p>Every child has their own balance, so two children can have two very different&nbsp;weeks.</p></li>
+          <li><h3>Child mode on your phone</h3><p>Younger children don't need a phone. They can ask and look at their ledger on yours, in child&nbsp;mode.</p></li>
+          <li><h3>Your controls, behind a PIN</h3><p>Approving, correcting and setting rates sit behind a separate PIN, and lock again the moment you leave the&nbsp;app.</p></li>
+          <li><h3>No date of birth</h3><p>It never asks for one and never keeps one. A name and, if you choose, a contact photo — nothing&nbsp;more.</p></li>
+          <li><h3>Encrypted family backup</h3><p>The whole family ledger is backed up encrypted, so a lost phone doesn't mean a lost&nbsp;history.</p></li>
+        </ul>
+
+        <div class="split">
+          <div class="setup">
+            <h3 class="h3 h3--dark">A week on the ledger.</h3>
+            <ol role="list">
+              <li><span>1</span><p><strong>Hand it over.</strong> Pocket money, birthday money, a gift from Gran: it goes on the ledger, and the actual cash changes hands the way it always has.</p></li>
+              <li><span>2</span><p><strong>They ask.</strong> A book, a toy, a trip: Sam names it and the price, and you answer when you're&nbsp;ready.</p></li>
+              <li><span>3</span><p><strong>Interest day.</strong> On the day you chose, interest is added and the projections move. Waiting has a visible&nbsp;shape.</p></li>
+            </ol>
+            <p class="dim">Interest is paid on what's on the ledger — which makes handing the cash over the sensible thing to&nbsp;do.</p>
+          </div>
+          <div class="runs">
+            <h3 class="h3 h3--dark">What it is, and what it&nbsp;isn't.</h3>
+            <ul role="list">
+              <li><b class="ok" aria-hidden="true">✓</b><p><strong>A shared ledger.</strong> Yours and your child's, with every entry co-signed and every correction in plain&nbsp;view.</p></li>
+              <li><b class="pv" aria-hidden="true">◐</b><p><strong>Coming soon, Android first.</strong> There's no date to give you yet, and we won't invent&nbsp;one.</p></li>
+              <li><b class="no" aria-hidden="true">–</b><p><strong>Not a card, a bank link or a payment.</strong> No real money touches it. Not in the first version, not&nbsp;ever.</p></li>
+              <li><b class="no" aria-hidden="true">–</b><p><strong>Later, not now:</strong> savings goals, chore schedules, more than one guardian, and export. They're on the roadmap, not in the first&nbsp;version.</p></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="ctarow">
+          <a class="btn btn--gold" href="https://github.com/forgesworn/kinterest">Build it from the source</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ COMPARISON ============ -->
+    <section class="band band--paper" id="compare">
+      <div class="wrap wrap--mid">
+        <p class="eyebrow">Side by side</p>
+        <h2 class="h2">What changes when it's written&nbsp;down.</h2>
+        <div class="tablewrap">
+          <table class="cmp">
+            <thead>
+              <tr><th scope="col"><span class="sr">Question</span></th><th scope="col" class="us">Kinterest</th><th scope="col">The IOUs in your head*</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Who can see it</th><td class="us">Both of you, on the same ledger</td><td>Only you</td></tr>
+              <tr><th scope="row">Who agreed each entry</th><td class="us">Both of you — every entry is co-signed</td><td>Nobody was asked</td></tr>
+              <tr><th scope="row">Can it be changed?</th><td class="us">Only by a visible reversal, with a reason</td><td>Quietly, by memory</td></tr>
+              <tr><th scope="row">Can it be forgotten?</th><td class="us">No — it can only be added&nbsp;to</td><td>Easily. Everyone does</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="fine">* Our reading of how pocket money usually works at home, not a&nbsp;study.</p>
+      </div>
+    </section>
+
+    <!-- ============ THE FAMILY ============ -->
+    <section class="band band--soft" id="family">
+      <div class="wrap">
+        <p class="eyebrow">The rest of the family</p>
+        <h2 class="h2">Kinterest is one of&nbsp;four.</h2>
+        <p class="sub">Each Kindred app is named for what your child walks away&nbsp;with.</p>
+        <ul class="cards cards--four" role="list">
+          <li class="card">
+            <div class="card__head">
+              <svg class="card__mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#bud-norm"/></svg>
+              <span class="card__name">Kintrinsic</span>
+              <span class="pill pill--live-l">Live</span>
+            </div>
+            <h3 class="card__line">Trust, in&nbsp;time.</h3>
+            <p class="card__long">Screen time and web filtering that loosen as your child shows they're&nbsp;ready.</p>
+          </li>
+          <li class="card">
+            <div class="card__head">
+              <svg class="card__mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#flame-norm"/></svg>
+              <span class="card__name">Kindependence</span>
+              <span class="pill pill--soon">Coming soon</span>
+            </div>
+            <h3 class="card__line">Parachute, not&nbsp;helicopter.</h3>
+            <p class="card__long">Consent-based family location: there for the landing, out of the way the rest of the&nbsp;time.</p>
+          </li>
+          <li class="card">
+            <div class="card__head">
+              <svg class="card__mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#flame-norm"/></svg>
+              <span class="card__name">Kinclude</span>
+              <span class="pill pill--soon">Coming soon</span>
+            </div>
+            <h3 class="card__line">We're all family&nbsp;here.</h3>
+            <p class="card__long">Messaging with no way in from outside — everyone in it is someone you both&nbsp;chose.</p>
+          </li>
+          <li class="card card--here">
+            <div class="card__head">
+              <svg class="card__mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#flame-norm"/></svg>
+              <span class="card__name">Kinterest</span>
+              <span class="pill pill--soon">Coming soon</span>
+            </div>
+            <h3 class="card__line">Spend, save, or&nbsp;learn.</h3>
+            <p class="card__long">Pocket money on a shared ledger — every choice visible to you&nbsp;both.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section class="band band--paper" id="faq">
+      <div class="wrap wrap--narrow">
+        <p class="eyebrow">Questions</p>
+        <h2 class="h2">Straight&nbsp;answers.</h2>
+        <div class="faq">
+          <details>
+            <summary>Does it hold real money?</summary>
+            <p>No. It's a ledger, not an account: no card, no bank link and no payments, now or later. You hand over the actual money however you already do — cash, a transfer, a birthday card — and the ledger records&nbsp;it.</p>
+          </details>
+          <details>
+            <summary>Can I change an entry?</summary>
+            <p>Only with a visible reversal and a reason. Entries are co-signed and can only be added to, so there are no silent edits — your child can see exactly what was corrected, and&nbsp;why.</p>
+          </details>
+          <details>
+            <summary>Where does the interest come from?</summary>
+            <p>From you. You set the rate and you pay it, on the interest day you choose. It's a lesson in what waiting looks like, not an investment — and the lesson matters more than the&nbsp;number.</p>
+          </details>
+          <details>
+            <summary>Does my child need a phone?</summary>
+            <p>No. Younger children can use child mode on yours, to ask and to look at their own ledger. Your controls stay behind a separate&nbsp;PIN.</p>
+          </details>
+          <details>
+            <summary>What does it know about my child?</summary>
+            <p>A name and, if you choose, a contact photo. No date of birth is asked for or&nbsp;kept.</p>
+          </details>
+          <details>
+            <summary>Is it ready?</summary>
+            <p>Not in the app stores yet, and there's no date to give you. The code is open on GitHub, so you can build the Android app yourself&nbsp;today.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CLOSE ============ -->
+    <section class="close">
+      <div class="hero__glow" aria-hidden="true"></div>
+      <div class="close__in">
+        <svg class="close__flame" viewBox="0 0 48 48" aria-hidden="true"><use href="#flame-norm"/></svg>
+        <h2 class="close__line">The same picture, for both of&nbsp;you.</h2>
+        <p class="close__sub">Kinterest is on its&nbsp;way.</p>
+        <div class="hero__ctas">
+          <a class="btn btn--gold" href="https://github.com/forgesworn/kinterest">Build it from the source</a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer" role="contentinfo">
+    <p><a href="https://kindred.software">Part of the Kindred family</a></p>
+    <p class="footer__fs">Made by <a href="https://forgesworn.dev">ForgeSworn</a></p>
+  </footer>
+
+</body>
+</html>
