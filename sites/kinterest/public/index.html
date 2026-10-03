@@ -5,8 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kinterest — Spend, save, or learn.</title>
   <meta name="description" content="Pocket money on a shared ledger — every choice visible to you both. No card, no bank, no real money ever touching the app. Coming soon, Android first.">
+  <link rel="canonical" href="https://kinterest.app/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Kinterest">
+  <meta property="og:title" content="Kinterest — Spend, save, or learn.">
+  <meta property="og:description" content="Pocket money on a shared ledger — every choice visible to you both. No card, no bank, no real money ever touching the app. Coming soon, Android first.">
+  <meta property="og:url" content="https://kinterest.app/">
+  <meta name="twitter:card" content="summary">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1">
+  <link rel="stylesheet" href="styles.css?v=2">
   <meta name="theme-color" content="#241b12">
 </head>
 <body>
@@ -208,28 +215,28 @@
         <h2 class="h2">Kinterest is one of&nbsp;four.</h2>
         <p class="sub">Each Kindred app is named for what your child walks away&nbsp;with.</p>
         <ul class="cards cards--four" role="list">
-          <li class="card">
+          <li class="card card--link">
             <div class="card__head">
               <svg class="card__mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#bud-norm"/></svg>
-              <span class="card__name">Kintrinsic</span>
+              <a class="card__name card__name--link" href="https://kintrinsic.app">Kintrinsic</a>
               <span class="pill pill--live-l">Live</span>
             </div>
             <h3 class="card__line">Trust, in&nbsp;time.</h3>
             <p class="card__long">Screen time and web filtering that loosen as your child shows they're&nbsp;ready.</p>
           </li>
-          <li class="card">
+          <li class="card card--link">
             <div class="card__head">
               <svg class="card__mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#flame-norm"/></svg>
-              <span class="card__name">Kindependence</span>
+              <a class="card__name card__name--link" href="https://kindependence.app">Kindependence</a>
               <span class="pill pill--soon">Coming soon</span>
             </div>
             <h3 class="card__line">Parachute, not&nbsp;helicopter.</h3>
             <p class="card__long">Consent-based family location: there for the landing, out of the way the rest of the&nbsp;time.</p>
           </li>
-          <li class="card">
+          <li class="card card--link">
             <div class="card__head">
               <svg class="card__mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#flame-norm"/></svg>
-              <span class="card__name">Kinclude</span>
+              <a class="card__name card__name--link" href="https://kinclude.app">Kinclude</a>
               <span class="pill pill--soon">Coming soon</span>
             </div>
             <h3 class="card__line">We're all family&nbsp;here.</h3>
@@ -299,6 +306,13 @@
 
   <footer class="footer" role="contentinfo">
     <p><a href="https://kindred.software">Part of the Kindred family</a></p>
+    <nav class="footer__family" aria-label="The Kindred family">
+      <a href="https://kindred.software">Kindred</a>
+      <a href="https://kintrinsic.app">Kintrinsic</a>
+      <a href="https://kindependence.app">Kindependence</a>
+      <a href="https://kinclude.app">Kinclude</a>
+      <span aria-current="page">Kinterest</span>
+    </nav>
     <p class="footer__fs">Made by <a href="https://forgesworn.dev">ForgeSworn</a></p>
   </footer>
 

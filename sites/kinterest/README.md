@@ -13,5 +13,6 @@ and at desktop width.
 ## Files
 
 - `public/index.html` — the page
-- `public/styles.css` — copy of the Kindred site stylesheet, extended (linked as `styles.css?v=1`)
+- `public/styles.css` — copy of the Kindred site stylesheet, extended (linked as `styles.css?v=2`)
 - `public/favicon.svg` — the bare Kindred flame
+- `public/robots.txt`, `public/sitemap.xml` — single-page site, so the sitemap lists `https://kinterest.app/` only
