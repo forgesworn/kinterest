@@ -10,6 +10,16 @@ requests, no web fonts. The site is `public/`.
 then open http://localhost:8000. Check it at 375px wide (no horizontal scroll)
 and at desktop width.
 
+## Deploy
+
+Served by Cloudflare Pages (project `kinterest`) on `kinterest.app` and
+`www.kinterest.app`. A push to `main` that touches `sites/kinterest/` deploys
+it automatically (`.github/workflows/deploy-site.yml`), then checks that
+kinterest.app is serving the new files. The workflow can also be run by hand
+from the Actions tab. To deploy from a local checkout instead:
+
+    npx wrangler pages deploy sites/kinterest/public --project-name=kinterest --branch=main
+
 ## Files
 
 - `public/index.html` — the page

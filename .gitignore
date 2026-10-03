@@ -4,3 +4,4 @@ coverage/
 *.local
 .claude/
 .superpowers/
+.wrangler/
