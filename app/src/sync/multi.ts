@@ -82,6 +82,7 @@ import { flush } from '../wire/outbox'
 import type { RootAttestation, SnapshotPayload } from '../wire/payloads'
 import type { AppState } from '../state/types'
 import { handlePairClaimWrap, handleWrap, type Effect, type PairTokenStore } from './ingress'
+import { PendingWraps } from './pendingWraps'
 import type { AnsweredPairClaim } from '../pairing/pairing'
 import { sendAck } from './publish'
 
@@ -168,6 +169,7 @@ export function startGuardianSync(opts: StartGuardianSyncOpts): () => void {
   // Flush on start — see module header ("outbox flush ownership").
   void flush(opts.relay, nowSec(), opts.storage).catch(() => {})
 
+  const pending = new PendingWraps()
   const unsubscribe = opts.relay.subscribe({ kinds: [WRAP], '#p': [selfPk] }, (wrap: NostrEvent) => {
     const now = nowSec()
 
@@ -183,20 +185,18 @@ export function startGuardianSync(opts: StartGuardianSyncOpts): () => void {
     if (memberPks.has(probe.authorPk) && (!opts.getState().children.some(c => c.signet) || childForDevice(opts.getState(), probe.authorPk) !== null)) {
       const authorPk = probe.authorPk
 
-      // `effects` are computed once, eagerly, from whatever `getState()`
-      // returns right now — safe DESPITE the staleness hazard described in
-      // this module's header, because every effect-producing branch of
-      // `handleWrap` derives its payload purely from the WRAP itself (see
-      // ingress.ts): an 'ack' carries the entry id the wrap named, a
-      // 'request'/'grant'/'tick'/'audit' carries the wrap's own parsed
-      // payload, none of it read back out of `state`. The one exception —
-      // CONFIG/SNAPSHOT/GRANT's direction guard, keyed on
-      // `state.guardianPubkey` — can never itself be "stale between one
-      // snapshot and the next" because that field is fixed for the whole
-      // lifetime of a guardian session. So effects are fine to read from a
-      // possibly-microtask-stale snapshot; the LEDGER itself is not (see
-      // below).
-      const { effects } = handleWrap(opts.getState(), wrap, opts.selfSk, authorPk, now)
+      // `effects` are computed once, eagerly — against `getState()` WITH
+      // every wrap this callback has already handed to `setState` folded in
+      // (sync/pendingWraps.ts). The effect-producing branches of `handleWrap`
+      // derive their payloads from the WRAP itself, but whether a wrap is
+      // folded or DEFERRED (an unknown account or chore — ingress.ts's
+      // `DispatchResult`) is keyed on state, and a wrap that depends on the
+      // one before it in the same batch must be judged the way the fresh
+      // updater below will judge it, or its ack/entry/tick effects are lost
+      // for good (the wrap is marked seen by the updater, so a redelivery
+      // yields nothing). The LEDGER fold itself still re-runs fresh (below).
+      const { effects } = handleWrap(pending.project(opts.getState(), opts.selfSk, now), wrap, opts.selfSk, authorPk, now)
+      pending.note(wrap, authorPk)
 
       // The ledger fold MUST re-run fresh against whatever the caller's
       // accumulation point considers current AT THE MOMENT this update is

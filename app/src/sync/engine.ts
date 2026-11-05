@@ -47,6 +47,7 @@ import type { StorageLike } from '../wire/outbox'
 import { flush } from '../wire/outbox'
 import type { AppState } from '../state/types'
 import { handleWrap, type Effect } from './ingress'
+import { PendingWraps } from './pendingWraps'
 import { sendAck } from './publish'
 
 export interface StartSyncOpts {
@@ -95,15 +96,19 @@ export function startSync(opts: StartSyncOpts): () => void {
   // mirroring multi.ts).
   void flush(opts.relay, nowSec(), opts.storage).catch(() => {})
 
+  const pending = new PendingWraps()
   const unsubscribe = opts.relay.subscribe({ kinds: [WRAP], '#p': [selfPk] }, (wrap: NostrEvent) => {
     const now = nowSec()
 
-    // `effects` computed once, eagerly, from whatever `getState()` returns
-    // right now — safe despite the staleness hazard this module's header
-    // describes, for the same reason multi.ts's own comment gives: every
-    // effect-producing branch of `handleWrap` derives its payload purely
-    // from the WRAP itself, none of it read back out of `state`.
-    const { effects } = handleWrap(opts.getState(), wrap, opts.selfSk, opts.pinnedPeerPk, now)
+    // `effects` are computed once, eagerly — but against `getState()` WITH
+    // every wrap this callback has already handed to `setState` folded in
+    // (sync/pendingWraps.ts), so a wrap that depends on the one before it
+    // (an ENTRY on the pot an accounts CONFIG in the same batch created) is
+    // judged the same way the fresh updater below will judge it. Computing
+    // them from the bare, possibly-stale `getState()` lost the ENTRY's ack
+    // and entry effects for good in exactly that case.
+    const { effects } = handleWrap(pending.project(opts.getState(), opts.selfSk, now), wrap, opts.selfSk, opts.pinnedPeerPk, now)
+    pending.note(wrap, opts.pinnedPeerPk)
 
     // The ledger fold MUST re-run fresh against whatever the caller's
     // accumulation point considers current AT THE MOMENT this update is

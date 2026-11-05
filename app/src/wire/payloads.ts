@@ -114,14 +114,24 @@ function isAccountShape(x: unknown): x is Account {
   )
 }
 
+/** A due day as domain/period.ts#dueDays accepts it: 1..7 (ISO weekday)
+ *  or 1..31 (day of month). Checked loosely here (1..31 for either
+ *  cadence); `dueDays` throws on a weekday past 7, which the scheduler's
+ *  per-config try/catch already contains. A doc naming day 0, a negative
+ *  day or a huge one is malformed whatever its cadence. */
+function isScheduleDay(x: unknown): x is number {
+  return isSafeInt(x) && (x as number) >= 1 && (x as number) <= 31
+}
+
 function isAllowanceConfigShape(x: unknown): x is AllowanceConfig {
   return (
     isPlainObject(x) &&
     isNonEmptyString(x.child) &&
     isNonEmptyString(x.account) &&
     isSafeInt(x.amountMinor) &&
+    (x.amountMinor as number) > 0 &&
     (x.cadence === 'weekly' || x.cadence === 'monthly') &&
-    isSafeInt(x.day) &&
+    isScheduleDay(x.day) &&
     isNonEmptyString(x.tz) &&
     isNonEmptyString(x.startDay) &&
     (x.paused === undefined || typeof x.paused === 'boolean') &&
@@ -135,13 +145,13 @@ function isInterestConfigShape(x: unknown): x is InterestConfig {
     isPlainObject(x) &&
     isNonEmptyString(x.child) &&
     isNonEmptyString(x.account) &&
-    isSafeInt(x.rateBps) &&
+    isNonNegSafeInt(x.rateBps) &&
     (x.cadence === 'weekly' || x.cadence === 'monthly') &&
-    isSafeInt(x.day) &&
+    isScheduleDay(x.day) &&
     isNonEmptyString(x.tz) &&
     isNonEmptyString(x.startDay) &&
-    (x.matchBps === undefined || isSafeInt(x.matchBps)) &&
-    (x.matchCapMinor === undefined || isSafeInt(x.matchCapMinor)) &&
+    (x.matchBps === undefined || isNonNegSafeInt(x.matchBps)) &&
+    (x.matchCapMinor === undefined || isNonNegSafeInt(x.matchCapMinor)) &&
     (x.paused === undefined || typeof x.paused === 'boolean')
   )
 }
@@ -772,8 +782,14 @@ export function isNostrEventShape(x: unknown): x is NostrEvent {
   )
 }
 
+/** `docHighWater` as a heartbeat carries it: at most one entry per config
+ *  doc kind. An unknown key is not a doc this app can ever catch a peer up
+ *  on, and sync/resync.ts#compareStatus would otherwise read it as a doc the
+ *  peer is missing and open a resync exchange on every accepted heartbeat. */
+const DOC_HIGH_WATER_KEYS: ReadonlySet<string> = new Set(['accounts', 'allowance', 'interest', 'chores'])
+
 function isSafeIntRecord(x: unknown): x is Record<string, number> {
-  return isPlainObject(x) && Object.values(x).every((v) => isSafeInt(v))
+  return isPlainObject(x) && Object.entries(x).every(([k, v]) => DOC_HIGH_WATER_KEYS.has(k) && isSafeInt(v))
 }
 
 /** Union parser for kind 31114 — dispatches on `type`. Unknown type -> null. */

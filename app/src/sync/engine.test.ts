@@ -933,6 +933,53 @@ describe('engine.ts: startSync', () => {
     expect(committedState.entries.map((e) => e.id).sort()).toEqual([entryA.id, entryB.id].sort())
     stop()
   })
+
+  // The effects half of the same hazard (sync/pendingWraps.ts): an accounts
+  // CONFIG creating a pot and an ENTRY on that pot, delivered in one batch.
+  // The ledger fold was already safe (the updater re-runs against the
+  // committed state), but the effects were computed from the bare, stale
+  // `getState()` — which did not know the pot yet — so the ENTRY read as
+  // deferred ('gap' only) while the updater folded it and marked the wrap
+  // seen: no ack, no entry effect, and no way to ever get them.
+  it('an ENTRY on a pot the previous wrap of the same batch created still yields its ack and entry effects', () => {
+    const guardian = newKeypair()
+    const child = newKeypair()
+    const relay = makeFakeRelay()
+    const account: Account = { id: 'acc-new', child: child.pk, name: 'New pot', currency: 'GBP', custody: 'ledger' }
+
+    let committedState: AppState = { ...emptyState(), role: 'child', guardianPubkey: guardian.pk, self: { pubkey: child.pk, childIndex: 0 } }
+    const pendingUpdates: Array<(app: AppState) => AppState> = []
+    const effects: Effect[] = []
+
+    const stop = startSync({
+      getState: () => committedState, // deliberately never advanced mid-batch
+      setState: (update) => {
+        pendingUpdates.push(update)
+      },
+      selfSk: child.sk,
+      pinnedPeerPk: guardian.pk,
+      relay,
+      storage: makeFakeStorage(),
+      onEffect: (e) => effects.push(e),
+      nowSec: () => AT,
+    })
+
+    const entry = creditEntry({ id: newId(AT * 1000), child: child.pk, createdAt: AT, author: 'guardian' }, account, 500)
+    void sendConfig('accounts', { v: 1, issuedAt: AT, accounts: [account] }, { selfSk: guardian.sk, peerPk: child.pk, relay, storage: makeFakeStorage(), nowSec: AT })
+    void sendEntry(entry, { selfSk: guardian.sk, peerPk: child.pk, relay, storage: makeFakeStorage(), nowSec: AT })
+    relay.deliverAll()
+
+    expect(pendingUpdates).toHaveLength(2)
+    for (const update of pendingUpdates) committedState = update(committedState)
+    expect(committedState.entries).toEqual([entry])
+
+    // 'ack' effects are consumed by the engine itself (it sends the ack);
+    // everything else reaches onEffect — the entry effect must be there and
+    // no 'gap' must have been raised for an entry that landed.
+    expect(effects).toContainEqual({ type: 'entry', entry, authorPk: guardian.pk })
+    expect(effects.some((e) => e.type === 'gap')).toBe(false)
+    stop()
+  })
 })
 
 // ============================================================================
