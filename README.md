@@ -40,9 +40,11 @@ android/scripts/build-apk.sh
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Add `--release` to `build-apk.sh` for a release build type — it comes out
-release-signed only when `android/keystore.properties` exists (owned by
-whoever runs the deploy pipeline), and debug-signed otherwise. See
+Add `--release` to `build-apk.sh` for a release build type — it refuses to
+build unless `android/keystore.properties` exists (owned by whoever runs the
+deploy pipeline), because a debug-signed "release" installed on a family
+phone would block the real one from ever installing over it. The debug APK
+is debuggable, so it belongs on test phones only. See
 `scripts/dev-note.md` for running on a real phone, including the Android
 shell's lock policy, notification permission, relay service, and how it
 hands off Signet sign-in links outside the WebView.

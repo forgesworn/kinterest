@@ -81,5 +81,8 @@ class NativeRelaySockets(
         client.dispatcher.executorService.shutdown()
         client.connectionPool.evictAll()
     }
-    companion object { private const val MAX_FRAME_CHARS = 8 * 1024 * 1024 }
+    // The largest legitimate frame is a wrapped 16 KiB backup chunk; a relay
+    // streaming multi-megabyte frames is copied three times per frame and
+    // queued on the main thread with no back-pressure, so cap well below OOM.
+    companion object { private const val MAX_FRAME_CHARS = 1024 * 1024 }
 }

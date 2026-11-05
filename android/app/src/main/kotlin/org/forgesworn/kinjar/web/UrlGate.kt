@@ -25,7 +25,10 @@ object UrlGate {
         // Hosts are case-insensitive (RFC 3986) — without lowercasing,
         // https://MySignet.app would BLOCK rather than hand off.
         return when (uri.host?.lowercase()) {
-            "app.kinjar.local" -> Verdict.IN_APP
+            // An explicit port is a DIFFERENT origin (empty storage, bridge
+            // exposed) even on the console's own host — only the default port
+            // is the console.
+            "app.kinjar.local" -> if (uri.port == -1) Verdict.IN_APP else Verdict.BLOCK
             "mysignet.app", "lite.mysignet.app" -> Verdict.EXTERNAL
             else -> Verdict.BLOCK
         }

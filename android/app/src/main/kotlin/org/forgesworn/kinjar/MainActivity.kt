@@ -16,6 +16,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import java.io.ByteArrayInputStream
+import org.json.JSONObject
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.core.content.pm.PackageInfoCompat
@@ -72,6 +73,8 @@ class MainActivity : ComponentActivity() {
         // since file access from a page this app treats as trusted would be a
         // sandbox escape route straight to the device's filesystem.
         webView.settings.allowFileAccess = false
+        // Nor content:// — the console loads nothing from other providers.
+        webView.settings.allowContentAccess = false
         // https-only origin (UrlGate), and nothing this app serves should ever
         // need to pull in an insecure sub-resource — pinned explicitly rather
         // than trusting the platform default.
@@ -203,6 +206,9 @@ class MainActivity : ComponentActivity() {
                     request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
                 } else {
                     // Hold the web request while Android's dialog is answered.
+                    // A request already waiting is answered (denied) first,
+                    // or its getUserMedia promise would never settle.
+                    pendingCameraRequest?.deny()
                     pendingCameraRequest = request
                     requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAMERA)
                 }
@@ -260,9 +266,13 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val route = intent.getStringExtra(Notifier.EXTRA_ROUTE) ?: return
+        // MainActivity is exported (it is the launcher), so any app can set
+        // this extra: only the routes this shell itself posts are forwarded,
+        // and as a JSON string literal rather than by hand-rolled escaping.
+        if (route != Notifier.ROUTE_APPROVALS) return
         webView.evaluateJavascript(
-            "window.dispatchEvent(new CustomEvent('kinjar-pending-route', { detail: { route: '" +
-                route.replace("'", "") + "' } }));",
+            "window.dispatchEvent(new CustomEvent('kinjar-pending-route', { detail: { route: " +
+                JSONObject.quote(route) + " } }));",
             null,
         )
     }

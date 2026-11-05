@@ -72,6 +72,15 @@ class RelayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (!wanted) {
+            // start() then stop() before this asynchronous start was
+            // delivered: the web side no longer wants the service, so never
+            // enter foreground only to sit there with a wake lock and a row
+            // nothing will take down until the task is removed.
+            running = false
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val started = runCatching {
             startForeground(
                 Notifier.SERVICE_NOTIF_ID,

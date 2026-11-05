@@ -42,7 +42,8 @@ object BundledConsole {
         "json" -> "application/json"
         "png" -> "image/png"
         "ico" -> "image/x-icon"
-        "woff", "woff2" -> "font/woff2"
+        "woff" -> "font/woff"
+        "woff2" -> "font/woff2"
         "txt" -> "text/plain"
         else -> "application/octet-stream"
     }

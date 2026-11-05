@@ -63,7 +63,7 @@ object Notifier {
      *  visible for the service to run at all. */
     fun serviceNotification(ctx: Context): Notification =
         Notification.Builder(ctx, CH_SERVICE)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_launcher_monochrome)
             .setContentTitle(ctx.getString(R.string.notif_service_title))
             .setContentIntent(contentIntent(ctx, requestCode = 0))
             .setOngoing(true)
@@ -85,7 +85,7 @@ object Notifier {
         // "family" channel that doesn't exist yet silently drops the post.
         ensureChannels(ctx)
         val n = Notification.Builder(ctx, CH_FAMILY)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_launcher_monochrome)
             .setContentTitle(title)
             .setContentText(body)
             .setContentIntent(contentIntent(ctx, requestCode = tag.hashCode(), route = routeFor(tag)))

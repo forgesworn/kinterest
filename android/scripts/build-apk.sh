@@ -37,6 +37,11 @@ echo "==> Building web console (app/dist)"
 [ -f app/dist/index.html ] || { echo "FATAL: app/dist/index.html missing after npm run build" >&2; exit 1; }
 
 if [ "$MODE" = "release" ]; then
+    # A release build without the release keystore comes out signed with this
+    # machine's debug key (build.gradle.kts's fallback). Installed on a family
+    # phone, the properly signed release can then never install over it, and
+    # the only way out is an uninstall that destroys the phone's ledger. Refuse.
+    [ -f android/keystore.properties ] || { echo "FATAL: --release needs android/keystore.properties (the release keystore); a debug-signed 'release' must never reach a phone. Build --debug for testing." >&2; exit 1; }
     echo "==> Assembling release APK (stageConsoleAssets runs as a preBuild dependency)"
     ( cd android && ./gradlew :app:assembleRelease ) || { echo "FATAL: gradlew :app:assembleRelease failed" >&2; exit 1; }
     APK=android/app/build/outputs/apk/release/app-release.apk
@@ -62,6 +67,6 @@ SIZE=$(stat -c%s "$APK")
 echo "==> Built ($MODE): $APK"
 echo "    sha256: $SHA"
 echo "    size:   $SIZE bytes"
-if [ "$MODE" = "release" ] && [ ! -f android/keystore.properties ]; then
-    echo "    note: android/keystore.properties not found — release APK is debug-signed (see build.gradle.kts)"
+if [ "$MODE" = "debug" ]; then
+    echo "    note: a debug APK is debuggable (adb run-as reads its storage) — test phones only, never a family's"
 fi
