@@ -63,16 +63,26 @@ function schedulerClaimId(cfg: AllowanceConfig, periodKey: string): string {
   return `scheduler:${cfg.child}:${cfg.account}:${periodKey}`
 }
 
-/** Periods the guardian explicitly refused: a scheduler claim
- *  for that (child, account, period) that was denied or dismissed. Such a
+/** Periods the guardian explicitly refused: a claim for that (child,
+ *  period) — the scheduler's own or the child's — that was denied or dismissed. Such a
  *  period is never paid by the scheduler, even after the gate is switched
  *  off — belt-and-braces behind the re-anchor on the config save path. */
 function refusedPeriods(state: AppState, cfg: AllowanceConfig): Set<string> {
   const out = new Set<string>()
   const prefix = `scheduler:${cfg.child}:${cfg.account}:`
   for (const r of state.requests) {
-    if ((r.status === 'denied' || r.status === 'dismissed') && r.request.reqId.startsWith(prefix))
+    if (r.status !== 'denied' && r.status !== 'dismissed') continue
+    if (r.request.reqId.startsWith(prefix)) {
       out.add(r.request.reqId.slice(prefix.length))
+      continue
+    }
+    // The child's own claim for a period, refused, counts the same: a
+    // scheduler claim is never raised while the child's is on record
+    // (state.ts#upsertRequest), so this is the only record there is.
+    if (r.request.op === 'allowance.claim' && r.request.child === cfg.child) {
+      const key = r.request.params.periodKey
+      if (typeof key === 'string' && key !== '') out.add(key)
+    }
   }
   return out
 }

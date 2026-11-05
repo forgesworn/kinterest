@@ -397,9 +397,39 @@ export function mergeConfigDoc<K extends keyof ConfigDocs>(s: AppState, kind: K,
 export function upsertRequest(s: AppState, request: RequestPayload, authorPk: string, nowSec: number): AppState {
   if (authorPk !== request.child && childForDevice(s, authorPk) !== request.child) return s
   if (s.requests.some((r) => r.request.reqId === request.reqId)) return s
+  // One inbox card per gated period. The guardian's scheduler synthesises a
+  // claim for every due gated period (store/scheduler.ts#gatedClaim) and the
+  // child's own device raises one too when its chores are done
+  // (screens/chores.ts#raiseChoreGateClaims); neither side sees the other's,
+  // so both used to land as two pending cards for the same period — and
+  // answering the second after the first was approved sent the child a
+  // "Not this time" for pocket money already paid. The child's claim is the
+  // one that must be answered over the wire, so it wins: a scheduler claim is
+  // not raised while any claim for the period is on record, and a pending
+  // scheduler claim is dropped (nothing has to answer it) when the child's
+  // arrives. An already-decided scheduler claim stays as the record of that
+  // decision; store/scheduler.ts#refusedPeriods reads it.
+  let requests = s.requests
+  const key = claimedPeriodKey(request)
+  if (key !== null) {
+    const samePeriod = (r: StoredRequest): boolean =>
+      r.request.op === 'allowance.claim' && r.request.child === request.child && claimedPeriodKey(r.request) === key
+    if (isSchedulerClaim(request)) {
+      if (requests.some(samePeriod)) return s
+    } else {
+      requests = requests.filter((r) => !(r.status === 'pending' && isSchedulerClaim(r.request) && samePeriod(r)))
+    }
+  }
   const record: StoredRequest = { request, authorPk, status: 'pending', createdAt: nowSec }
   if (claimLegitimateNow(s, request, nowSec)) record.periodLegitimateAtReceipt = true
-  return { ...s, requests: [...s.requests, record] }
+  return { ...s, requests: [...requests, record] }
+}
+
+/** A guardian-local claim the scheduler synthesised for a gated period —
+ *  store/scheduler.ts's own `scheduler:<child>:<account>:<periodKey>` reqId
+ *  convention. It never crosses the wire, so nothing has to answer it. */
+export function isSchedulerClaim(request: Pick<RequestPayload, 'reqId'>): boolean {
+  return request.reqId.startsWith('scheduler:')
 }
 
 function claimedPeriodKey(request: RequestPayload): string | null {

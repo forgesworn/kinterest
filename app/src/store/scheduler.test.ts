@@ -330,6 +330,19 @@ describe('runSchedulers: refused gated periods', () => {
     const { entries } = runSchedulers(state, NOW)
     expect(entries.map((e) => e.periodKey)).toEqual(['2026-W34'])
   })
+
+  it("a refused claim the CHILD raised for a period counts the same as the scheduler's own", () => {
+    const state = baseState({
+      docs: { ...baseState().docs, allowance: { v: 1, issuedAt: 1, configs: [allowanceCfg] } },
+      requests: [{
+        request: { v: 1 as const, op: 'allowance.claim' as const, reqId: '01JCHILDCLAIM', nonce: 'n', child: CHILD, ts: 1, params: { periodKey: '2026-W32' } },
+        authorPk: CHILD, status: 'denied' as const, decidedAt: 2, createdAt: 1,
+      }],
+    })
+    const { entries, claims } = runSchedulers(state, NOW)
+    expect(entries.map((e) => e.periodKey)).toEqual(['2026-W33', '2026-W34'])
+    expect(claims).toEqual([])
+  })
 })
 
 describe('runSchedulers: interest on the balance as of each due day', () => {

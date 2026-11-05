@@ -196,10 +196,12 @@ const NON_DEPOSIT_CATEGORIES: ReadonlySet<string> = new Set(['allowance', 'inter
  *     shuttling money back and forth);
  *   - audit adjustments, debits, reversal entries, and any credit that has
  *     itself been reversed (`reversedIds`).
- * Returns the positive amount deposited on `accountId`, or 0.
+ * A correction's replacement credit DOES count (its original is reversed
+ * and so counts for 0): see `depositsInWindow`, which places it on the
+ * original's day. Returns the positive amount deposited on `accountId`, or 0.
  */
 export function depositMinor(e: Entry, accountId: string, reversedIds: ReadonlySet<string>): number {
-  if (e.kind !== 'credit' || e.correctionOf !== undefined || e.reverses !== undefined || reversedIds.has(e.id)) return 0
+  if (e.kind !== 'credit' || e.reverses !== undefined || reversedIds.has(e.id)) return 0
   if (e.category !== undefined && NON_DEPOSIT_CATEGORIES.has(e.category)) return 0
   let sum = 0
   for (const l of e.legs) if (l.account === accountId && l.amountMinor > 0) sum += l.amountMinor
@@ -252,15 +254,33 @@ export function depositsInWindow(
   tz: string,
 ): number {
   const reversedIds = new Set(entries.map((e) => e.reverses).filter((r): r is string => r !== undefined))
+  const byId = new Map(entries.map((e) => [e.id, e] as const))
   let sum = 0
   for (const e of entries) {
     const amount = depositMinor(e, accountId, reversedIds)
     if (amount === 0) continue
-    const day = effectiveDay(e, tz)
+    const day = depositDay(e, byId, tz)
     if (day >= fromInclusive && day < toExclusive) sum += amount
   }
   assertMinor(sum)
   return sum
+}
+
+/** The day a deposit counts in. A correction's replacement credit
+ *  (domain/corrections.ts#correctionEntries: `correctionOf` set, `reverses`
+ *  not) stands in for the original it corrects, so it is counted on the
+ *  ORIGINAL's day, not the day the guardian fixed the typo: a deposit
+ *  corrected before its pay day is then matched once, at the corrected
+ *  amount, while a deposit corrected after its window has already been
+ *  matched stays in that closed window and is never matched a second time
+ *  (corrections do not recalculate a match already paid). Falls back to the
+ *  replacement's own day when the original is not in `byId`. */
+function depositDay(e: Entry, byId: ReadonlyMap<string, Entry>, tz: string): string {
+  if (e.correctionOf !== undefined) {
+    const original = byId.get(e.correctionOf)
+    if (original !== undefined) return effectiveDay(original, tz)
+  }
+  return effectiveDay(e, tz)
 }
 
 function isMatchPayout(e: Entry, accountId: string, reversedIds: ReadonlySet<string>): boolean {

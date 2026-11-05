@@ -230,6 +230,43 @@ function req(reqId: string, overrides: Partial<RequestPayload> = {}): RequestPay
   })
 }
 
+describe('upsertRequest: one card per gated period', () => {
+  const claim = (reqId: string, periodKey: string) => req(reqId, { op: 'allowance.claim', params: { periodKey } })
+  const schedulerClaim = (periodKey: string) => claim(`scheduler:${CHILD}:acc1:${periodKey}`, periodKey)
+
+  it("the child's own claim replaces a pending scheduler claim for the same period", () => {
+    const s1 = upsertRequest(emptyState(), schedulerClaim('2026-W32'), CHILD, 1000)
+    expect(s1.requests).toHaveLength(1)
+    const s2 = upsertRequest(s1, claim('01JCHILD', '2026-W32'), CHILD, 1001)
+    expect(s2.requests.map((r) => r.request.reqId)).toEqual(['01JCHILD'])
+    expect(s2.requests[0]!.status).toBe('pending')
+  })
+
+  it("a scheduler claim is not raised while the child's claim for the period is on record, whatever its status", () => {
+    const pending = upsertRequest(emptyState(), claim('01JCHILD', '2026-W32'), CHILD, 1000)
+    expect(upsertRequest(pending, schedulerClaim('2026-W32'), CHILD, 1001)).toBe(pending)
+    const denied = recordRequestDecision(pending, claim('01JCHILD', '2026-W32'), CHILD, 'denied', 1002)
+    expect(upsertRequest(denied, schedulerClaim('2026-W32'), CHILD, 1003)).toBe(denied)
+  })
+
+  it('an already-decided scheduler claim stays as the record when the child claims the same period', () => {
+    const s1 = recordRequestDecision(emptyState(), schedulerClaim('2026-W32'), CHILD, 'denied', 1000)
+    const s2 = upsertRequest(s1, claim('01JCHILD', '2026-W32'), CHILD, 1001)
+    expect(s2.requests.map((r) => [r.request.reqId, r.status])).toEqual([
+      [`scheduler:${CHILD}:acc1:2026-W32`, 'denied'],
+      ['01JCHILD', 'pending'],
+    ])
+  })
+
+  it('a different period, or a different child, is left alone', () => {
+    const s1 = upsertRequest(emptyState(), schedulerClaim('2026-W32'), CHILD, 1000)
+    const s2 = upsertRequest(s1, claim('01JOTHER', '2026-W33'), CHILD, 1001)
+    expect(s2.requests).toHaveLength(2)
+    const s3 = upsertRequest(s2, req('01JX', { op: 'allowance.claim', child: 'other', params: { periodKey: '2026-W32' } }), 'other', 1002)
+    expect(s3.requests).toHaveLength(3)
+  })
+})
+
 describe('upsertRequest', () => {
   it('records a freshly-seen request as pending', () => {
     const s0 = emptyState()

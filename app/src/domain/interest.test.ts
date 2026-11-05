@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { Account } from './types'
 import { interestMinor, matchMinor, project, interestDue, interestEntry, balanceAsOf, effectiveDay, projectBalance, depositMinor, depositsInWindow, matchDue, matchEntry, matchWindowStart, type InterestConfig } from './interest'
 import { creditEntry, reverseEntry, transferEntry } from './ledger'
+import { correctionEntries } from './corrections'
 
 describe('interestMinor', () => {
   it('computes basis points on the balance', () => {
@@ -202,6 +203,23 @@ describe('deposit match', () => {
       creditEntry(meta('d4', 15), acct, 400),
     ]
     expect(depositsInWindow(entries, 'L', '2026-08-07', '2026-08-14', 'Europe/London')).toBe(300)
+  })
+
+  it('a deposit corrected before its pay day is matched once, at the corrected amount', () => {
+    // £1 typed instead of £10 on the 8th, fixed on the 10th; pay day is the 14th.
+    const typo = creditEntry(meta('typo', 8), acct, 100)
+    const fix = correctionEntries(typo, meta('fix', 10), 'Meant £10', [1000])
+    const entries = [typo, ...fix]
+    expect(depositsInWindow(entries, 'L', '2026-08-07', '2026-08-14', 'Europe/London')).toBe(1000)
+    // The replacement counts on the ORIGINAL's day, so a correction made
+    // after the window closed does not pull the deposit into the next one.
+    const late = correctionEntries(typo, meta('late', 16), 'Meant £10', [1000])
+    const afterPayDay = [typo, ...late]
+    expect(depositsInWindow(afterPayDay, 'L', '2026-08-07', '2026-08-14', 'Europe/London')).toBe(1000)
+    expect(depositsInWindow(afterPayDay, 'L', '2026-08-14', '2026-08-21', 'Europe/London')).toBe(0)
+    // A correction with no replacement simply removes the deposit.
+    const gone = correctionEntries(typo, meta('gone', 10), 'Never happened')
+    expect(depositsInWindow([typo, ...gone], 'L', '2026-08-07', '2026-08-14', 'Europe/London')).toBe(0)
   })
 
   it('pays 50p per £1 deposited, capped per period, as a match credit carrying the periodKey', () => {
