@@ -93,10 +93,19 @@ function authenticVaults(
   const out: VaultPayload[] = []
   for (const candidate of newestFirst) {
     const parsed = parseVaultPayload(candidate.payload)
-    if (parsed === null || parsed.checkpoint && (candidate.authorPk !== parsed.guardianPk || !verifyFamilyAuthority(parsed.authEvent,signetPk,parsed.guardianPk))) continue
     // Before the mnemonic is so much as looked at: an unauthentic vault is
-    // not a vault, whatever else about it is well formed.
-    if (!verifyRootAttestation(parsed.authEvent, signetPk, parsed.guardianPk)) continue
+    // not a vault, whatever else about it is well formed. Every vault needs
+    // the dedicated Kinterest family authority, not merely a generic Signet
+    // login over the root challenge (the fallback `verifyRootAttestation`
+    // still allows for pair offers): a phishing site can obtain a generic
+    // login over an attacker's guardian key and plant a roster-only vault,
+    // which would then either block recovery as `conflicting-vaults` or,
+    // once the genuine vault aged off the relay, be restored outright. No
+    // vault has ever shipped without the family authority.
+    if (parsed === null || !verifyFamilyAuthority(parsed.authEvent, signetPk, parsed.guardianPk)) continue
+    // The wrap's seal author must be the guardian the vault names, whenever
+    // the caller knows it (collectVaultCandidates always does).
+    if (candidate.authorPk !== undefined ? candidate.authorPk !== parsed.guardianPk : parsed.checkpoint !== undefined) continue
     try {
       if (!validate(parsed.mnemonic)) continue
       if (guardianPkFor(parsed.mnemonic) !== parsed.guardianPk) continue

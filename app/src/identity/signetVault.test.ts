@@ -10,6 +10,7 @@ import { wrapFor } from '../wire/giftwrap'
 import { KIND_VAULT } from '../wire/kinds'
 import { buildVaultPayload } from '../wire/payloads'
 import { rootChallenge } from './signetRoot'
+import { authorityRequest } from './familyAuthority'
 import {
   collectVaultCandidates,
   pickFamilyVault,
@@ -29,8 +30,18 @@ const attackerSk = generateSecretKey()
 
 const SIGNET_AUTH_KIND = 21236
 
-/** A kind-21236 attestation: `sk`'s Signet identity claiming `guardianPk`. */
+/** The confirmed Kinterest family authority: `sk`'s Signet identity
+ *  authorising `guardianPk` as a family key (identity/familyAuthority.ts).
+ *  Every vault needs one of these; a generic kind-21236 login (`login`
+ *  below) is no longer enough. */
 function attest(sk: Uint8Array, guardianPk: string, at = 1): NostrEvent {
+  const template = authorityRequest(guardianPk, rootChallenge(guardianPk), at)
+  return finalizeEvent({ ...template, tags: template.tags.map((t) => (t[0] === 'approval' ? ['approval', 'confirmed'] : t)) }, sk)
+}
+
+/** A generic kind-21236 Signet login over the root challenge — what a
+ *  phishing site can obtain, and what a vault must NOT be accepted on. */
+function login(sk: Uint8Array, guardianPk: string, at = 1): NostrEvent {
   return finalizeEvent(
     { kind: SIGNET_AUTH_KIND, created_at: at, tags: [['challenge', rootChallenge(guardianPk)]], content: '' },
     sk,
@@ -172,6 +183,12 @@ describe('pickNewestVault', () => {
     expect(pickNewestVault([candidate], rootPk, () => true, () => 'b'.repeat(64))).toBeNull()
   })
 
+  it('ignores a vault vouched for only by a generic Signet login over the root challenge', () => {
+    const generic = { ...p('phished', 'b'.repeat(64), 9), payload: { ...p('phished', 'b'.repeat(64), 9).payload, authEvent: login(rootSk, 'b'.repeat(64), 9) } }
+    const got = pickNewestVault([p('genuine', 'a'.repeat(64), 1), generic], rootPk, () => true, () => 'a'.repeat(64))
+    expect(got?.mnemonic).toBe('genuine')
+  })
+
   it('ignores a vault with no attestation at all — there is no legacy tolerance', () => {
     const candidate = {
       payload: { v: 1, type: 'vault', mnemonic: 'legacy', guardianPk: 'a'.repeat(64), createdAt: 9 },
@@ -196,10 +213,9 @@ describe('pickNewestVault', () => {
 
 // --- the bounded relay hunt (spec §1.6, recovery step 2-3) --------------------
 
-// An attestation is a generic Signet login, so a phishing site can
-// obtain one over an attacker's guardian key (writing our origin tag itself).
 // Two families among the AUTHENTIC vaults is refused, never resolved by
-// recency.
+// recency: a user may have approved a family authority they did not mean
+// to, and recency must not pick between the two.
 describe('pickFamilyVault', () => {
   const pkOf = (m: string) => (m.startsWith('genuine') ? 'a'.repeat(64) : 'b'.repeat(64))
 

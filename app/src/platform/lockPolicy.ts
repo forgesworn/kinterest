@@ -99,7 +99,11 @@ export function wireLock(lock: () => void, opts?: { graceMs?: number; now?: () =
     return () => window.removeEventListener('pagehide', lock)
   }
 
-  let hiddenAtMs: number | null = null
+  // Seeded from the CURRENT visibility state, as `wireKeyWipe` below is:
+  // the store re-arms this whenever the child's role or key changes, which
+  // an inbound wrap can do with the app already hidden; seeding null would
+  // let the next visible transition skip the lock.
+  let hiddenAtMs: number | null = document.visibilityState === 'hidden' ? now() : null
   const onVisibilityChange = (): void => {
     if (document.visibilityState === 'hidden') {
       hiddenAtMs = now()

@@ -1,6 +1,6 @@
 import { bytesToHex, hexToBytes } from 'nostr-tools/utils'
 import { vaultLoad, vaultStore } from './vault'
-import { isValidPinFormat, nextLockedUntil } from './pinLock'
+import { clampLockedUntil, isValidPinFormat, nextLockedUntil } from './pinLock'
 
 const SLOT = 'parent-pin-v1'
 const ITERATIONS = 210_000
@@ -9,8 +9,15 @@ interface Record { v: 1; salt: string; verifier: string; failures: number; locke
 async function read(): Promise<Record | null> {
   const bytes = await vaultLoad(SLOT)
   if (bytes === null) return null
-  const r = JSON.parse(new TextDecoder().decode(bytes)) as Record
-  if (r.v !== 1 || !/^[0-9a-f]{32}$/.test(r.salt) || !/^[0-9a-f]{64}$/.test(r.verifier) ||
+  let r: Record | null = null
+  try {
+    r = JSON.parse(new TextDecoder().decode(bytes)) as Record | null
+  } catch {
+    r = null
+  }
+  // A non-JSON blob, `null`, or any bad field reads as the same unreadable
+  // record — never a bare SyntaxError/TypeError out of JSON.parse or `r.v`.
+  if (r === null || typeof r !== 'object' || r.v !== 1 || !/^[0-9a-f]{32}$/.test(r.salt) || !/^[0-9a-f]{64}$/.test(r.verifier) ||
       !Number.isSafeInteger(r.failures) || r.failures < 0 || !Number.isSafeInteger(r.lockedUntilSec) || r.lockedUntilSec < 0) {
     throw new Error('Saved parent lock is unreadable. Use My Signet to reset it.')
   }
@@ -36,7 +43,12 @@ async function attempt(pin: string, nowSec: number): Promise<{ unlocked: boolean
   if (!Number.isSafeInteger(nowSec) || nowSec < 0) throw new Error('Invalid lock time')
   const r = await read()
   if (r === null) return { unlocked: false, lockedUntilSec: 0 }
-  if (nowSec < r.lockedUntilSec) return { unlocked: false, lockedUntilSec: r.lockedUntilSec }
+  // Same clamp as the child PIN (pinLock.ts#clampLockedUntil): a lockout
+  // recorded while the clock was set far ahead must not outlive the longest
+  // legitimate backoff once the clock is corrected.
+  const lockedUntil = clampLockedUntil(r.lockedUntilSec, nowSec)
+  if (lockedUntil !== r.lockedUntilSec) await write({ ...r, lockedUntilSec: lockedUntil })
+  if (nowSec < lockedUntil) return { unlocked: false, lockedUntilSec: lockedUntil }
   const candidate = await verifier(pin, r.salt)
   let diff = 0
   for (let i = 0; i < r.verifier.length; i++) diff |= candidate.charCodeAt(i) ^ r.verifier.charCodeAt(i)

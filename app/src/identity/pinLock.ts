@@ -281,7 +281,20 @@ export async function unlockWithPin(pin: string, opts?: UnlockWithPinOpts): Prom
   return result.kind === 'unlocked' ? result.sk : null
 }
 
-export async function unlockWithPinResult(pin: string, opts?: UnlockWithPinOpts): Promise<PinUnlockResult> {
+// Serialise attempts, as parentPin.ts does: N concurrent calls would each
+// read the same counter and each write `merged + 1`, so N guesses cost one
+// recorded failure and the escalation never advances. ChildLock.tsx's own
+// `busy` guard stops this from the number pad; this stops it from anywhere.
+let attemptTail: Promise<unknown> = Promise.resolve()
+
+export function unlockWithPinResult(pin: string, opts?: UnlockWithPinOpts): Promise<PinUnlockResult> {
+  const run = (): Promise<PinUnlockResult> => unlockWithPinResultNow(pin, opts)
+  const result = attemptTail.then(run, run)
+  attemptTail = result.catch(() => {})
+  return result
+}
+
+async function unlockWithPinResultNow(pin: string, opts?: UnlockWithPinOpts): Promise<PinUnlockResult> {
   const storage = opts?.storage ?? defaultBackoffStorage()
   const nowSec = opts?.nowSec ?? Math.floor(Date.now() / 1000)
   const wrong = (base: BackoffState): PinUnlockResult => {
