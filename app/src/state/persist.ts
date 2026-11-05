@@ -367,11 +367,15 @@ function sanitiseState(raw: Record<string, unknown>, dropped: unknown[] = []): A
 // `storage` itself defaults to the real thing. It only ever feeds
 // `state.ts#backfillPairedAt` below.
 export function loadState(storage: StorageLike = defaultStorage(), nowSec: number = Math.floor(Date.now() / 1000)): AppState {
+  let raw: string | null = null
   try {
-    const raw = storage.getItem(STORAGE_KEY)
+    raw = storage.getItem(STORAGE_KEY)
     if (raw === null) return emptyState()
     const parsed: unknown = JSON.parse(raw)
-    if (!looksLikeAppState(parsed)) return emptyState()
+    if (!looksLikeAppState(parsed)) {
+      setAside(raw, storage)
+      return emptyState()
+    }
     const dropped: unknown[] = []
     const state = sanitiseState(parsed, dropped)
     if (dropped.length > 0) quarantine(dropped, storage)
@@ -381,7 +385,34 @@ export function loadState(storage: StorageLike = defaultStorage(), nowSec: numbe
     // sees the same answer.
     return backfillPairedAt(state, nowSec)
   } catch {
+    if (raw !== null) setAside(raw, storage)
     return emptyState()
+  }
+}
+
+// A blob that cannot be read at all (truncated JSON, a shape with no `v: 1`)
+// is not thrown away: the store saves after every reducer step, so the very
+// next commit would overwrite the only copy with an empty state and the
+// family would be back at onboarding with nothing to recover from. The raw
+// text is kept under its own key instead — the FIRST unreadable copy wins,
+// since anything saved after it is the empty state that replaced it.
+const UNREADABLE_KEY = 'kinjar.state.unreadable.v1'
+
+function setAside(raw: string, storage: StorageLike): void {
+  try {
+    if (storage.getItem(UNREADABLE_KEY) === null) storage.setItem(UNREADABLE_KEY, raw)
+  } catch {
+    // a full or blocked storage: nothing more can be done here
+  }
+}
+
+/** The raw persisted blob a previous load could not read, if any. Total;
+ *  never throws. */
+export function unreadableStateBlob(storage: StorageLike = defaultStorage()): string | null {
+  try {
+    return storage.getItem(UNREADABLE_KEY)
+  } catch {
+    return null
   }
 }
 
@@ -442,4 +473,5 @@ export function saveState(s: AppState, storage: StorageLike = defaultStorage()):
 export function clearState(storage: StorageLike = defaultStorage()): void {
   storage.removeItem(STORAGE_KEY)
   storage.removeItem(QUARANTINE_KEY)
+  storage.removeItem(UNREADABLE_KEY)
 }

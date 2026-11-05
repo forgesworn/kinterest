@@ -4,7 +4,7 @@ import type { Account, Entry } from '../domain/types'
 import { buildGrantPayload, buildRequestPayload } from '../wire/payloads'
 import { runSchedulers } from '../store/scheduler'
 import { emptyState, addEntry, recordGrantResult, recordRequestDecision, upsertRequest } from './state'
-import { clearState, loadState, quarantinedEntries, saveState, type StorageLike } from './persist'
+import { clearState, loadState, quarantinedEntries, saveState, unreadableStateBlob, type StorageLike } from './persist'
 
 const ledgerAcct: Account = { id: 'a-ledger', child: 'sam', name: 'With Mum & Dad', currency: 'GBP', custody: 'ledger' }
 
@@ -57,6 +57,31 @@ describe('loadState', () => {
     const storage = makeFakeStorage()
     storage.setItem('kinjar.state.v1', JSON.stringify({ ...emptyState(), v: 2 }))
     expect(loadState(storage)).toEqual(emptyState())
+  })
+
+  it('sets an unreadable blob aside so the next save cannot erase the only copy', () => {
+    const storage = makeFakeStorage()
+    expect(unreadableStateBlob(storage)).toBeNull()
+    storage.setItem('kinjar.state.v1', '{"v":1,"role":"guardian","entries":[{"id":"tru')
+    expect(loadState(storage)).toEqual(emptyState())
+    expect(unreadableStateBlob(storage)).toBe('{"v":1,"role":"guardian","entries":[{"id":"tru')
+    // The store saves the empty state straight after; the copy survives it.
+    saveState(emptyState(), storage)
+    expect(loadState(storage)).toEqual(emptyState())
+    expect(unreadableStateBlob(storage)).toBe('{"v":1,"role":"guardian","entries":[{"id":"tru')
+    // A later unreadable blob (the wrong shape) never replaces the first.
+    storage.setItem('kinjar.state.v1', JSON.stringify({ hello: 'world' }))
+    loadState(storage)
+    expect(unreadableStateBlob(storage)).toBe('{"v":1,"role":"guardian","entries":[{"id":"tru')
+    clearState(storage)
+    expect(unreadableStateBlob(storage)).toBeNull()
+  })
+
+  it('a readable blob leaves nothing set aside', () => {
+    const storage = makeFakeStorage()
+    saveState(emptyState(), storage)
+    loadState(storage)
+    expect(unreadableStateBlob(storage)).toBeNull()
   })
 })
 

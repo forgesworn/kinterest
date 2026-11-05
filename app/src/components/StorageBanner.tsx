@@ -1,14 +1,28 @@
-// Non-fatal banner shown above either shell while the latest save to this
-// device's storage has failed. Clears itself on the next good save (the
-// store lowers `storageError` then).
+// Non-fatal banners shown above either shell: a failed save (clears itself
+// on the next good save — the store lowers `storageError` then), rows set
+// aside on load, and a saved state that could not be read at all.
 
 import type { ReactElement } from 'react'
 import { useApp } from '../store/store'
+import { quarantinedEntries, unreadableStateBlob } from '../state/persist'
 import { Banner } from './ui'
-import { storageWarning } from './storageBanner'
+import { storageWarnings } from './storageBanner'
 
 export function StorageBanner(): ReactElement | null {
   const { storageError } = useApp()
-  const copy = storageWarning(storageError)
-  return copy === null ? null : <Banner tone="bad">{copy}</Banner>
+  // Both reads are synchronous against the storage mirror and cheap; they
+  // only change on load, so a read per render is fine.
+  const lines = storageWarnings({
+    storageError,
+    quarantined: quarantinedEntries().length,
+    unreadable: unreadableStateBlob() !== null,
+  })
+  if (lines.length === 0) return null
+  return (
+    <>
+      {lines.map((copy) => (
+        <Banner key={copy} tone="bad">{copy}</Banner>
+      ))}
+    </>
+  )
 }
