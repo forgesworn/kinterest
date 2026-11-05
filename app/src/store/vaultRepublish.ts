@@ -81,11 +81,21 @@ export interface RepublishVaultOpts {
  * unix-SECONDS stamp for `root.backedUpAt` after the current complete
  * checkpoint is acknowledged, else null. Never throws.
  */
+/** What a published vault is current FOR: the roster it carries, and the
+ *  root attestation sealed with it. A guardian who connects the dedicated
+ *  family authority to a family first set up on a generic login gets a new
+ *  `root.authEvent`; the vault must be re-sealed with it, since recovery
+ *  (identity/signetVault.ts#authenticVaults) accepts nothing less. */
+export function vaultSignatureOf(app: AppState): string {
+  const roster = vaultRosterSignature(vaultRosterOf(app))
+  return app.root?.kind === 'signet' ? `${roster}|root:${app.root.authEvent.id}` : roster
+}
+
 export async function republishVaultIfDue(o: RepublishVaultOpts): Promise<number | null> {
   const app = o.getApp()
   const root = app.root
   if (app.role !== 'guardian' || root === null || root.kind !== 'signet' || root.pubkey === '') return null
-  const signature = vaultRosterSignature(vaultRosterOf(app))
+  const signature = vaultSignatureOf(app)
   // A vault accepted by an unrelated outbox flush still counts as backed
   // up. Reconcile its queued id before deciding to seal another copy. A
   // swept/expired item cannot prove delivery and must be sealed again.
@@ -129,7 +139,7 @@ export async function republishVaultIfDue(o: RepublishVaultOpts): Promise<number
         const latest=o.getApp()
         if(latest.root?.kind!=='signet' || latest.root.pubkey!==root.pubkey)return null
         if(outcome.signature===familyCheckpointSignature(latest)) {
-          writeVaultPublished(vaultRosterSignature(vaultRosterOf(latest)),o.record)
+          writeVaultPublished(vaultSignatureOf(latest),o.record)
           return o.nowSec
         }
         // Drain an older immutable offline job, then capture current data now.
@@ -145,12 +155,12 @@ export async function republishVaultIfDue(o: RepublishVaultOpts): Promise<number
       try {
         if (outboxEvents(o.storage).some(queued => queued.id === event.id))
           o.record?.setItem(VAULT_QUEUED_KEY, JSON.stringify({ eventId: event.id, rootPk: freshRoot.pubkey,
-            signature: vaultRosterSignature(vaultRosterOf(fresh)), queuedAt: o.nowSec }))
+            signature: vaultSignatureOf(fresh), queuedAt: o.nowSec }))
       } catch { /* The queued encrypted vault itself is still retried. */ }
       return null
     }
     try { o.record?.setItem(VAULT_QUEUED_KEY, '') } catch { /* published signature still remembered */ }
-    writeVaultPublished(vaultRosterSignature(vaultRosterOf(fresh)), o.record)
+    writeVaultPublished(vaultSignatureOf(fresh), o.record)
     return o.nowSec
   } catch (error) {
     o.onError?.(error instanceof Error ? error.message : 'The family backup could not be saved. Keep this phone until backup succeeds.')

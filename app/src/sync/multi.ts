@@ -195,7 +195,7 @@ export function startGuardianSync(opts: StartGuardianSyncOpts): () => void {
       // updater below will judge it, or its ack/entry/tick effects are lost
       // for good (the wrap is marked seen by the updater, so a redelivery
       // yields nothing). The LEDGER fold itself still re-runs fresh (below).
-      const { effects } = handleWrap(pending.project(opts.getState(), opts.selfSk, now), wrap, opts.selfSk, authorPk, now)
+      const { effects } = handleWrap(pending.project(opts.getState(), opts.selfSk, now, wrap), wrap, opts.selfSk, authorPk, now)
       pending.note(wrap, authorPk)
 
       // The ledger fold MUST re-run fresh against whatever the caller's

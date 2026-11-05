@@ -36,7 +36,8 @@ import type { Account, Entry } from '../domain/types'
 import type { Chore } from '../domain/chores'
 import { loadFamilyMnemonic } from '../identity/vault'
 import { rootCardModel } from './familyRoot'
-import { vaultPayloadFor, vaultRosterOf, vaultRosterSignature } from '../identity/signetVault'
+import { vaultPayloadFor, vaultRosterOf } from '../identity/signetVault'
+import { vaultSignatureOf } from '../store/vaultRepublish'
 import { guardianFromMnemonic } from '../identity/derive'
 import { sendVault } from '../sync/publish'
 import type { SignetRoot } from '../identity/signetConnect'
@@ -1001,7 +1002,7 @@ function FamilyRootCard(): ReactElement {
         )
         if (!sent) return false
         if (signature === familyCheckpointSignature(latestApp.current)) {
-          writeVaultPublished(vaultRosterSignature(vaultRosterOf(latestApp.current)))
+          writeVaultPublished(vaultSignatureOf(latestApp.current))
           return true
         }
       }
@@ -1188,7 +1189,7 @@ export function ChildSettings({
     )
   }
 
-  const childEntries = app.entries.filter((e) => e.child === childPubkey)
+  const childEntries = useMemo(() => app.entries.filter((e) => e.child === childPubkey), [app.entries, childPubkey])
   const childBalances = useMemo(() => {
     try {
       return balances(childEntries)

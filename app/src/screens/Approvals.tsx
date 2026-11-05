@@ -196,7 +196,7 @@ function RequestCard({ stored, app, entryBalances, busy, disabled, onApprove, on
       <button
         type="button"
         aria-label="Dismiss"
-        title="Set this aside — they see 'Not now', and no money moves"
+        title="Set this aside — they see 'Not now', no money moves, and this period isn't offered again"
         disabled={disabled || isBusy}
         onClick={onDismiss}
         className="dismiss-btn"

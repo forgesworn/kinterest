@@ -53,7 +53,7 @@ import { creditEntry, debitEntry } from '../domain/ledger'
 import type { Entry } from '../domain/types'
 import { mintToken, type MintedToken } from '../pairing/tokens'
 import { loadFamilyMnemonic, vaultLoad } from '../identity/vault'
-import { sendAck, sendConfig, sendCorrection, sendEntry, sendRequest, sendResyncReply, sendResyncRequest, sendSnapshot, sendStatus } from '../sync/publish'
+import { sendAck, sendConfig, sendCorrection, sendEntry, sendGrant, sendRequest, sendResyncReply, sendResyncRequest, sendSnapshot, sendStatus } from '../sync/publish'
 import { vaultRosterOf, vaultRosterSignature } from '../identity/signetVault'
 import { republishVaultIfDue } from './vaultRepublish'
 import { clearPin } from '../identity/pinLock'
@@ -1477,6 +1477,27 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
           // event.
           const nowSec = Math.floor(Date.now() / 1000)
           dispatch({ type: 'updateApp', update: (app) => upsertRequest(app, effect.payload, effect.authorPk, nowSec) })
+          // A child's pocket-money claim for a period this guardian has
+          // ALREADY paid (the scheduler's gated claim was approved while the
+          // child was offline, or a duplicate claim under a fresh reqId) is
+          // answered at once with an approve GRANT and no entry — exactly
+          // what tapping Approve would do (`buildGrantDecision`'s
+          // already-paid branch) — rather than sitting in the inbox where
+          // "Not this time" would send a denial for money already in the jar.
+          if (effect.payload.op === 'allowance.claim') {
+            const current = stateRef.current.app
+            const periodKey = (effect.payload.params as { periodKey?: unknown }).periodKey
+            const cfg = current.docs.allowance.configs.find((c) => c.child === effect.payload.child)
+            const account = cfg === undefined ? undefined : current.docs.accounts.accounts.find((a) => a.id === cfg.account && !a.archived)
+            if (typeof periodKey === 'string' && account !== undefined && periodAlreadyPaid(current.entries, account.id, periodKey)) {
+              const build = buildGrantDecision(current, { request: effect.payload, decision: 'allow' }, nowSec)
+              // `entry === undefined` is the already-paid branch; anything else means the snapshot disagreed — leave it to the parent.
+              if (build !== null && build.entry === undefined) {
+                dispatch({ type: 'updateApp', update: build.applyToApp })
+                void sendGrant(build.grant, { selfSk: guardianSk, peerPk: effect.payload.child, relay, storage, nowSec }).catch(() => {})
+              }
+            }
+          }
         }
         // Task E4 (v0.2 spec §3.1) — local/foreground notification, fired
         // only while this device is backgrounded (the visibility check

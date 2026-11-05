@@ -9,13 +9,15 @@ import { Banner } from './ui'
 import { storageWarnings } from './storageBanner'
 
 export function StorageBanner(): ReactElement | null {
-  const { storageError } = useApp()
+  const { storageError, state } = useApp()
   // Both reads are synchronous against the storage mirror and cheap; they
-  // only change on load, so a read per render is fine.
+  // only change on load, so a read per render is fine. The "started again"
+  // line shows only until the phone has a family again (a recovery or a
+  // re-pair sets the role); the set-aside copy itself is kept.
   const lines = storageWarnings({
     storageError,
     quarantined: quarantinedEntries().length,
-    unreadable: unreadableStateBlob() !== null,
+    unreadable: state.app.role === 'unset' && unreadableStateBlob() !== null,
   })
   if (lines.length === 0) return null
   return (

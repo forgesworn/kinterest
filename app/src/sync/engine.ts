@@ -107,7 +107,7 @@ export function startSync(opts: StartSyncOpts): () => void {
     // judged the same way the fresh updater below will judge it. Computing
     // them from the bare, possibly-stale `getState()` lost the ENTRY's ack
     // and entry effects for good in exactly that case.
-    const { effects } = handleWrap(pending.project(opts.getState(), opts.selfSk, now), wrap, opts.selfSk, opts.pinnedPeerPk, now)
+    const { effects } = handleWrap(pending.project(opts.getState(), opts.selfSk, now, wrap), wrap, opts.selfSk, opts.pinnedPeerPk, now)
     pending.note(wrap, opts.pinnedPeerPk)
 
     // The ledger fold MUST re-run fresh against whatever the caller's

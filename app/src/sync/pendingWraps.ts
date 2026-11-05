@@ -37,11 +37,30 @@ export class PendingWraps {
 
   constructor(private readonly limit: number = PENDING_WRAP_LIMIT) {}
 
-  /** `base` with every pending wrap it does not yet reflect folded in. */
-  project(base: AppState, selfSk: Uint8Array, nowSec: number): AppState {
-    this.items = this.items.filter((p) => !base.seenEventIds.includes(p.wrap.id))
+  /** `base` with every pending wrap it does not yet reflect folded in.
+   *
+   *  Pruning mirrors updater order, not per-id presence: updaters run in
+   *  dispatch order, so once the NEWEST pending wrap found in
+   *  `base.seenEventIds` has committed, every earlier one has run too —
+   *  including any the updater DEFERRED (an ENTRY that overtook its accounts
+   *  CONFIG), which is deferred in the committed state as well and must not
+   *  be folded here on top of a base that has since learnt the pot. Keeping
+   *  such a wrap pending made the projection claim it as seen, so its real
+   *  redelivery (another relay, the reconnect replay) yielded no ack and no
+   *  entry effect while the updater folded it. For the same reason a pending
+   *  item with the incoming wrap's own id is skipped: the fold being judged
+   *  IS that wrap. */
+  project(base: AppState, selfSk: Uint8Array, nowSec: number, incoming?: NostrEvent): AppState {
+    let newestSeen = -1
+    this.items.forEach((p, i) => {
+      if (base.seenEventIds.includes(p.wrap.id)) newestSeen = i
+    })
+    if (newestSeen >= 0) this.items = this.items.slice(newestSeen + 1)
     let state = base
-    for (const p of this.items) state = handleWrap(state, p.wrap, selfSk, p.authorPk, nowSec).state
+    for (const p of this.items) {
+      if (incoming !== undefined && p.wrap.id === incoming.id) continue
+      state = handleWrap(state, p.wrap, selfSk, p.authorPk, nowSec).state
+    }
     return state
   }
 

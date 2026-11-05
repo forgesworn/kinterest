@@ -103,6 +103,22 @@ describe('republishVaultIfDue', () => {
     expect(r.published).toHaveLength(1)
   })
 
+  it('a new family authority on the same roster re-seals the vault', async () => {
+    const r = relay('accepted')
+    const record = memStorage()
+    const o = { ...opts(guardianApp(), r, memStorage(), record) }
+    expect(await republishVaultIfDue(o)).toBe(NOW)
+    const stamped: AppState = { ...guardianApp(), root: { kind: 'signet', pubkey: rootPk, authEvent, backedUpAt: NOW } }
+    expect(await republishVaultIfDue({ ...o, getApp: () => stamped })).toBeNull()
+    // The guardian connects the dedicated family authority: the roster is
+    // unchanged but recovery accepts only a vault sealed with the new event.
+    const connected = finalizeEvent({ kind: 30078, created_at: NOW - 50, tags: [], content: '' }, rootSk)
+    const upgraded: AppState = { ...stamped, root: { kind: 'signet', pubkey: rootPk, authEvent: connected, backedUpAt: NOW } }
+    expect(await republishVaultIfDue({ ...o, getApp: () => upgraded })).toBe(NOW)
+    expect(r.published).toHaveLength(2)
+    expect(await republishVaultIfDue({ ...o, getApp: () => upgraded })).toBeNull()
+  })
+
   it('a record write that throws never throws out', () => {
     const blocked = {
       getItem: () => {

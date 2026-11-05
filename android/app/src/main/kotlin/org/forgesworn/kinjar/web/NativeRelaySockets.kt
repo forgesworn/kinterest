@@ -81,8 +81,10 @@ class NativeRelaySockets(
         client.dispatcher.executorService.shutdown()
         client.connectionPool.evictAll()
     }
-    // The largest legitimate frame is a wrapped 16 KiB backup chunk; a relay
-    // streaming multi-megabyte frames is copied three times per frame and
-    // queued on the main thread with no back-pressure, so cap well below OOM.
+    // Legitimate frames top out well under this (a resync page carries at
+    // most 100 raw events; backup chunks are 16 KiB each). A relay streaming
+    // multi-megabyte frames is copied three times per frame and queued on the
+    // main thread with no back-pressure, so cap well below OOM; public relays
+    // impose their own message caps far below 1 MiB anyway.
     companion object { private const val MAX_FRAME_CHARS = 1024 * 1024 }
 }

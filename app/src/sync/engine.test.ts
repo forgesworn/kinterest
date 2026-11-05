@@ -980,6 +980,60 @@ describe('engine.ts: startSync', () => {
     expect(effects.some((e) => e.type === 'gap')).toBe(false)
     stop()
   })
+
+  // The other order, then the redelivery that is supposed to heal it: the
+  // ENTRY overtakes its CONFIG (deferred — correct), the batch commits, and
+  // another relay or the reconnect replay delivers the same ENTRY wrap
+  // again. That redelivery must yield the ack and entry effects; a pending
+  // list that still held the deferred wrap folded it into the projection
+  // and judged the redelivery already seen.
+  it('a deferred ENTRY redelivered after its CONFIG has committed yields its ack and entry effects', () => {
+    const guardian = newKeypair()
+    const child = newKeypair()
+    const relay = makeFakeRelay()
+    const account: Account = { id: 'acc-new', child: child.pk, name: 'New pot', currency: 'GBP', custody: 'ledger' }
+
+    let committedState: AppState = { ...emptyState(), role: 'child', guardianPubkey: guardian.pk, self: { pubkey: child.pk, childIndex: 0 } }
+    const pendingUpdates: Array<(app: AppState) => AppState> = []
+    const effects: Effect[] = []
+
+    const stop = startSync({
+      getState: () => committedState,
+      setState: (update) => {
+        pendingUpdates.push(update)
+      },
+      selfSk: child.sk,
+      pinnedPeerPk: guardian.pk,
+      relay,
+      storage: makeFakeStorage(),
+      onEffect: (e) => effects.push(e),
+      nowSec: () => AT,
+    })
+
+    const entry = creditEntry({ id: newId(AT * 1000), child: child.pk, createdAt: AT, author: 'guardian' }, account, 500)
+    // ENTRY first, CONFIG second — delivered as one batch.
+    void sendEntry(entry, { selfSk: guardian.sk, peerPk: child.pk, relay, storage: makeFakeStorage(), nowSec: AT })
+    void sendConfig('accounts', { v: 1, issuedAt: AT, accounts: [account] }, { selfSk: guardian.sk, peerPk: child.pk, relay, storage: makeFakeStorage(), nowSec: AT })
+    relay.deliverAll()
+    expect(pendingUpdates).toHaveLength(2)
+    for (const update of pendingUpdates.splice(0)) committedState = update(committedState)
+    expect(committedState.entries).toEqual([]) // deferred, as it should be
+    expect(effects).toContainEqual({ type: 'gap', reason: 'entry-deferred' })
+    expect(effects.some((e) => e.type === 'entry')).toBe(false)
+
+    // The redelivery of the very same ENTRY wrap (the first event published),
+    // as a second relay or the reconnect replay would deliver it.
+    effects.length = 0
+    const entryWrap = relay.events[0]!
+    expect(committedState.seenEventIds).not.toContain(entryWrap.id)
+    relay.events.push(entryWrap)
+    relay.deliverAll()
+    expect(pendingUpdates).toHaveLength(1)
+    for (const update of pendingUpdates.splice(0)) committedState = update(committedState)
+    expect(committedState.entries).toEqual([entry])
+    expect(effects).toContainEqual({ type: 'entry', entry, authorPk: guardian.pk })
+    stop()
+  })
 })
 
 // ============================================================================
