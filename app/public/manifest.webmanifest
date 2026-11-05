@@ -1,8 +1,12 @@
 {
   "name": "Kinterest",
   "short_name": "Kinterest",
+  "description": "A shared family pocket-money ledger. Parent and child look at the same account.",
+  "id": "/",
+  "scope": "/",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "theme_color": "#faf5ea",
   "background_color": "#faf5ea",
   "icons": [

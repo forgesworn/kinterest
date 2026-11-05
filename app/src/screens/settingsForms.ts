@@ -32,6 +32,18 @@ import type { Chore } from '../domain/chores'
 
 export type AuditCadence = 'weekly' | 'monthly'
 
+/** The parent-facing name of a pot's custody — never the raw enum. */
+export function custodyLabel(custody: Account['custody']): string {
+  switch (custody) {
+    case 'ledger':
+      return 'Kept by a parent'
+    case 'physical':
+      return 'Coins in a jar'
+    case 'external':
+      return 'Bank or app'
+  }
+}
+
 // ============================================================================
 // Day-bounds validation — mirrors domain/period.ts#dueDays' own bounds
 // exactly (weekly: ISO weekday 1-7; monthly: day-of-month 1-31, clamped to

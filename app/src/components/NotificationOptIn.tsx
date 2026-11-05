@@ -28,7 +28,7 @@ function initialStatus(): Status {
 /** `null` whenever there is nothing sensible to show — see this module's
  *  header. Otherwise a one-line card: a plain status line once a decision
  *  has been made (granted/denied), or a "Turn on" button while undecided. */
-export function NotificationOptIn(): ReactElement | null {
+export function NotificationOptIn({ audience = 'parent' }: { audience?: 'parent' | 'child' } = {}): ReactElement | null {
   const [status, setStatus] = useState<Status>(initialStatus)
 
   if (isShell() || status === 'unsupported') return null
@@ -37,12 +37,19 @@ export function NotificationOptIn(): ReactElement | null {
     setStatus(await requestNotificationPermission())
   }
 
+  // Once on there is nothing left to ask, and a permanent "Turned on" card
+  // on every screen was clutter.
+  if (status === 'granted') return null
+
   return (
     <Card>
       <div className="settings-item-top">
-        <span>Notifications on this device</span>
-        {status === 'granted' && <span className="empty-sub">Turned on</span>}
-        {status === 'denied' && <span className="empty-sub">Blocked — check your browser&rsquo;s site settings</span>}
+        <span>{audience === 'child' ? 'Messages from your family' : 'Notifications on this device'}</span>
+        {status === 'denied' && (
+          <span className="empty-sub">
+            {audience === 'child' ? 'Turned off on this phone — a grown-up can turn them on in Settings' : 'Blocked — check your browser\u2019s site settings'}
+          </span>
+        )}
         {status === 'default' && (
           <Button variant="quiet" onClick={() => void handleTap()}>
             Turn on

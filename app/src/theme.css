@@ -70,6 +70,7 @@
     --ink: #f1e8d8;
     --ink-2: #b3a68e;
     --line: #33291f;
+    --good: #7fb37a; /* credits on dark paper: the light-mode green sat near 3.6:1 */
     --good-ink: #a9d1a3;
     --bad-ink: #e2b0a4;
     --amber-ink: #f6cd8c;
@@ -788,10 +789,10 @@ button.row {
 
 .dismiss-btn {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 28px;
-  height: 28px;
+  top: 4px;
+  right: 4px;
+  width: 40px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

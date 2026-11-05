@@ -213,7 +213,8 @@ export function familyHoldings(accounts: Account[], entryBalances: Map<string, n
 
 export function familyHoldingSummary(accounts: Account[], entryBalances: Map<string, number>): string {
   const holdings = familyHoldings(accounts, entryBalances)
-  const amounts = holdings.length === 0 ? ['£0.00'] : holdings.map(h => formatMinor(h.currency, h.minor))
+  if (holdings.length === 0) return "You're not holding any money for the family yet"
+  const amounts = holdings.map(h => formatMinor(h.currency, h.minor))
   return `You're holding ${new Intl.ListFormat('en-GB', { style: 'long', type: 'conjunction' }).format(amounts)} for the family`
 }
 

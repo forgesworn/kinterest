@@ -27,14 +27,29 @@ function pendingCount(): number {
   return outboxEvents(dataStorage()).length
 }
 
+function online(): boolean {
+  return typeof navigator === 'undefined' || navigator.onLine !== false
+}
+
 export function RelayStatusPill(): ReactElement {
   const [pending, setPending] = useState(pendingCount)
+  const [isOnline, setIsOnline] = useState(online)
 
   useEffect(() => {
     const id = window.setInterval(() => setPending(pendingCount()), POLL_MS)
-    return () => window.clearInterval(id)
+    const update = (): void => setIsOnline(online())
+    window.addEventListener('online', update)
+    window.addEventListener('offline', update)
+    return () => {
+      window.clearInterval(id)
+      window.removeEventListener('online', update)
+      window.removeEventListener('offline', update)
+    }
   }, [])
 
+  // "Synced" used to mean only "nothing queued", which read as connected
+  // while the phone was fully offline.
+  if (!isOnline) return <Pill tone="amber">Offline{pending > 0 ? ` · ${pending} waiting` : ''}</Pill>
   if (pending === 0) return <Pill tone="good">Synced</Pill>
   return <Pill tone="amber">{pending} sending…</Pill>
 }

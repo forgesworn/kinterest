@@ -22,7 +22,7 @@ export function ParentLock({ onUnlocked }: { onUnlocked: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [lockedUntil, setLockedUntil] = useState(0)
   const [nowSec, setNowSec] = useState(Math.floor(Date.now() / 1000))
-  useEffect(() => { void parentPinIsSet().then(setHasPin).catch(e => { setHasPin(true); setError(String(e)) }) }, [])
+  useEffect(() => { void parentPinIsSet().then(setHasPin).catch(e => { setHasPin(true); setError(e instanceof Error ? e.message : 'The parent lock could not be read. Use My Signet to reset it.') }) }, [])
   useEffect(() => { const id = window.setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000); return () => clearInterval(id) }, [])
   useEffect(() => {
     const clear = () => { if (document.visibilityState === 'hidden') { epoch.current++; setConfirmedUntil(0); confirmedBinding.current = null; if (authorisedUntil.current) { authorisedUntil.current = 0; setAuthorised(false); setFirst(null); setPin('') } } }

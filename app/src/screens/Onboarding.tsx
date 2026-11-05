@@ -94,8 +94,13 @@ export function Onboarding({
   initialStep = welcomeStep(),
   onJoinFamily,
   onAddChildDone,
+  onBack,
 }: {
   initialStep?: OnboardingStep
+  /** A way out of the add-child step when it was reached from inside the
+   *  guardian shell ("Add a child" on Home): without it the picker had no
+   *  Back and the only escape was a reload, which also re-locks parent mode. */
+  onBack?: () => void
   /** "Join your family" tapped on the welcome step — a CHILD device pairing
    *  to an existing family, not this screen's own concern (see
    *  screens/ChildOnboarding.tsx, Plan 4 Task 2). Optional so this component
@@ -224,22 +229,33 @@ export function Onboarding({
    * the key has to exist and be vaulted BEFORE the picker opens. An
    * interrupted login then costs nothing but the login.
    */
+  // Bumped by "Back" on the connecting step: the My Signet login itself
+  // cannot be cancelled (it waits up to its own timeout), so an abandoned
+  // attempt is simply ignored when it eventually settles — nothing of it is
+  // committed and the step is not moved.
+  const connectAttempt = useRef(0)
+
   async function handleSignetConnect() {
+    const attempt = ++connectAttempt.current
+    const abandoned = (): boolean => connectAttempt.current !== attempt
     const connecting = beginSignetConnect()
     setStep(connecting)
     setSignetNote(null)
     setBusy(true)
     try {
       const existing = await loadFamilyMnemonic()
+      if (abandoned()) return
       const mnemonic = existing ?? generateMnemonic()
       const { pk } = guardianFromMnemonic(mnemonic)
       const committed = await vaultGuardian(mnemonic)
+      if (abandoned()) return
       if (!committed) {
         setStep(signetFailed(connecting, 'Something went wrong setting up your family — please try again.'))
         return
       }
 
       const connected = await connectAndSealSignetRoot(mnemonic, pk)
+      if (abandoned()) return
       if (connected === null) {
         setStep(signetFailed(connecting, SIGNIN_INCOMPLETE))
         return
@@ -470,9 +486,17 @@ export function Onboarding({
 
   if (step.kind === 'signetConnecting') {
     return (
-      <Screen title="Connecting My Signet">
+      <Screen
+        title="Connecting My Signet"
+        onBack={() => {
+          connectAttempt.current++
+          setBusy(false)
+          setStep(backToWelcome())
+        }}
+      >
         <Card>
           <p>Approve the sign-in on My Signet. This window will move on by itself.</p>
+          <p className="muted">Nothing happening? Go back and try again — nothing is saved until My Signet approves.</p>
         </Card>
       </Screen>
     )
@@ -539,5 +563,5 @@ export function Onboarding({
     )
   }
 
-  return <SignetChildPicker onDone={onAddChildDone} />
+  return <SignetChildPicker onDone={onAddChildDone} onBack={onBack} />
 }

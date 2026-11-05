@@ -14,11 +14,11 @@ import { dataStorage } from '../platform/dataStorage'
 //
 // Wired into screens/GuardianShell.tsx (Task 7) via `onBack`/`onPairDevice`.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import type { ReactElement } from 'react'
 import { Banner, Button, Card, EmptyState, ListRow, Pill, Screen } from '../components/ui'
 import { Money } from '../components/Money'
-import { MoneyInput } from '../components/MoneyInput'
+import { MoneyInput, minorToRawText } from '../components/MoneyInput'
 import { useApp, stampConfigDoc, writeVaultPublished } from '../store/store'
 import { applyConfigDoc, configRecipients } from '../state/state'
 import type { AppState, ConfigDocs } from '../state/types'
@@ -54,8 +54,11 @@ import {
   setChoreArchived,
   setChoreCadence,
   upsertByChild,
+  custodyLabel,
+  validDay,
   type AuditCadence,
 } from './settingsForms'
+import { formatMinor } from '../domain/money'
 
 // ============================================================================
 // Config publishing — see store.tsx's `stampConfigDoc` doc comment for the
@@ -116,8 +119,7 @@ import {
  *  `initialRaw` uses, kept as its own small copy here rather than exported
  *  from that screen (which owns no shared-module concerns of its own). */
 function moneyMajorText(currency: string, minor: number): string {
-  const spec = currencyOrThrow(currency)
-  return spec.code === 'BTC' ? String(minor) : (minor / 10 ** spec.decimals).toFixed(spec.decimals)
+  return minorToRawText(currency, minor)
 }
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -164,8 +166,9 @@ function DayPicker({
         inputMode="numeric"
         min={1}
         max={31}
-        value={day}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={Number.isNaN(day) ? '' : day}
+        onChange={(e) => onChange(e.target.value === '' ? NaN : Number(e.target.value))}
+        aria-invalid={!validDay('monthly', day)}
         disabled={disabled}
       />
     </>
@@ -226,7 +229,7 @@ function AccountRow({
             <span className="row-title">{account.name}</span>
             {archived && <Pill tone="neutral">Archived</Pill>}
           </div>
-          <p className="card-sub">{account.currency} · {account.custody}</p>
+          <p className="card-sub">{account.currency} · {custodyLabel(account.custody)}</p>
           <div className="settings-row-actions">
             <Button variant="quiet" onClick={() => setEditing(true)} disabled={disabled}>Rename</Button>
             <Button variant={archived ? 'primary' : 'danger'} onClick={() => onArchive(!archived)} disabled={disabled}>
@@ -264,9 +267,14 @@ function AccountsSection({
   submitting,
   keyReady,
   onSave,
+  childName,
+  entryBalances,
 }: {
   childPubkey: string
+  childName: string
   allAccounts: Account[]
+  /** accountId -> balance minor; archiving a pot that still holds money asks first. */
+  entryBalances: Map<string, number>
   /** The accounts doc's own `revoked` map, as it stands right now
    *  (`app.docs.accounts.revoked`) — carried through on EVERY save this
    *  section makes: the doc is full-state replaceable
@@ -308,7 +316,7 @@ function AccountsSection({
     const nowSec = Math.floor(Date.now() / 1000)
     const next = addAccount(allAccounts, { id: newId(Math.floor(nowSec * 1000)), child: childPubkey, name, currency, custody })
     if (next === null) {
-      setError(custodyError ?? 'Enter a name for the account.')
+      setError(custodyError ?? 'Enter a name for the pot.')
       return
     }
     setError(null)
@@ -320,7 +328,7 @@ function AccountsSection({
     <>
       {childAccounts.length === 0 ? (
         <Card>
-          <EmptyState title="No accounts yet">Add one below to start tracking money.</EmptyState>
+          <EmptyState title="No pots yet">Add one below to start tracking money.</EmptyState>
         </Card>
       ) : (
         childAccounts.map((account) => (
@@ -329,27 +337,31 @@ function AccountsSection({
             account={account}
             disabled={disabled}
             onRename={(n) => mutate((list) => renameAccount(list, account.id, n))}
-            onArchive={(archived) => mutate((list) => setAccountArchived(list, account.id, archived))}
+            onArchive={(archived) => {
+              const held = entryBalances.get(account.id) ?? 0
+              if (archived && held !== 0 && !window.confirm(`${account.name} still holds ${formatMinor(account.currency, held)}. Archiving hides it from ${childName}'s jar but keeps the money and history. Archive it?`)) return
+              mutate((list) => setAccountArchived(list, account.id, archived))
+            }}
             onAuditCadence={(cadence) => mutate((list) => setAccountAuditCadence(list, account.id, cadence))}
           />
         ))
       )}
       <Card>
-        <label className="field-label" htmlFor="new-account-name">Add an account</label>
-        <input id="new-account-name" className="text-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" />
+        <label className="field-label" htmlFor="new-account-name">Add a pot</label>
+        <input id="new-account-name" className="text-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Pot name" />
         <label className="field-label" htmlFor="new-account-currency">Currency</label>
         <select id="new-account-currency" className="text-input" value={currency} onChange={(e) => setCurrency(e.target.value)}>
           {Object.keys(CURRENCIES).map((code) => (
             <option key={code} value={code}>{code}</option>
           ))}
         </select>
-        <label className="field-label" htmlFor="new-account-custody">Custody</label>
+        <label className="field-label" htmlFor="new-account-custody">Where the money lives</label>
         <select id="new-account-custody" className="text-input" value={custody} onChange={(e) => setCustody(e.target.value as Account['custody'])}>
-          <option value="ledger">Ledger only</option>
-          <option value="physical">Physical cash</option>
-          <option value="external">External account</option>
+          <option value="ledger">{custodyLabel('ledger')}</option>
+          <option value="physical">{custodyLabel('physical')}</option>
+          <option value="external">{custodyLabel('external')}</option>
         </select>
-        <p className="muted">Currency and custody can't be changed after the account is created.</p>
+        <p className="muted">Currency and where the money lives can't be changed after the pot is created.</p>
         {custodyError !== null && <Banner tone="bad">{custodyError}</Banner>}
         {error !== null && error !== custodyError && <Banner tone="bad">{error}</Banner>}
         <Button variant="primary" block onClick={handleAdd} disabled={disabled || name.trim() === '' || custodyError !== null}>
@@ -657,7 +669,7 @@ function InterestSection({
         <option value="monthly">Monthly</option>
       </select>
       <DayPicker idPrefix="interest" cadence={cadence} day={day} onChange={setDay} disabled={disabled} />
-      <label className="field-label" htmlFor="interest-match">Guardian match (%, optional)</label>
+      <label className="field-label" htmlFor="interest-match">Parent match (%, optional)</label>
       <input id="interest-match" className="text-input" inputMode="decimal" value={matchRaw} onChange={(e) => setMatchRaw(e.target.value)} placeholder="None" />
       {account !== undefined && (
         <MoneyInput currency={account.currency} rawValue={matchCapRaw} onRawChange={setMatchCapRaw} label="Match cap (optional)" />
@@ -1177,6 +1189,13 @@ export function ChildSettings({
   }
 
   const childEntries = app.entries.filter((e) => e.child === childPubkey)
+  const childBalances = useMemo(() => {
+    try {
+      return balances(childEntries)
+    } catch {
+      return new Map<string, number>()
+    }
+  }, [childEntries])
   const childAccounts = app.docs.accounts.accounts.filter((a) => a.child === childPubkey)
   const allowanceCfg = app.docs.allowance.configs.find((c) => c.child === childPubkey)
   const interestCfg = app.docs.interest.configs.find((c) => c.child === childPubkey)
@@ -1186,11 +1205,13 @@ export function ChildSettings({
       <h2 className="settings-section-heading">Accounts</h2>
       <AccountsSection
         childPubkey={childPubkey}
+        childName={child?.name ?? 'this child'}
         allAccounts={app.docs.accounts.accounts}
         revoked={app.docs.accounts.revoked}
         submitting={busyDoc === 'accounts'}
         keyReady={keyReady}
         onSave={(docBody) => saveDoc('accounts', docBody)}
+        entryBalances={childBalances}
       />
 
       <h2 className="settings-section-heading">Pocket money</h2>

@@ -40,8 +40,8 @@ import type { RelayLike } from '../wire/relayClient'
 import { sendEntry } from '../sync/publish'
 import type { StoreAction } from '../store/store'
 import { Banner, Button, Sheet } from '../components/ui'
-import { MoneyInput, parseAmount } from '../components/MoneyInput'
-import { lastExchangeRate } from './feed'
+import { MoneyInput, minorToRawText, parseAmount } from '../components/MoneyInput'
+import { lastExchangeLegs, lastExchangeRate, suggestedMinorFor } from './feed'
 
 export type QuickActionKind = 'add' | 'take' | 'transfer' | 'exchange' | 'settle'
 
@@ -105,9 +105,7 @@ async function submitEntry(entry: Entry, nowSec: number, opts: SubmitOpts): Prom
  *  MoneyInput's own header on why BTC never has a decimal point). Floors at
  *  0 — a negative balance has no sane positive "amount" to pre-fill. */
 function initialRaw(currency: string, minor: number): string {
-  const spec = currencyOrThrow(currency)
-  const floored = Math.max(minor, 0)
-  return spec.code === 'BTC' ? String(floored) : (floored / 10 ** spec.decimals).toFixed(spec.decimals)
+  return minorToRawText(currency, Math.max(minor, 0))
 }
 
 /** The Exchange sheet's "they get" suggestion, recomputed from the "you
@@ -119,12 +117,13 @@ function initialRaw(currency: string, minor: number): string {
 function suggestedToRaw(fromRaw: string, fromCurrency: string, toCurrency: string, entries: Entry[]): string {
   const fromMinor = parseAmount(fromRaw, fromCurrency)
   if (fromMinor === null) return ''
-  const rate = suggestRate(entries, fromCurrency, toCurrency)
-  if (rate === null) return ''
-  const fromMajor = fromMinor / 10 ** currencyOrThrow(fromCurrency).decimals
-  const toMajor = Math.max(0, fromMajor * rate)
-  const toSpec = currencyOrThrow(toCurrency)
-  return toSpec.code === 'BTC' ? String(Math.round(toMajor * 10 ** toSpec.decimals)) : toMajor.toFixed(toSpec.decimals)
+  const legs = lastExchangeLegs(entries, fromCurrency, toCurrency)
+  if (legs === null) return ''
+  // Integer ratio of the last exchange's two legs — no floating-point rate
+  // on the way to a figure that is submitted as-is if the guardian does not
+  // touch it.
+  const toMinor = suggestedMinorFor(fromMinor, legs)
+  return toMinor === 0 ? '' : minorToRawText(toCurrency, toMinor)
 }
 
 function accountLabel(a: Account): string {
@@ -192,8 +191,15 @@ export function QuickActions({ kind, child, accounts, entries, balances, guardia
   const opts: SubmitOpts = { dispatch, guardianSk, relay }
 
   async function submit(entry: Entry, nowSec: number): Promise<void> {
-    await submitEntry(entry, nowSec, opts)
+    // The entry is folded into state synchronously inside `submitEntry`
+    // (the dispatch is its first line); only the relay send is awaited.
+    // Close the sheet on the fold, not the send: a send can sit for the
+    // whole publish timeout per relay while offline, during which a sheet
+    // that showed no change invited a second tap and a second entry. The
+    // send carries on in the background and, failing, stays in the outbox.
+    const sent = submitEntry(entry, nowSec, opts)
     onClose()
+    await sent
   }
 
   // One `nowSec` per tap of a sheet's action button (Global Constraints: no
@@ -209,7 +215,7 @@ export function QuickActions({ kind, child, accounts, entries, balances, guardia
   if (accounts.length === 0) {
     return (
       <Sheet title={SHEET_TITLES[kind]} onClose={onClose}>
-        <Banner tone="info">{child.name} has no accounts yet — add one in settings first.</Banner>
+        <Banner tone="info">{child.name} has no pots yet — add one in settings first.</Banner>
         <Button variant="quiet" block onClick={onClose}>Close</Button>
       </Sheet>
     )
@@ -280,7 +286,7 @@ function AddOrTakeSheet({
   return (
     <Sheet title={SHEET_TITLES[kind]} onClose={onClose}>
       {accounts.length > 1 && (
-        <select className="text-input" value={accountId} onChange={(e) => handleAccountChange(e.target.value)} aria-label="Account">
+        <select className="text-input" value={accountId} onChange={(e) => handleAccountChange(e.target.value)} aria-label="Pot">
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>{accountLabel(a)}</option>
           ))}
@@ -365,7 +371,7 @@ function TransferSheet({
 
   return (
     <Sheet title="Transfer" onClose={onClose}>
-      <select className="text-input" value={fromId} onChange={(e) => handleFromChange(e.target.value)} aria-label="From account">
+      <select className="text-input" value={fromId} onChange={(e) => handleFromChange(e.target.value)} aria-label="From pot">
         {accounts.map((a) => (
           <option key={a.id} value={a.id}>{accountLabel(a)}</option>
         ))}
@@ -381,7 +387,7 @@ function TransferSheet({
               filtered to `fromAccount.currency` above, so switching among
               them can never change the currency `raw` is being parsed
               against. */}
-          <select className="text-input" value={toId} onChange={(e) => setToId(e.target.value)} aria-label="To account">
+          <select className="text-input" value={toId} onChange={(e) => setToId(e.target.value)} aria-label="To pot">
             {toOptions.map((a) => (
               <option key={a.id} value={a.id}>{accountLabel(a)}</option>
             ))}
@@ -477,13 +483,13 @@ function ExchangeSheet({
 
   return (
     <Sheet title="Exchange" onClose={onClose}>
-      <select className="text-input" value={fromId} onChange={(e) => handleFromChange(e.target.value)} aria-label="From account">
+      <select className="text-input" value={fromId} onChange={(e) => handleFromChange(e.target.value)} aria-label="From pot">
         {accounts.map((a) => (
           <option key={a.id} value={a.id}>{accountLabel(a)}</option>
         ))}
       </select>
       <MoneyInput currency={fromAccount.currency} rawValue={fromRaw} onRawChange={handleFromRawChange} label="They give" autoFocus />
-      <select className="text-input" value={toId} onChange={(e) => handleToChange(e.target.value)} aria-label="To account">
+      <select className="text-input" value={toId} onChange={(e) => handleToChange(e.target.value)} aria-label="To pot">
         {toOptions.map((a) => (
           <option key={a.id} value={a.id}>{accountLabel(a)}</option>
         ))}
@@ -557,7 +563,7 @@ function SettleUpSheet({
   return (
     <Sheet title="Settle up" onClose={onClose}>
       {accounts.length > 1 && (
-        <select className="text-input" value={accountId} onChange={(e) => handleAccountChange(e.target.value)} aria-label="Account">
+        <select className="text-input" value={accountId} onChange={(e) => handleAccountChange(e.target.value)} aria-label="Pot">
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>{accountLabel(a)}</option>
           ))}

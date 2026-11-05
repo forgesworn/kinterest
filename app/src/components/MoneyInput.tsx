@@ -9,7 +9,29 @@
 // shared rendering concerns, only the same currency table.
 
 import type { ChangeEvent, ReactElement } from 'react'
-import { currencyOrThrow } from '../domain/money'
+import { assertMinor, currencyOrThrow } from '../domain/money'
+
+/** The text a MoneyInput should hold for a known minor amount — the inverse
+ *  of `parseAmount`, by integer digit arithmetic (never `minor / 100`, which
+ *  the repo's no-floats-near-money rule forbids even for a prefill): fiat as
+ *  fixed-decimal major units ("4.50"), BTC as the sats integer. Negative
+ *  amounts are shown as their magnitude; a prefill has no sign to carry. */
+export function minorToRawText(currency: string, minor: number): string {
+  assertMinor(minor)
+  const spec = currencyOrThrow(currency)
+  const abs = Math.abs(minor)
+  if (spec.code === 'BTC') return String(abs)
+  const base = 10 ** spec.decimals
+  return `${Math.floor(abs / base)}.${String(abs % base).padStart(spec.decimals, '0')}`
+}
+
+/** The field-level error for text `parseAmount` refused. A comma where the
+ *  decimal point should be is the one mistake worth naming: many phone
+ *  keyboards in EU locales offer only "," for `inputMode="decimal"`, and
+ *  "4,50" is refused on purpose (see `isValidGrouping`) — so say what to do. */
+export function amountErrorCopy(raw: string): string {
+  return /^\d+,\d{1,2}$/.test(raw.trim()) ? 'Use a full stop for the pence, like 4.50.' : 'Enter a valid amount.'
+}
 
 /** True when `digits` is either a bare digit run OR strictly 3-digit
  *  comma-grouped ("1,000", "12,345,678") — deliberately NOT "any comma is a
@@ -134,7 +156,7 @@ export function MoneyInput({
         aria-invalid={invalid}
         autoFocus={autoFocus}
       />
-      {invalid && <span className="money-input-error">Enter a valid amount.</span>}
+      {invalid && <span className="money-input-error">{amountErrorCopy(rawValue)}</span>}
     </label>
   )
 }

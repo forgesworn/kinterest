@@ -19,7 +19,8 @@ import { useApp } from '../store/store'
 import { upsertRequest } from '../state/state'
 import type { StoredRequest } from '../state/types'
 import { sendRequest } from '../sync/publish'
-import { childOwnAccounts } from './ChildHome'
+import { childOwnAccounts, childOwnEntries } from './ChildHome'
+import { balances } from '../domain/ledger'
 import { askChip, buildSpendRequest, childOwnRequests } from './ask'
 import { isKnownCurrency } from './approvals'
 
@@ -92,6 +93,14 @@ export function Ask({ onBack }: { onBack: () => void }): ReactElement {
 
   const account = accounts.find((a) => a.id === accountId) ?? accounts[0] ?? null
   const minor = account !== null ? parseAmount(raw, account.currency) : null
+  let potBalance: number | null = null
+  if (account !== null) {
+    try {
+      potBalance = balances(childOwnEntries(app)).get(account.id) ?? 0
+    } catch {
+      potBalance = null
+    }
+  }
 
   function handleAccountChange(id: string): void {
     setAccountId(id)
@@ -99,7 +108,11 @@ export function Ask({ onBack }: { onBack: () => void }): ReactElement {
   }
 
   async function handleSubmit(): Promise<void> {
-    if (account === null || minor === null || selfPk === null || childSk === null || app.guardianPubkey === null) return
+    if (account === null || minor === null) return
+    if (selfPk === null || childSk === null || app.guardianPubkey === null) {
+      setError("This phone isn't finished pairing yet — ask a grown-up to help.")
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -128,6 +141,8 @@ export function Ask({ onBack }: { onBack: () => void }): ReactElement {
       setRaw('')
       setNote('')
       setLink('')
+    } catch {
+      setError("Couldn't send your ask just now. It's saved on this phone — try again in a moment.")
     } finally {
       setBusy(false)
     }
@@ -165,6 +180,12 @@ export function Ask({ onBack }: { onBack: () => void }): ReactElement {
           </select>
         )}
         <MoneyInput currency={account?.currency ?? 'GBP'} rawValue={raw} onRawChange={setRaw} label="How much?" autoFocus />
+        {account !== null && potBalance !== null && (
+          <p className="muted">
+            {account.name} has <Money currency={account.currency} minor={potBalance} size="sm" />
+            {minor !== null && minor > potBalance ? " — that's more than is in it" : ''}
+          </p>
+        )}
         <input
           className="text-input"
           value={note}

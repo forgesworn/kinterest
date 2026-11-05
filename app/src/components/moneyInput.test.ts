@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { amountErrorCopy, minorToRawText } from './MoneyInput'
 import { parseAmount } from './MoneyInput'
 
 // Pure-logic coverage only — MoneyInput.tsx itself is a thin field (same
@@ -138,5 +139,26 @@ describe('parseAmount: { allowZero: true }', () => {
   it('defaults to rejecting 0 when the option is omitted or false', () => {
     expect(parseAmount('0.00', 'GBP')).toBeNull()
     expect(parseAmount('0.00', 'GBP', { allowZero: false })).toBeNull()
+  })
+})
+
+describe('minorToRawText', () => {
+  it('is the inverse of parseAmount, by integer digits', () => {
+    expect(minorToRawText('GBP', 450)).toBe('4.50')
+    expect(minorToRawText('GBP', 5)).toBe('0.05')
+    expect(minorToRawText('GBP', 0)).toBe('0.00')
+    expect(minorToRawText('EUR', 123456)).toBe('1234.56')
+    expect(minorToRawText('GBP', -250)).toBe('2.50') // a prefill carries no sign
+    expect(minorToRawText('BTC', 1234)).toBe('1234')
+    expect(minorToRawText('GBP', 1e15 + 1)).toBe('10000000000000.01') // exact well past float-friendly sizes
+  })
+})
+
+describe('amountErrorCopy', () => {
+  it('names the comma-for-decimal mistake, and nothing else', () => {
+    expect(amountErrorCopy('4,50')).toBe('Use a full stop for the pence, like 4.50.')
+    expect(amountErrorCopy(' 4,5 ')).toBe('Use a full stop for the pence, like 4.50.')
+    expect(amountErrorCopy('1,000')).toBe('Enter a valid amount.') // valid grouping never reaches here; a 3-digit tail is not a decimal typo
+    expect(amountErrorCopy('abc')).toBe('Enter a valid amount.')
   })
 })

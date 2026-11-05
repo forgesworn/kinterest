@@ -100,6 +100,35 @@ function impliedRate(fromCurrency: string, fromAmountMinor: number, toCurrency: 
  *  currency on both sides -> rate 1, trivially and without scanning anything
  *  (defensive; callers should never actually ask this for a no-op
  *  "exchange"). */
+/** The two legs of the most recent `exchange` between `fromCurrency` and
+ *  `toCurrency`, oriented as from→to (an exchange the other way round is
+ *  flipped), as positive minor units — so a caller can suggest a new
+ *  amount by integer ratio rather than through a floating-point rate. Same
+ *  scan as `lastExchangeRate`. `null` when there is no prior exchange. */
+export function lastExchangeLegs(entries: Entry[], fromCurrency: string, toCurrency: string): { fromMinor: number; toMinor: number } | null {
+  if (fromCurrency === toCurrency) return null
+  const exchanges = [...entries].filter((e) => e.kind === 'exchange').sort((a, b) => b.createdAt - a.createdAt)
+  for (const e of exchanges) {
+    const from = e.legs.find((l) => l.currency === fromCurrency && l.amountMinor < 0)
+    const to = e.legs.find((l) => l.currency === toCurrency && l.amountMinor > 0)
+    if (from !== undefined && to !== undefined) return { fromMinor: -from.amountMinor, toMinor: to.amountMinor }
+    const revFrom = e.legs.find((l) => l.currency === toCurrency && l.amountMinor < 0)
+    const revTo = e.legs.find((l) => l.currency === fromCurrency && l.amountMinor > 0)
+    if (revFrom !== undefined && revTo !== undefined) return { fromMinor: revTo.amountMinor, toMinor: -revFrom.amountMinor }
+  }
+  return null
+}
+
+/** `fromMinor` of `fromCurrency` at the ratio of `legs`, rounded half up, in
+ *  minor units of the other currency — exact integer arithmetic (BigInt for
+ *  the product, which can pass 2^53 for sats). Never below 0. */
+export function suggestedMinorFor(fromMinor: number, legs: { fromMinor: number; toMinor: number }): number {
+  if (fromMinor <= 0 || legs.fromMinor <= 0 || legs.toMinor <= 0) return 0
+  const num = BigInt(fromMinor) * BigInt(legs.toMinor) * 2n + BigInt(legs.fromMinor)
+  const out = Number(num / (2n * BigInt(legs.fromMinor)))
+  return Number.isSafeInteger(out) ? out : 0
+}
+
 export function lastExchangeRate(entries: Entry[], fromCurrency: string, toCurrency: string): number | null {
   if (fromCurrency === toCurrency) return 1
 

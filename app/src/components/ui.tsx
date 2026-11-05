@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react'
 
 // Base components for the Kindred design system (theme.css). Thin wrappers
@@ -147,13 +147,24 @@ export function Sheet({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
+  // Focus moves into the dialog when it opens (a screen reader otherwise
+  // stays on the button that opened it) unless a child already asked for
+  // focus (`autoFocus` on a MoneyInput).
+  const sheetRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = sheetRef.current
+    if (el !== null && !el.contains(document.activeElement)) el.focus()
+  }, [])
+
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div
+        ref={sheetRef}
+        tabIndex={-1}
         className="sheet"
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={title ?? 'Sheet'}
         onClick={(e) => e.stopPropagation()}
       >
         {title && <h2 className="sheet-title">{title}</h2>}

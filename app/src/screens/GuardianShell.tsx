@@ -149,6 +149,6 @@ function GuardianRoutes(): ReactElement {
       // moment the FIRST child lands), and a guardian who has just named a
       // child is prompted straight away to add their first pot, rather
       // than left on Home with a child that has nothing set up yet.
-      return <Onboarding initialStep={addChildStep()} onAddChildDone={(childPubkey) => setRoute(childSettingsRoute(childPubkey))} />
+      return <Onboarding initialStep={addChildStep()} onAddChildDone={(childPubkey) => setRoute(childSettingsRoute(childPubkey))} onBack={() => setRoute(goBack(route))} />
   }
 }

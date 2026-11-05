@@ -22,7 +22,7 @@ import { dataStorage } from '../platform/dataStorage'
 // about (a wrap or another decision landing while this decision's sends
 // were in flight).
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { Dispatch, ReactElement } from 'react'
 import type { RelayLike } from '../wire/relayClient'
 import { sendEntry, sendGrant } from '../sync/publish'
@@ -32,7 +32,8 @@ import { buildGrantDecision, useApp, type GrantDecisionInput, type StoreAction }
 import { Banner, Button, Card, EmptyState, Screen, Stepper } from '../components/ui'
 import { Money } from '../components/Money'
 import { formatMinor } from '../domain/money'
-import { claimPeriodComplete, clampGrant, isKnownCurrency, pendingByChild, truncateLink } from './approvals'
+import { claimPeriodComplete, clampGrant, grantStepFor, isKnownCurrency, pendingByChild, periodLabel, truncateLink } from './approvals'
+import { balances } from '../domain/ledger'
 
 function nowSecOnce(): number {
   return Math.floor(Date.now() / 1000)
@@ -124,9 +125,6 @@ async function submitDecision(app: AppState, input: GrantDecisionInput, nowSec: 
 // asked amount to 0, for either a 2-decimal fiat currency or BTC's 8-decimal
 // sats — no currency-specific special-casing needed since it is derived
 // from `askedMinor` itself rather than a fixed "one major unit" figure.
-function stepFor(askedMinor: number): number {
-  return Math.max(1, Math.round(askedMinor / 10))
-}
 
 // ============================================================================
 // One request card
@@ -135,6 +133,8 @@ function stepFor(askedMinor: number): number {
 interface RequestCardProps {
   stored: StoredRequest
   app: AppState
+  /** accountId -> current balance minor, folded once per render by the screen. */
+  entryBalances: Map<string, number>
   busy: 'approve' | 'deny' | 'dismiss' | null
   disabled: boolean
   onApprove: (amountMinor?: number) => void
@@ -142,7 +142,7 @@ interface RequestCardProps {
   onDismiss: () => void
 }
 
-function RequestCard({ stored, app, busy, disabled, onApprove, onDeny, onDismiss }: RequestCardProps): ReactElement {
+function RequestCard({ stored, app, entryBalances, busy, disabled, onApprove, onDeny, onDismiss }: RequestCardProps): ReactElement {
   const { request } = stored
   const isSpend = request.op === 'spend.request'
   const isBusy = busy !== null
@@ -184,13 +184,19 @@ function RequestCard({ stored, app, busy, disabled, onApprove, onDeny, onDismiss
   const periodDone = claimPeriodComplete(app, stored)
 
   const [granted, setGranted] = useState(() => Math.max(0, askedMinor))
+  // The pot's balance and whether this grant would overdraw it. Nothing
+  // stops a parent granting more than the pot holds (a ledger may legitimately
+  // go negative), but the inbox used to show no balance at all, so the
+  // parent had to leave the card to find out.
+  const potBalance = account !== undefined ? entryBalances.get(account.id) ?? 0 : null
+  const overdraws = potBalance !== null && granted > potBalance
 
   return (
     <Card style={{ position: 'relative' }}>
       <button
         type="button"
         aria-label="Dismiss"
-        title="Set this aside — they're told 'Not now', and no money moves"
+        title="Set this aside — they see 'Not now', and no money moves"
         disabled={disabled || isBusy}
         onClick={onDismiss}
         className="dismiss-btn"
@@ -211,6 +217,11 @@ function RequestCard({ stored, app, busy, disabled, onApprove, onDeny, onDismiss
             {currencyKnown ? <Money currency={spendParams.currency} minor={askedMinor} /> : <span>Unknown currency</span>}
             {account ? ` from ${account.name}` : ''}
           </p>
+          {account !== undefined && potBalance !== null && (
+            <p className="muted">
+              {account.name} holds <Money currency={account.currency} minor={potBalance} size="sm" />
+            </p>
+          )}
           {spendParams.note && <p className="muted">“{spendParams.note}”</p>}
           {spendParams.link && (
             // PLAIN TEXT, never a clickable anchor — a child's pasted link is
@@ -225,7 +236,7 @@ function RequestCard({ stored, app, busy, disabled, onApprove, onDeny, onDismiss
         <p>
           {allowanceAccount !== undefined && cfg !== undefined && <Money currency={allowanceAccount.currency} minor={cfg.amountMinor} />}
           {' · '}
-          {claimParams.periodKey}
+          {periodLabel(claimParams.periodKey)}
         </p>
       )}
 
@@ -256,7 +267,7 @@ function RequestCard({ stored, app, busy, disabled, onApprove, onDeny, onDismiss
             value={granted}
             min={0}
             max={askedMinor}
-            step={stepFor(askedMinor)}
+            step={grantStepFor(askedMinor, spendParams.currency)}
             onChange={setGranted}
             format={(v) => formatMinor(spendParams.currency, v)}
             label="Amount to grant"
@@ -264,17 +275,26 @@ function RequestCard({ stored, app, busy, disabled, onApprove, onDeny, onDismiss
         </div>
       )}
 
+      {isSpend && !unanswerable && overdraws && account !== undefined && (
+        <Banner tone="info">This would take {account.name} below zero.</Banner>
+      )}
+      {isSpend && !unanswerable && granted === 0 && askedMinor > 0 && (
+        <p className="muted">Nothing to grant at £0 — use “Not this time” to say no.</p>
+      )}
+
       <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
         <Button
           variant="primary"
           block
-          disabled={disabled || isBusy || unanswerable}
+          disabled={disabled || isBusy || unanswerable || (isSpend && granted === 0)}
           onClick={() => onApprove(isSpend ? granted : undefined)}
         >
           {busy === 'approve' ? 'Approving…' : isSpend && granted < askedMinor ? 'Approve less' : 'Approve'}
         </Button>
+        {/* The same words the child reads for a denial (screens/ask.ts#askChip),
+            so a parent can predict what the child will see. */}
         <Button variant="quiet" block disabled={disabled || isBusy} onClick={onDeny}>
-          {busy === 'deny' ? 'Saving…' : 'Not now'}
+          {busy === 'deny' ? 'Saving…' : 'Not this time'}
         </Button>
       </div>
     </Card>
@@ -292,6 +312,13 @@ export function Approvals({ onBack }: { onBack: () => void }): ReactElement {
   const [error, setError] = useState<string | null>(null)
 
   const groups = pendingByChild(app.requests)
+  const entryBalances = useMemo(() => {
+    try {
+      return balances(app.entries)
+    } catch {
+      return new Map<string, number>() // an overflowing ledger: show no balances rather than crash the inbox
+    }
+  }, [app.entries])
 
   async function decide(stored: StoredRequest, decision: 'allow' | 'deny' | 'dismissed', amountMinor?: number): Promise<void> {
     if (busy !== null || guardianSk === null) return
@@ -335,6 +362,7 @@ export function Approvals({ onBack }: { onBack: () => void }): ReactElement {
                 key={stored.request.reqId}
                 stored={stored}
                 app={app}
+                entryBalances={entryBalances}
                 busy={busy?.reqId === stored.request.reqId ? busy.action : null}
                 // `decide()` itself refuses a second decision while ANY
                 // request is in flight (`if (busy !== null...) return`,

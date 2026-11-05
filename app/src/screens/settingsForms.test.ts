@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { custodyLabel } from './settingsForms'
 import type { Account } from '../domain/types'
 import type { AllowanceConfig } from '../domain/allowance'
 import type { InterestConfig } from '../domain/interest'
@@ -418,5 +419,13 @@ describe('renameChore / setChoreCadence / setChoreArchived', () => {
   it('rejects an unknown id for cadence/archive', () => {
     expect(setChoreCadence(existing, 'nope', 'weekly')).toBeNull()
     expect(setChoreArchived(existing, 'nope', true)).toBeNull()
+  })
+})
+
+describe('custodyLabel', () => {
+  it('never shows the raw enum', () => {
+    expect(custodyLabel('ledger')).toBe('Kept by a parent')
+    expect(custodyLabel('physical')).toBe('Coins in a jar')
+    expect(custodyLabel('external')).toBe('Bank or app')
   })
 })

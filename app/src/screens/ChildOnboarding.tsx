@@ -321,9 +321,9 @@ export function ChildOnboarding({ onCancel }: { onCancel: () => void }) {
   // step.kind === 'rootRejected'
   return (
     <Screen title="Before you join">
-      <Banner tone="bad">Could not verify the family root.</Banner>
+      <Banner tone="bad">This code doesn't look quite right.</Banner>
       <p className="muted">
-        You can still join — if that doesn't look right, check with whoever set this up before continuing.
+        Ask your grown-up to make a new code. If they say this one is fine, you can carry on.
       </p>
       <Button variant="primary" block onClick={handleRootRejectedContinue} disabled={busy || pendingOffer === null}>
         {busy ? 'Joining…' : 'Continue'}

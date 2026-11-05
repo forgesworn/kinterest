@@ -4,6 +4,7 @@ import { devicesForChild } from '../identity/devices'
 import { useParentMode } from './ParentAccess'
 import { SignetChildPicker } from './SignetChildPicker'
 import { dataStorage } from '../platform/dataStorage'
+import { custodyLabel } from './settingsForms'
 // One child's accounts, unified feed, and quick-action entry points. See
 // internal plan 2026-08-11-parent-mode, Task 4.
 //
@@ -288,13 +289,13 @@ export function ChildDetail({
     <Screen title={child.name} onBack={onBack} action={<Button variant="quiet" onClick={onSettings}>Settings</Button>}>
       <Card>
         {accounts.length === 0 ? (
-          <EmptyState title="No accounts yet">Add one from settings to start tracking money.</EmptyState>
+          <EmptyState title="No pots yet">Add one from settings to start tracking money.</EmptyState>
         ) : (
           accounts.map((a) => (
             <ListRow
               key={a.id}
               title={a.name}
-              sub={a.custody}
+              sub={custodyLabel(a.custody)}
               trailing={<Money currency={a.currency} minor={entryBalances.get(a.id) ?? 0} />}
             />
           ))
@@ -359,7 +360,7 @@ export function ChildDetail({
           </Button>
         </Card>
       )}
-      {revokedDeviceAt === undefined && !deviceEverPaired && (
+      {revokedDeviceAt === undefined && !deviceEverPaired && !child.signet && (
         <Card>
           <Button variant="primary" block onClick={onPairDevice}>
             Pair their phone

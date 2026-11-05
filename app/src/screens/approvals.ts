@@ -61,6 +61,29 @@ export function clampGrant(askedMinor: number, inputMinor: number): number {
 
 const LINK_MAX_CHARS = 60
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+/** A period key as a parent reads it: '2026-W44' -> 'Week 44 of 2026',
+ *  '2026-11' -> 'November 2026'. Anything else is returned as is. */
+export function periodLabel(periodKey: string): string {
+  const week = /^(\d{4})-W(\d{2})$/.exec(periodKey)
+  if (week) return `Week ${Number(week[2])} of ${week[1]}`
+  const month = /^(\d{4})-(\d{2})$/.exec(periodKey)
+  if (month) {
+    const name = MONTH_NAMES[Number(month[2]) - 1]
+    if (name !== undefined) return `${name} ${month[1]}`
+  }
+  return periodKey
+}
+
+/** The "Approve less" stepper's step. Fiat moves in 50p/50c steps once the
+ *  ask is £2 or more (so £7.50 of £10 is reachable), 10p below that; BTC
+ *  keeps a tenth of the ask (sats have no natural coin). Never below 1. */
+export function grantStepFor(askedMinor: number, currency: string): number {
+  if (currency === 'BTC') return Math.max(1, Math.round(askedMinor / 10))
+  return askedMinor >= 200 ? 50 : 10
+}
+
 export function truncateLink(link: string): string {
   if (link.length <= LINK_MAX_CHARS) return link
   return link.slice(0, LINK_MAX_CHARS) + '…'

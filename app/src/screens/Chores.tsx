@@ -23,7 +23,7 @@ import { dataStorage } from '../platform/dataStorage'
 
 import { useState } from 'react'
 import type { ReactElement } from 'react'
-import { dayKey } from '../domain/period'
+import { dayKey, isoWeekKey, periodDaysFor } from '../domain/period'
 import { tickedDays } from '../domain/chores'
 import type { Chore, ChoreTick } from '../domain/chores'
 import { Banner, Button, Card, EmptyState, ListRow, Screen } from '../components/ui'
@@ -92,6 +92,12 @@ export function Chores({ onBack }: { onBack: () => void }): ReactElement {
   const nowSec = nowSecOnce()
   const todayKey = dayKey(nowSec, tz)
 
+  // A weekly chore is done for the week once ticked on ANY day of this ISO
+  // week — not only when ticked today, which read as "undone again" every
+  // morning after the child had done it.
+  const thisWeek = new Set(periodDaysFor(isoWeekKey(todayKey), 'weekly') ?? [todayKey])
+  const doneThisWeek = (c: Chore): boolean => [...tickedDays(c, app.ticks)].some((d) => thisWeek.has(d))
+
   const chores = app.docs.chores.chores.filter((c) => c.child === selfPk && !c.archived)
   const dailies = chores.filter((c) => c.cadence === 'daily')
   const weeklies = chores.filter((c) => c.cadence === 'weekly')
@@ -157,7 +163,7 @@ export function Chores({ onBack }: { onBack: () => void }): ReactElement {
             <ChoreRow
               key={c.id}
               chore={c}
-              done={tickedDays(c, app.ticks).has(todayKey)}
+              done={doneThisWeek(c)}
               busy={busyChore === c.id}
               onTick={() => void handleTick(c, todayKey)}
             />

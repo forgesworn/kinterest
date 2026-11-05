@@ -39,7 +39,6 @@ import { Money } from '../components/Money'
 import { Jar, jarFill } from '../components/Jar'
 import { useApp } from '../store/store'
 import { approxTotal, nextDueDay } from './Home'
-import { shortNpub } from './familyRoot'
 import { buildChildFeed } from './childFeed'
 
 // ============================================================================
@@ -330,7 +329,9 @@ export function ChildHome({ onAsk, onChores, onAudit }: { onAsk: () => void; onC
   const root = app.root
   const familyLine =
     root !== null && root.kind === 'signet'
-      ? `Family of ${root.displayName !== undefined && root.displayName.trim() !== '' ? root.displayName : shortNpub(root.pubkey)}`
+      ? root.displayName !== undefined && root.displayName.trim() !== ''
+        ? `${root.displayName}'s family`
+        : 'Your family'
       : null
 
   return (

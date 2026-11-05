@@ -48,7 +48,7 @@ export default function ChildShell(): ReactElement {
   return (
     <>
       <StorageBanner />
-      {unlocked && <NotificationOptIn />}
+      {unlocked && <NotificationOptIn audience="child" />}
       {screen}
     </>
   )

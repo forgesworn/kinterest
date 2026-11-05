@@ -85,7 +85,14 @@ export function PairDevice({ childPubkey, onDone }: { childPubkey: string; onDon
         await sendConfig('accounts', saved.docs.accounts, { selfSk: guardianSk, peerPk, relay, storage: dataStorage(), nowSec }).catch(() => {})
       }
       setPairedName(child.name); setPending(null)
-    } catch (e) { setBanner(e instanceof Error ? e.message : 'Could not pair this phone. Please try again.'); setPending(null) }
+    } catch (e) {
+      setBanner(e instanceof Error ? e.message : 'Could not pair this phone. Please try again.')
+      setPending(null)
+      // The ceremony was ended before My Signet was asked (its token is
+      // consumed); re-open it with a fresh code so the parent can try again
+      // from this screen instead of being left on "Setting up a pairing code…".
+      if (live.current && stateRef.current.pairing === null) dispatch({ type: 'beginPairing', session: reMintPairingSession(ceremony, Math.floor(Date.now() / 1000)) })
+    }
     finally { accepting.current = false; if (live.current) setApproving(false) }
   }
 
@@ -209,7 +216,7 @@ export function PairDevice({ childPubkey, onDone }: { childPubkey: string; onDon
   return (
     <Screen title={`Pair ${child.name}'s device`} onBack={onDone}>
       {pairedName !== null && <Banner tone="good">{pairedName}'s device is now paired.</Banner>}
-      {banner !== null && pairedName === null && <Banner tone="info">{banner}</Banner>}
+      {banner !== null && pairedName === null && <Banner tone="bad">{banner}</Banner>}
       {showingCode && session !== null && guardianSk !== null && (
         <Card>
           {(() => {

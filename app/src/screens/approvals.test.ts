@@ -4,7 +4,7 @@ import type { AppState, StoredRequest } from '../state/types'
 import type { Chore, ChoreTick } from '../domain/chores'
 import type { AllowanceConfig } from '../domain/allowance'
 import { emptyState } from '../state/state'
-import { claimPeriodComplete, clampGrant, isKnownCurrency, pendingByChild, truncateLink } from './approvals'
+import { claimPeriodComplete, clampGrant, isKnownCurrency, pendingByChild, truncateLink, periodLabel, grantStepFor } from './approvals'
 
 const CHILD_A = 'a'.repeat(64)
 const CHILD_B = 'b'.repeat(64)
@@ -23,6 +23,26 @@ function spendRequest(reqId: string, child: string, amountMinor = 150) {
 function stored(reqId: string, child: string, overrides: Partial<StoredRequest> = {}): StoredRequest {
   return { request: spendRequest(reqId, child), authorPk: child, status: 'pending', createdAt: 1_700_000_000, ...overrides }
 }
+
+describe('periodLabel', () => {
+  it('names weeks and months the way a parent reads them', () => {
+    expect(periodLabel('2026-W44')).toBe('Week 44 of 2026')
+    expect(periodLabel('2026-W05')).toBe('Week 5 of 2026')
+    expect(periodLabel('2026-11')).toBe('November 2026')
+    expect(periodLabel('2026-13')).toBe('2026-13') // not a month: shown as is
+    expect(periodLabel('garbage')).toBe('garbage')
+  })
+})
+
+describe('grantStepFor', () => {
+  it('steps fiat in 50p once the ask is £2 or more, 10p below, and a tenth of the ask for sats', () => {
+    expect(grantStepFor(1000, 'GBP')).toBe(50) // £7.50 of £10 is five taps
+    expect(grantStepFor(199, 'EUR')).toBe(10)
+    expect(grantStepFor(3, 'USD')).toBe(10)
+    expect(grantStepFor(1000, 'BTC')).toBe(100)
+    expect(grantStepFor(4, 'BTC')).toBe(1)
+  })
+})
 
 describe('clampGrant', () => {
   it('passes through a value within 0..asked', () => {

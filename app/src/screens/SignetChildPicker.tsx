@@ -17,7 +17,7 @@ export function dependantHint(text: string): string | null {
     return url.protocol === 'bunker:' && pk !== null && /^[0-9a-f]{64}$/.test(pk) ? pk : null
   } catch { return null }
 }
-export function SignetChildPicker({ onDone, legacyChild }: { onDone?: (child: string) => void; legacyChild?: string }) {
+export function SignetChildPicker({ onDone, onBack, legacyChild }: { onDone?: (child: string) => void; onBack?: () => void; legacyChild?: string }) {
   const { state, dispatch, guardianSk, relay } = useApp()
   const live = useRef(true), choosing = useRef(false)
   useEffect(() => { live.current = true; return () => { live.current = false } }, [])
@@ -57,7 +57,7 @@ export function SignetChildPicker({ onDone, legacyChild }: { onDone?: (child: st
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not add this child. Please try again.') }
     finally { sk.fill(0); choosing.current = false; if (live.current) setBusy(false) }
   }
-  return <Screen title={legacyChild ? 'Link this child to My Signet' : 'Choose your child'}>
+  return <Screen title={legacyChild ? 'Link this child to My Signet' : 'Choose your child'} onBack={busy ? undefined : onBack}>
     <p>In My Signet, choose the child’s dependant persona and open “Pair an app as this dependant”. Scan its QR or paste its pairing code here.</p>
     <p>My Signet supplies their name and picture. You will approve this child and this device before anything is added.</p>
     {error && <Banner tone="bad">{error}</Banner>}

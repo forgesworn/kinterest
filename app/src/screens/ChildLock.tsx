@@ -106,7 +106,11 @@ export function ChildLock() {
   if (replacing) return <ChildOnboarding onCancel={() => setReplacing(false)} />
 
   if (!ready) {
-    return <Screen title="Kinterest">{null}</Screen>
+    return (
+      <Screen title="Kinterest">
+        <p className="muted">Just a moment…</p>
+      </Screen>
+    )
   }
 
   if (!hasPin) {

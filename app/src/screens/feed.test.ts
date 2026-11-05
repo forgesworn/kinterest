@@ -3,7 +3,7 @@ import { creditEntry, debitEntry, exchangeEntry, transferEntry } from '../domain
 import { allowanceEntry } from '../domain/allowance'
 import type { Account } from '../domain/types'
 import type { AllowanceConfig } from '../domain/allowance'
-import { buildFeed, feedIcon, lastExchangeRate } from './feed'
+import { buildFeed, feedIcon, lastExchangeLegs, lastExchangeRate, suggestedMinorFor } from './feed'
 
 const CHILD = 'sam'
 const spending: Account = { id: 'acc-spend', child: CHILD, name: 'Spending', currency: 'GBP', custody: 'ledger' }
@@ -167,5 +167,29 @@ describe('buildFeed', () => {
 
   it('empty entries -> empty groups', () => {
     expect(buildFeed([], accounts, {}, TZ, AT)).toEqual([])
+  })
+})
+
+describe('lastExchangeLegs / suggestedMinorFor', () => {
+  const gbp: Account = { id: 'g', child: 'kid', name: 'Pounds', currency: 'GBP', custody: 'ledger' }
+  const btc: Account = { id: 'b', child: 'kid', name: 'Sats', currency: 'BTC', custody: 'ledger' }
+  const meta = (id: string, createdAt: number) => ({ id, child: 'kid', createdAt, author: 'guardian' as const })
+
+  it('returns the most recent exchange oriented from -> to, flipping a reverse one', () => {
+    const e1 = exchangeEntry(meta('e1', 100), gbp, 1000, btc, 20_000) // £10 -> 20,000 sats
+    const e2 = exchangeEntry(meta('e2', 200), btc, 5_000, gbp, 300) // 5,000 sats -> £3
+    expect(lastExchangeLegs([e1], 'GBP', 'BTC')).toEqual({ fromMinor: 1000, toMinor: 20_000 })
+    expect(lastExchangeLegs([e1], 'BTC', 'GBP')).toEqual({ fromMinor: 20_000, toMinor: 1000 })
+    expect(lastExchangeLegs([e1, e2], 'GBP', 'BTC')).toEqual({ fromMinor: 300, toMinor: 5_000 })
+    expect(lastExchangeLegs([], 'GBP', 'BTC')).toBeNull()
+    expect(lastExchangeLegs([e1], 'GBP', 'GBP')).toBeNull()
+  })
+
+  it('suggests by exact integer ratio, rounding half up', () => {
+    expect(suggestedMinorFor(500, { fromMinor: 1000, toMinor: 20_000 })).toBe(10_000)
+    expect(suggestedMinorFor(1, { fromMinor: 3, toMinor: 1 })).toBe(0) // 0.33 -> 0
+    expect(suggestedMinorFor(1, { fromMinor: 2, toMinor: 1 })).toBe(1) // 0.5 -> 1
+    expect(suggestedMinorFor(1_000_000_000, { fromMinor: 3, toMinor: 100_000_000 })).toBe(33_333_333_333_333_333 > Number.MAX_SAFE_INTEGER ? 0 : 33_333_333_333_333_333)
+    expect(suggestedMinorFor(0, { fromMinor: 1, toMinor: 1 })).toBe(0)
   })
 })

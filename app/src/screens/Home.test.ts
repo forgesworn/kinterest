@@ -161,7 +161,7 @@ describe('parent family holdings', () => {
     expect(familyHoldingSummary([spending, { ...spending, id: 'eur', currency: 'EUR' }], new Map([['acc-spend', 100], ['eur', 250]]))).toBe("You're holding £1.00 and €2.50 for the family")
   })
   it('shows zero for a family without ledger pots and refuses an unsafe total', () => {
-    expect(familyHoldingSummary([], new Map())).toBe("You're holding £0.00 for the family")
+    expect(familyHoldingSummary([], new Map())).toBe("You're not holding any money for the family yet")
     expect(() => familyHoldings([spending, { ...spending, id: 'other' }], new Map([['acc-spend', Number.MAX_SAFE_INTEGER], ['other', 1]]))).toThrow()
   })
 })
