@@ -6,19 +6,19 @@
 // React handle attribute escaping the normal way.
 
 import type { ReactElement } from 'react'
-import qrcode from 'qrcode-generator'
+import { encode, toSvg } from '@forgesworn/qr'
 
-/** Renders `data` as a QR code data: URL. Type 0 = automatic size (smallest
- *  that fits the payload); 'M' error correction (~15% damage tolerance) —
- *  the pairing QR is scanned off a phone or laptop screen at an angle or
- *  distance, unlike a clean static invite screen, so it needs more
- *  tolerance than the format's minimum ('L'). `cellSize`/`margin` are CSS
- *  pixels per module / border, matching that earlier sibling app's own defaults. */
-export function qrDataUrl(data: string, cellSize = 6, margin = 16): string {
-  const qr = qrcode(0, 'M')
-  qr.addData(data)
-  qr.make()
-  return qr.createDataURL(cellSize, margin)
+/** Renders `data` as a QR code data: URL (an SVG, black on white). The
+ *  smallest version that fits the payload is chosen automatically; 'M' error
+ *  correction (~15% damage tolerance) — the pairing QR is scanned off a phone
+ *  or laptop screen at an angle or distance, unlike a clean static invite
+ *  screen, so it needs more tolerance than the format's minimum ('L').
+ *  `margin` is the quiet zone in whole modules. The previous encoder used a
+ *  16 px border at 6 px a module (about 2.7 modules); 3 is the nearest whole
+ *  number, and the standard's own minimum is 4. */
+export function qrDataUrl(data: string, margin = 3): string {
+  const svg = toSvg(encode(data, { ecc: 'M' }), { margin, dark: '#000', light: '#fff' })
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 }
 
 /** Thin wrapper — an `<img>` of {@link qrDataUrl}'s output. Every caller in
