@@ -14,9 +14,9 @@ import { encode, toSvg } from '@forgesworn/qr'
  *  or laptop screen at an angle or distance, unlike a clean static invite
  *  screen, so it needs more tolerance than the format's minimum ('L').
  *  `margin` is the quiet zone in whole modules. The previous encoder used a
- *  16 px border at 6 px a module (about 2.7 modules); 3 is the nearest whole
- *  number, and the standard's own minimum is 4. */
-export function qrDataUrl(data: string, margin = 3): string {
+ *  16 px border at 6 px a module (about 2.7 modules); this uses the standard's
+ *  minimum of 4. */
+export function qrDataUrl(data: string, margin = 4): string {
   const svg = toSvg(encode(data, { ecc: 'M' }), { margin, dark: '#000', light: '#fff' })
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 }
