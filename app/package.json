@@ -12,10 +12,10 @@
     "icons": "node ../scripts/render-icons.mjs"
   },
   "dependencies": {
+    "@forgesworn/qr": "^0.1.0",
     "@noble/hashes": "^2.0.1",
     "jsqr": "^1.4.0",
     "nostr-tools": "^2.23.0",
-    "qrcode-generator": "^2.0.4",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "signet-login": "git+https://github.com/forgesworn/signet-login.git#c40dd52b972d32e04c527d26abd19fbfb29a3e6c",
