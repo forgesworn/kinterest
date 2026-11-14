@@ -45,7 +45,7 @@ describe('qrDataUrl', () => {
     expect(jsQR(rgba, px, px)?.data).toBe(uri)
   })
 
-  it('keeps a whole-module quiet zone of 3', () => {
-    expect(decodeURIComponent(qrDataUrl('x').split(',')[1]!)).toMatch(/M3 3h/)
+  it('keeps a whole-module quiet zone of 4', () => {
+    expect(decodeURIComponent(qrDataUrl('x').split(',')[1]!)).toMatch(/M4 4h/)
   })
 })
