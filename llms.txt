@@ -1,0 +1,14 @@
+# Kinterest
+
+> Shared family pocket-money ledger for recording balances without moving real money.
+
+## Documentation
+
+- [Run the app](https://github.com/forgesworn/kinterest/blob/main/README.md): Current scope, development commands and Android build.
+- [Roadmap](https://github.com/forgesworn/kinterest/blob/main/docs/ROADMAP.md): Implemented behaviour and planned work.
+
+## ForgeSworn ecosystem
+
+- [ForgeSworn library guide](https://forgesworn.dev/llms.txt): Find related libraries, tools and integration guides by task and runtime.
+- [ForgeSworn on GitHub](https://github.com/forgesworn): Browse the organisation’s public repositories.
+- [Project source](https://github.com/forgesworn/kinterest): Canonical source repository, documentation and release information.
